@@ -1,0 +1,35 @@
+import { z } from 'zod';
+import { FiniteNumberSchema, Vec2Schema, Vec3Schema, CameraTransformSchema } from './primitives.schema.js';
+import { ColorLightingPaletteSchema } from './storyboard.contract.js';
+import { AudioFrameFeatureSchema } from './audio.contract.js';
+
+export const ActiveEntityStateSchema = z.object({
+  rigId: z.string().min(1),
+  worldPosition: Vec3Schema,
+  worldRotationZDegrees: z.number().finite().min(-360).max(360),
+  scale: Vec2Schema,
+  jointAngles: z.record(z.string(), z.number().finite()).default({}),
+  morphWeights: z.record(z.string(), z.number().finite().min(0).max(1)).default({}),
+  opacity: z.number().finite().min(0).max(1).default(1)
+}).strict();
+export type ActiveEntityState = z.infer<typeof ActiveEntityStateSchema>;
+
+export const ActiveLyricStateSchema = z.object({
+  lineId: z.string().min(1),
+  text: z.string().min(1),
+  progress: z.number().finite().min(0).max(1),
+  emphasis: z.number().finite().min(0).max(1)
+}).strict();
+export type ActiveLyricState = z.infer<typeof ActiveLyricStateSchema>;
+
+export const FrameStateContractSchema = z.object({
+  frameIndex: z.number().int().min(0),
+  timeSeconds: FiniteNumberSchema.min(0),
+  shotId: z.string().min(1),
+  camera: CameraTransformSchema,
+  palette: ColorLightingPaletteSchema,
+  audio: AudioFrameFeatureSchema,
+  lyric: ActiveLyricStateSchema.nullable(),
+  entities: z.array(ActiveEntityStateSchema)
+}).strict();
+export type FrameStateContract = z.infer<typeof FrameStateContractSchema>;

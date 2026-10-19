@@ -1,0 +1,25 @@
+{
+  "name": "ai-agent-animation-studio",
+  "version": "0.1.0",
+  "description": "Zero-browser in-memory procedural 2.5D animation rendering engine and AI agent studio",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test:conformance": "tsx scripts/conformance-render.ts",
+    "test:benchmark:smoke": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/benchmark-smoke.ts",
+    "test:schemas": "tsx --test tests/schemas.test.ts",
+    "test:invariants": "tsx --test tests/invariants.test.ts",
+    "test:backpressure": "tsx --test tests/backpressure.test.ts",
+    "test": "tsx --test tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

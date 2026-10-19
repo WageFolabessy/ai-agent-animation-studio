@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Runtime video and benchmark output
+output/
+*.part.mp4
+*.failed.mp4
+*.mp4
+
+# Temporary logs and dumps
+*.log
+*.dump
+.DS_Store
+
+# Python virtual environments and caches
+python/venv/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Local environment and secret files
+.env
+.env.*
+!.env.example
+
+# IDE and agent metadata
+.gemini/
+.agents/
+
