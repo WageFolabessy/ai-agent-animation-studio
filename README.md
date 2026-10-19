@@ -121,13 +121,10 @@ ai-agent-animation-studio/
     ├── backpressure.test.ts       # Streamer backpressure, drain, and EPIPE recovery
     ├── benchmark-gates.test.ts    # Memory gate and artifact hygiene tests
     ├── clipping.test.ts           # Near/far frustum and 2D screen clipping tests
-    ├── english-policy.test.ts     # Automated repository-wide English language verifier
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
     ├── invariants.test.ts         # Storyboard timeline, act, and joint cycle invariants
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
-    ├── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
-    └── fixtures/
-        └── english-policy-forbidden-terms.json # Prohibited language terms fixture
+    └── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
 ```
 
 ---
@@ -266,6 +263,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 
 ## 13. Development Guidelines
 
+- **English Language Convention:** All project-owned source code, comments, filenames, folders, documentation, tests, configuration, diagnostics, and user-facing messages are written in English by project convention.
 - **Strict TypeScript:** No implicit `any`, no untyped casts, and no bypass assertions unless strictly justified.
 - **ESM NodeNext Imports:** All internal module imports must include the explicit `.js` extension (e.g. `import { SvgRasterizer } from './rasterizer.js';`).
 - **Standard Node Built-in Prefixes:** Always use `node:` imports (e.g. `node:fs`, `node:path`, `node:child_process`, `node:assert/strict`).
