@@ -4,106 +4,130 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PROJECT_ROOT } from '../src/config/paths.js';
 
-const FORBIDDEN_WORDS = [
-  'harus',
-  'ditemukan',
-  'diharapkan',
-  'berada',
-  'di luar',
-  'memuat',
-  'selesai',
-  'memulai',
-  'melakukan',
-  'sampah',
-  'rentang',
-  'babak',
-  'sendi',
-  'tumpang tindih',
-  'celah',
-  'terdeteksi',
-  'memakai',
-  'pembatalan',
-  'menghasilkan',
-  'lingkungan',
-  'batasan',
-  'mutlak',
-  'larangan',
-  'ruang lingkup',
-  'instruksi',
-  'eksekusi',
-  'penting',
-  'jangan',
-  'rancang',
-  'struktur',
-  'pohon arsitektur'
-];
+interface ForbiddenTermsFixture {
+  _description: string;
+  terms: string[];
+}
 
-const SCAN_DIRS = ['src', 'scripts', 'tests', 'docs', 'python'];
-const ROOT_DOC_FILES = ['README.md', 'package.json', 'tsconfig.json'];
+export interface TermViolation {
+  file: string;
+  line: number;
+  term: string;
+  snippet: string;
+}
 
-function collectFiles(dir: string, fileList: string[] = []): string[] {
+const FIXTURE_RELATIVE_PATH = path.join('tests', 'fixtures', 'english-policy-forbidden-terms.json');
+const FIXTURE_ABSOLUTE_PATH = path.join(PROJECT_ROOT, FIXTURE_RELATIVE_PATH);
+
+function loadForbiddenTerms(): string[] {
+  const raw = fs.readFileSync(FIXTURE_ABSOLUTE_PATH, 'utf8');
+  const data = JSON.parse(raw) as ForbiddenTermsFixture;
+  return data.terms;
+}
+
+/**
+ * Directories excluded from source scanning:
+ * - node_modules: external third-party dependencies
+ * - .git: version control metadata
+ * - .gemini: IDE runtime metadata
+ * - output: generated binary video outputs
+ */
+const EXCLUDED_DIRECTORY_NAMES = new Set(['node_modules', '.git', '.gemini', 'output']);
+
+/**
+ * Text file extensions scanned for language compliance.
+ */
+const SCANNED_EXTENSIONS = new Set(['.ts', '.js', '.json', '.md', '.py', '.txt']);
+
+export function scanFileForForbiddenTerms(filePath: string, terms: string[]): TermViolation[] {
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content.split('\n');
+  const violations: TermViolation[] = [];
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const lineText = lines[lineIndex];
+    const lower = lineText.toLowerCase();
+
+    for (const term of terms) {
+      const regex = new RegExp(`\\b${term}\\b`, 'i');
+      if (regex.test(lower)) {
+        violations.push({
+          file: path.relative(PROJECT_ROOT, filePath),
+          line: lineIndex + 1,
+          term,
+          snippet: lineText.trim()
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+export function collectScannableProjectFiles(dir: string, fileList: string[] = []): string[] {
   if (!fs.existsSync(dir)) return fileList;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
+
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      if (entry.name !== 'node_modules' && entry.name !== '.git' && entry.name !== '.gemini' && entry.name !== 'output') {
-        collectFiles(fullPath, fileList);
+      if (!EXCLUDED_DIRECTORY_NAMES.has(entry.name)) {
+        collectScannableProjectFiles(fullPath, fileList);
       }
     } else if (entry.isFile()) {
+      // The forbidden-terms fixture is intentionally excluded as it stores the prohibited vocabulary
+      if (path.resolve(fullPath) === FIXTURE_ABSOLUTE_PATH) {
+        continue;
+      }
       const ext = path.extname(entry.name).toLowerCase();
-      // Only scan text source/doc files
-      if (['.ts', '.js', '.json', '.md', '.py', '.txt'].includes(ext)) {
+      if (SCANNED_EXTENSIONS.has(ext)) {
         fileList.push(fullPath);
       }
     }
   }
+
   return fileList;
 }
 
-test('English-Only Policy: No Indonesian language terms remain in project source and documentation', () => {
-  const filesToScan: string[] = [];
+test('English-Only Policy: No forbidden non-English terms remain across project source and documentation', () => {
+  const forbiddenTerms = loadForbiddenTerms();
+  const projectFiles = collectScannableProjectFiles(PROJECT_ROOT);
 
-  for (const dir of SCAN_DIRS) {
-    collectFiles(path.join(PROJECT_ROOT, dir), filesToScan);
-  }
-  for (const rootFile of ROOT_DOC_FILES) {
-    const p = path.join(PROJECT_ROOT, rootFile);
-    if (fs.existsSync(p)) filesToScan.push(p);
-  }
+  assert.ok(projectFiles.length > 20, 'Expected at least 20 project files to be scanned');
 
-  const violations: Array<{ file: string; line: number; term: string; snippet: string }> = [];
-
-  for (const filePath of filesToScan) {
-    // Skip this test file itself so the word dictionary is not self-flagged
-    if (filePath.endsWith('english-policy.test.ts')) continue;
-
-    const content = fs.readFileSync(filePath, 'utf8');
-    const lines = content.split('\n');
-
-    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-      const lineText = lines[lineIndex];
-      const lower = lineText.toLowerCase();
-
-      for (const word of FORBIDDEN_WORDS) {
-        // Match whole word or exact phrase
-        const regex = new RegExp(`\\b${word}\\b`, 'i');
-        if (regex.test(lower)) {
-          violations.push({
-            file: path.relative(PROJECT_ROOT, filePath),
-            line: lineIndex + 1,
-            term: word,
-            snippet: lineText.trim()
-          });
-        }
-      }
-    }
+  const allViolations: TermViolation[] = [];
+  for (const file of projectFiles) {
+    const violations = scanFileForForbiddenTerms(file, forbiddenTerms);
+    allViolations.push(...violations);
   }
 
-  if (violations.length > 0) {
-    const report = violations
+  if (allViolations.length > 0) {
+    const report = allViolations
       .map((v) => `  [${v.file}:${v.line}] term "${v.term}": ${v.snippet}`)
       .join('\n');
-    assert.fail(`Non-English (Indonesian) terms detected in project files:\n${report}`);
+    assert.fail(`Non-English language terms detected in project files:\n${report}`);
+  }
+});
+
+test('English-Only Policy: Successfully detects forbidden term violations with file and line context', () => {
+  const forbiddenTerms = loadForbiddenTerms();
+  const sampleForbiddenTerm = forbiddenTerms[0];
+
+  const tempFilePath = path.join(PROJECT_ROOT, 'tests', 'fixtures', 'temp-test-sample.txt');
+  try {
+    fs.writeFileSync(
+      tempFilePath,
+      `Line 1 is clear english\nLine 2 contains a violation: ${sampleForbiddenTerm}\nLine 3 is clear`
+    );
+
+    const violations = scanFileForForbiddenTerms(tempFilePath, forbiddenTerms);
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].line, 2);
+    assert.equal(violations[0].term, sampleForbiddenTerm);
+    assert.ok(violations[0].snippet.includes('Line 2 contains a violation'));
+  } finally {
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
   }
 });

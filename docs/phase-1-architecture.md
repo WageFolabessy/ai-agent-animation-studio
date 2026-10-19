@@ -7,7 +7,7 @@
 
 ## 1. Project Context & Vision
 
-We are building the **AI-Agent Animation Studio** from scratch in `/home/endricho/projects/other-techs/ai-agent-animation-studio`.
+We are building the **AI-Agent Animation Studio** from scratch in this workspace repository.
 
 The ultimate goal is an automated CLI-driven studio where human input consists solely of a song audio file (`.flac` / `.mp3`) and time-stamped lyrics (`.lrc`). From this input, a pipeline of AI Agents and a Procedural Cinema Engine will produce a vibrant, cinematic 2.5D narrative animated music video (multi-angle camera cuts, 3D-to-2D perspective projection, dynamic character articulation, shape morphing, audio-reactive lighting and particle effects) and export it as an `.mp4` file (1920x1080 at 30 or 60 fps).
 
@@ -17,7 +17,7 @@ The ultimate goal is an automated CLI-driven studio where human input consists s
 
 Do not guess host specifications. The following WSL2 Ubuntu environment facts govern the architecture:
 
-- **Workspace Path:** `/home/endricho/projects/other-techs/ai-agent-animation-studio`
+- **Workspace Path:** Workspace repository root (`.`)
 - **CPU:** Intel Core Ultra 5 125H (14 cores / 18 threads).
 - **WSL2 RAM:** Total 5.8 GiB, available ~3.3 GiB.
 - **GPU in WSL2:** No `/dev/dri` device node available (hardware acceleration via VAAPI/QSV cannot be accessed inside WSL2; CPU encoding with `libx264` is required).

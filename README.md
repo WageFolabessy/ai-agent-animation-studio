@@ -26,7 +26,7 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Offline audio signal analysis and stem separation (Phase 3).
   - Multi-agent director, rig, and compositor LLM orchestration (Phase 4).
 
-For historical Phase 1 planning details, see [Phase 1 Architecture Specification](file:///home/endricho/projects/other-techs/ai-agent-animation-studio/docs/phase-1-architecture.md).
+For historical Phase 1 planning details, see [Phase 1 Architecture Specification](docs/phase-1-architecture.md).
 
 ---
 
@@ -85,7 +85,8 @@ ai-agent-animation-studio/
 │   │   └── index.ts               # Placeholder for Phase 4 LLM orchestrators
 │   ├── assets/
 │   │   └── fonts/
-│   │       └── DejaVuSans.ttf     # Bundled deterministic font
+│   │       ├── DejaVuSans.ttf     # Bundled deterministic font
+│   │       └── LICENSE-DejaVu.txt # Official license for bundled DejaVu fonts
 │   ├── config/
 │   │   ├── fonts.ts               # Font path and font family constants
 │   │   ├── paths.ts               # Project root and output directory resolution
@@ -124,7 +125,9 @@ ai-agent-animation-studio/
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
     ├── invariants.test.ts         # Storyboard timeline, act, and joint cycle invariants
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
-    └── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
+    ├── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
+    └── fixtures/
+        └── english-policy-forbidden-terms.json # Prohibited language terms fixture
 ```
 
 ---
@@ -133,7 +136,8 @@ ai-agent-animation-studio/
 
 1. Clone or navigate to the workspace directory:
    ```bash
-   cd /home/endricho/projects/other-techs/ai-agent-animation-studio
+   git clone https://github.com/WageFolabessy/ai-agent-animation-studio.git
+   cd ai-agent-animation-studio
    ```
 2. Install dependencies:
    ```bash
@@ -306,4 +310,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 
 ## 17. License
 
-This repository is currently private and proprietary. All rights reserved.
+This repository is private. No open-source license has been declared.
+The bundled DejaVu Sans font is distributed under its own license; see
+[src/assets/fonts/LICENSE-DejaVu.txt](src/assets/fonts/LICENSE-DejaVu.txt).
+
