@@ -117,10 +117,34 @@ export function samplePoseTrack(
       jointOffsets[jointId] = lerpVec2(o0, o1, easedU);
     }
   } else if (interpolationMode === 'cubic_spline') {
-    // Hermite cubic spline interpolation
+    // Hermite cubic spline interpolation with periodic loop unwrapping
     const N = keyframes.length;
-    const prevKf = keyframes[(idx - 1 + N) % N];
-    const nextKf = keyframes[(idx + 2) % N];
+    const isLooping = loopFrames !== undefined && loopFrames > 0;
+    const hasClosureKeyframe =
+      isLooping &&
+      N >= 2 &&
+      keyframes[0].frame === 0 &&
+      keyframes[N - 1].frame === loopFrames;
+    const periodCount = hasClosureKeyframe ? N - 1 : N;
+
+    const prevIdx = isLooping ? (idx - 1 + periodCount) % periodCount : Math.max(0, idx - 1);
+    const nextIdx = isLooping ? (idx + 2) % periodCount : Math.min(N - 1, idx + 2);
+
+    const prevKf = keyframes[prevIdx];
+    const nextKf = keyframes[nextIdx];
+
+    let prevFrame = prevKf.frame;
+    if (isLooping && idx === 0) {
+      prevFrame -= loopFrames;
+    }
+
+    let nextFrame = nextKf.frame;
+    if (isLooping && idx + 2 >= periodCount) {
+      nextFrame += loopFrames;
+    }
+
+    const dt0 = Math.max(1, kf1.frame - prevFrame);
+    const dt1 = Math.max(1, nextFrame - kf0.frame);
 
     const prevMap = new Map(prevKf.jointTransforms.map((jt) => [jt.jointId, jt]));
     const nextMap = new Map(nextKf.jointTransforms.map((jt) => [jt.jointId, jt]));
@@ -132,9 +156,7 @@ export function samplePoseTrack(
       const pPrev = prevMap.get(jointId)?.rotationZDegrees ?? p0;
       const pNext = nextMap.get(jointId)?.rotationZDegrees ?? p1;
 
-      // Non-uniform finite differences
-      const dt0 = Math.max(1, kf1.frame - prevKf.frame);
-      const dt1 = Math.max(1, nextKf.frame - kf0.frame);
+      // Non-uniform finite differences with unwrapped periodic intervals
       const m0 = (p1 - pPrev) / dt0;
       const m1 = (pNext - p0) / dt1;
 
@@ -144,7 +166,18 @@ export function samplePoseTrack(
       const restOffset = jointOffsets[jointId] ?? [0, 0];
       const o0 = map0.get(jointId)?.localOffset2D ?? restOffset;
       const o1 = map1.get(jointId)?.localOffset2D ?? restOffset;
-      jointOffsets[jointId] = lerpVec2(o0, o1, u);
+      const oPrev = prevMap.get(jointId)?.localOffset2D ?? o0;
+      const oNext = nextMap.get(jointId)?.localOffset2D ?? o1;
+
+      const mx0 = (o1[0] - oPrev[0]) / dt0;
+      const mx1 = (oNext[0] - o0[0]) / dt1;
+      const my0 = (o1[1] - oPrev[1]) / dt0;
+      const my1 = (oNext[1] - o0[1]) / dt1;
+
+      jointOffsets[jointId] = [
+        hermiteInterpolate(o0[0], mx0, o1[0], mx1, deltaF, u),
+        hermiteInterpolate(o0[1], my0, o1[1], my1, deltaF, u)
+      ];
     }
   }
 

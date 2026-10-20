@@ -102,6 +102,41 @@ function resolveRigPaint(
   return { fillAttr: baseHex, isGradient: false };
 }
 
+function buildRoundedRectPoints(
+  w: number,
+  h: number,
+  rxRaw?: number,
+  ryRaw?: number
+): Vec2[] {
+  const rx = Math.min(w / 2, Math.max(0, rxRaw ?? ryRaw ?? 0));
+  const ry = Math.min(h / 2, Math.max(0, ryRaw ?? rxRaw ?? 0));
+  if (rx <= 1e-4 || ry <= 1e-4) {
+    return [
+      [-w / 2, -h / 2],
+      [w / 2, -h / 2],
+      [w / 2, h / 2],
+      [-w / 2, h / 2]
+    ];
+  }
+
+  const pts: Vec2[] = [];
+  const corners: Array<{ cx: number; cy: number; startAngle: number }> = [
+    { cx: w / 2 - rx, cy: h / 2 - ry, startAngle: 0 },
+    { cx: -w / 2 + rx, cy: h / 2 - ry, startAngle: Math.PI / 2 },
+    { cx: -w / 2 + rx, cy: -h / 2 + ry, startAngle: Math.PI },
+    { cx: w / 2 - rx, cy: -h / 2 + ry, startAngle: (3 * Math.PI) / 2 }
+  ];
+
+  const stepsPerCorner = 3;
+  for (const corner of corners) {
+    for (let s = 0; s <= stepsPerCorner; s++) {
+      const theta = corner.startAngle + (s / stepsPerCorner) * (Math.PI / 2);
+      pts.push([corner.cx + rx * Math.cos(theta), corner.cy + ry * Math.sin(theta)]);
+    }
+  }
+  return pts;
+}
+
 function getTierForRig(rig: AssetRigContract): DepthTier {
   switch (rig.type) {
     case 'parallax_background':
@@ -491,7 +526,12 @@ export class SceneCompositor {
     }
 
     // 5. Screen-space overlays (Lyric Caption) — appended after all depth-sorted drawables
-    if (frameState.lyric !== null && frameState.lyric.text.trim().length > 0) {
+    if (
+      frameState.lyric !== null &&
+      frameState.lyric.text.trim().length > 0 &&
+      frameState.lyric.progress >= 0 &&
+      frameState.lyric.progress < 1
+    ) {
       const lyric = frameState.lyric;
       const len = lyric.text.length;
       const fontSize = Math.min(
@@ -507,7 +547,7 @@ export class SceneCompositor {
         alpha = (1 - lyric.progress) / 0.1;
       }
 
-      if (alpha > 0.01) {
+      if (alpha > 0.05) {
         const textY = this.height - 84;
         const boxW = Math.min(this.width - 120, Math.max(360, Math.ceil(len * fontSize * 0.62 + 64)));
         const boxH = Math.ceil(fontSize * 1.45);
@@ -518,17 +558,7 @@ export class SceneCompositor {
           // Semi-transparent dark backing plate for high-contrast lyric legibility
           b.addRect(boxX, boxY, boxW, boxH, '#060814', 0.78);
           stats.drawablesCount++;
-          // Drop shadow / offset dark duplicate for legibility
-          b.addText(
-            lyric.text,
-            this.width / 2 + 2,
-            textY + 2,
-            fontSize,
-            '#000000',
-            BUNDLED_FONT_FAMILY,
-            'middle'
-          );
-          // Foreground lyric text
+          // Single crisp foreground lyric text without dark ghost shadow duplicate
           b.addText(
             lyric.text,
             this.width / 2,
@@ -610,12 +640,8 @@ export class SceneCompositor {
     switch (part.shape.kind) {
       case 'rect': {
         const [w, h] = part.shape.size;
-        const pts: [number, number][] = [
-          transformPoint([-w / 2, -h / 2]),
-          transformPoint([w / 2, -h / 2]),
-          transformPoint([w / 2, h / 2]),
-          transformPoint([-w / 2, h / 2])
-        ];
+        const localPts = buildRoundedRectPoints(w, h, part.shape.rx, part.shape.ry);
+        const pts: [number, number][] = localPts.map((pt) => transformPoint(pt));
         if (isOffScreen(pts)) return;
         stats.drawablesCount++;
         builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
@@ -773,12 +799,8 @@ export class SceneCompositor {
     switch (part.shape.kind) {
       case 'rect': {
         const [w, h] = part.shape.size;
-        worldPolygon = [
-          transformPointToWorld([-w / 2, -h / 2]),
-          transformPointToWorld([w / 2, -h / 2]),
-          transformPointToWorld([w / 2, h / 2]),
-          transformPointToWorld([-w / 2, h / 2])
-        ];
+        const localPts = buildRoundedRectPoints(w, h, part.shape.rx, part.shape.ry);
+        worldPolygon = localPts.map((pt) => transformPointToWorld(pt));
         break;
       }
       case 'polygon': {

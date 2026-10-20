@@ -15,23 +15,23 @@ export const RigCatalogContractSchema = z
 export type RigCatalogContract = z.infer<typeof RigCatalogContractSchema>;
 
 const baseMouthSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-6, 0], p1: [-3, 1.5], p2: [3, 1.5], p3: [6, 0] },
-  { p0: [6, 0], p1: [3, -1.5], p2: [-3, -1.5], p3: [-6, 0] }
+  { p0: [-3.5, 0], p1: [-1.8, 0.45], p2: [1.8, 0.45], p3: [3.5, 0] },
+  { p0: [3.5, 0], p1: [1.8, -0.45], p2: [-1.8, -0.45], p3: [-3.5, 0] }
 ];
 
 const mouthOpenSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-6, 1], p1: [-3, 5.5], p2: [3, 5.5], p3: [6, 1] },
-  { p0: [6, 1], p1: [3, -6.5], p2: [-3, -6.5], p3: [-6, 1] }
+  { p0: [-3.8, 0.2], p1: [-1.8, 1.8], p2: [1.8, 1.8], p3: [3.8, 0.2] },
+  { p0: [3.8, 0.2], p1: [1.8, -2.4], p2: [-1.8, -2.4], p3: [-3.8, 0.2] }
 ];
 
 const browRaiseSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-7, 2], p1: [-3, 4], p2: [3, 4], p3: [7, 2] },
-  { p0: [7, 2], p1: [3, 0], p2: [-3, 0], p3: [-7, 2] }
+  { p0: [-3.6, 0.3], p1: [-1.8, 1.0], p2: [1.8, 1.0], p3: [3.6, 0.3] },
+  { p0: [3.6, 0.3], p1: [1.8, -0.3], p2: [-1.8, -0.3], p3: [-3.6, 0.3] }
 ];
 
 const blinkSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-6, 0], p1: [-2, 0.2], p2: [2, 0.2], p3: [6, 0] },
-  { p0: [6, 0], p1: [2, -0.2], p2: [-2, -0.2], p3: [-6, 0] }
+  { p0: [-3.5, 0], p1: [-1.5, 0.15], p2: [1.5, 0.15], p3: [3.5, 0] },
+  { p0: [3.5, 0], p1: [1.5, -0.15], p2: [-1.5, -0.15], p3: [-3.5, 0] }
 ];
 
 /**
@@ -269,24 +269,24 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
     parts: [],
     emitter: {
       seed: 900210,
-      maxParticles: 50,
-      ratePerSecond: 8,
-      lifetimeFrames: 20,
-      spawn: { kind: 'disc', radius: 5 },
+      maxParticles: 60,
+      ratePerSecond: 28,
+      lifetimeFrames: 16,
+      spawn: { kind: 'disc', radius: 6 },
       velocity: {
         angleDegrees: 170,
         spreadDegrees: 35,
-        speedMin: 20,
-        speedMax: 42
+        speedMin: 22,
+        speedMax: 46
       },
       gravity: [-36, 4],
-      radiusRange: [2.5, 7],
-      paintRole: 'primary',
-      baseOpacity: 0.55,
+      radiusRange: [3, 10],
+      paintRole: 'accent',
+      baseOpacity: 0.85,
       audio: {
-        onsetBurstCount: 3,
+        onsetBurstCount: 4,
         rateBand: 'presence',
-        rateGain: 1.2
+        rateGain: 1.4
       }
     },
     secondaryMotion: [],
@@ -438,7 +438,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'leg_l_thigh',
         jointId: 'leg_l_upper',
         localOffset2D: [0, -11],
-        shape: { kind: 'rect', size: [9, 22] },
+        shape: { kind: 'rect', size: [9, 26], rx: 4.5, ry: 4.5 },
         style: {
           fill: { kind: 'palette', role: 'secondary', shade: -0.2 },
           opacity: 1,
@@ -449,7 +449,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'leg_l_shin',
         jointId: 'leg_l_lower',
         localOffset2D: [0, -11],
-        shape: { kind: 'rect', size: [7, 22] },
+        shape: { kind: 'rect', size: [7, 25], rx: 3.5, ry: 3.5 },
         style: {
           fill: { kind: 'palette', role: 'primary', shade: -0.25 },
           opacity: 1,
@@ -460,7 +460,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'arm_l_bicep',
         jointId: 'arm_l_upper',
         localOffset2D: [0, -9],
-        shape: { kind: 'rect', size: [7, 18] },
+        shape: { kind: 'rect', size: [7, 22], rx: 3.5, ry: 3.5 },
         style: {
           fill: { kind: 'palette', role: 'secondary', shade: -0.15 },
           opacity: 1,
@@ -471,7 +471,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'arm_l_forearm',
         jointId: 'arm_l_lower',
         localOffset2D: [0, -8],
-        shape: { kind: 'rect', size: [6, 16] },
+        shape: { kind: 'rect', size: [6, 19], rx: 3.0, ry: 3.0 },
         style: {
           fill: { kind: 'palette', role: 'primary', shade: -0.1 },
           opacity: 1,
@@ -482,7 +482,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'pelvis_core',
         jointId: 'pelvis',
         localOffset2D: [0, 0],
-        shape: { kind: 'rect', size: [18, 12] },
+        shape: { kind: 'rect', size: [18, 12], rx: 4.0, ry: 4.0 },
         style: {
           fill: { kind: 'palette', role: 'secondary', shade: 0 },
           opacity: 1,
@@ -553,7 +553,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'visor_glow',
         jointId: 'head',
         localOffset2D: [5, 9],
-        shape: { kind: 'rect', size: [16, 6] },
+        shape: { kind: 'rect', size: [16, 6], rx: 2.5, ry: 2.5 },
         style: {
           fill: { kind: 'palette', role: 'primary', shade: 0.35 },
           opacity: 0.95,
@@ -585,12 +585,12 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
       {
         id: 'mouth_expressive',
         jointId: 'head',
-        localOffset2D: [4, 2],
+        localOffset2D: [5.5, 2],
         shape: { kind: 'morph' },
         style: {
           fill: { kind: 'palette', role: 'accent', shade: 0.25 },
-          stroke: { paint: { kind: 'solid', color: '#ffffff' }, width: 1 },
-          opacity: 1,
+          stroke: { paint: { kind: 'solid', color: '#ffffff' }, width: 0.9 },
+          opacity: 0.95,
           lit: false
         }
       },
@@ -598,7 +598,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'leg_r_thigh',
         jointId: 'leg_r_upper',
         localOffset2D: [0, -11],
-        shape: { kind: 'rect', size: [9, 22] },
+        shape: { kind: 'rect', size: [9, 26], rx: 4.5, ry: 4.5 },
         style: {
           fill: { kind: 'palette', role: 'secondary', shade: 0.05 },
           opacity: 1,
@@ -609,7 +609,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'leg_r_shin',
         jointId: 'leg_r_lower',
         localOffset2D: [0, -11],
-        shape: { kind: 'rect', size: [7, 22] },
+        shape: { kind: 'rect', size: [7, 25], rx: 3.5, ry: 3.5 },
         style: {
           fill: { kind: 'palette', role: 'primary', shade: 0.05 },
           opacity: 1,
@@ -620,7 +620,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'arm_r_bicep',
         jointId: 'arm_r_upper',
         localOffset2D: [0, -9],
-        shape: { kind: 'rect', size: [7, 18] },
+        shape: { kind: 'rect', size: [7, 22], rx: 3.5, ry: 3.5 },
         style: {
           fill: { kind: 'palette', role: 'secondary', shade: 0.15 },
           opacity: 1,
@@ -631,7 +631,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         id: 'arm_r_forearm',
         jointId: 'arm_r_lower',
         localOffset2D: [0, -8],
-        shape: { kind: 'rect', size: [6, 16] },
+        shape: { kind: 'rect', size: [6, 19], rx: 3.0, ry: 3.0 },
         style: {
           fill: { kind: 'palette', role: 'primary', shade: 0.2 },
           opacity: 1,

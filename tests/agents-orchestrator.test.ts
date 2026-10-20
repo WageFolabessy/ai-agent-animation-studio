@@ -20,6 +20,7 @@ import {
 import { demoAudioManifest, DemoAudioFeatureReader } from '../src/demo/phase2-cinema/index.js';
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
 import { SceneCompositor } from '../src/engine/compositor/scene-compositor.js';
+import { samplePoseTrack } from '../src/engine/rigging/deformer.js';
 
 const demoReader = new DemoAudioFeatureReader();
 const getDemoAudioFeature = (f: number) => demoReader.getFrameFeature(f);
@@ -361,5 +362,62 @@ test('Phase 4 Agents & Orchestration Suite', async (t) => {
     assert.ok(activeRigIdsInShot3.includes(CANONICAL_RIG_IDS.FACTORIES));
     assert.ok(activeRigIdsInShot3.includes(CANONICAL_RIG_IDS.SMOKE_CHIMNEY));
     assert.ok(activeRigIdsInShot3.includes(CANONICAL_RIG_IDS.RUNNER));
+  });
+
+  await t.test('Periodic Hermite spline continuity, stride phase preservation across shots, and FG_PIPES fade-out', async () => {
+    const catalog = buildDeterministicRigCatalog();
+    const runnerRig = catalog.rigs.find((r) => r.id === CANONICAL_RIG_IDS.RUNNER)!;
+    assert.ok(runnerRig.poseInterpolation);
+
+    // 1. Verify periodic Hermite spline has no tangent explosion across [0, 6]
+    // Keyframe 0 has leg_l_upper = 48, Keyframe 6 has leg_l_upper = -10.
+    // Previously, broken dt0 = 1 caused leg_l_upper to overshoot beyond +70 deg at frame 2.
+    for (let f = 0; f <= 24; f += 0.5) {
+      const sample = samplePoseTrack(runnerRig, f, 0);
+      const legLUpper = sample.jointAngles.leg_l_upper ?? 0;
+      const legLLower = sample.jointAngles.leg_l_lower ?? 0;
+      assert.ok(
+        legLUpper >= -50 && legLUpper <= 50,
+        `leg_l_upper at frame ${f} was ${legLUpper} (expected within [-50, 50] without spline overshoot)`
+      );
+      assert.ok(
+        legLLower >= -125 && legLLower <= 5,
+        `leg_l_lower at frame ${f} was ${legLLower} (expected within [-125, 5])`
+      );
+    }
+
+    // Verify smooth loop wrap continuity between f = 23.8 and f = 0.2
+    const nearEnd = samplePoseTrack(runnerRig, 23.8, 0);
+    const nearStart = samplePoseTrack(runnerRig, 0.2, 0);
+    const diffUpper = Math.abs(
+      (nearEnd.jointAngles.leg_l_upper ?? 0) - (nearStart.jointAngles.leg_l_upper ?? 0)
+    );
+    assert.ok(diffUpper < 6, `Expected C1 loop continuity across boundary, got delta=${diffUpper}`);
+
+    // 2. Verify ChoreographerAgent preserves stride phase across shot cuts (non-zero startPoseFrame)
+    const storyboard = buildDeterministicDirectorStoryboard({ audioManifest: demoAudioManifest });
+    const rigsMap = new Map(catalog.rigs.map((r) => [r.id, r]));
+    const choreo = buildDeterministicChoreography({
+      storyboard,
+      rigs: rigsMap,
+      audioManifest: demoAudioManifest
+    });
+
+    const runnerTracks = choreo.tracks.filter((tr) => tr.rigId === CANONICAL_RIG_IDS.RUNNER);
+    assert.equal(runnerTracks.length, 4);
+    assert.equal(runnerTracks[0].pose?.startPoseFrame, 0);
+    // Shot 0 is 45 frames * 1.45 timeScale = 65.25 -> 65.25 % 24 = 17.25
+    assert.ok((runnerTracks[1].pose?.startPoseFrame ?? 0) > 0);
+
+    // 3. Verify FG_PIPES stays active in shot-2 and fades out smoothly to opacity 0
+    const fgShot2Track = choreo.tracks.find(
+      (tr) => tr.shotId === 'shot-2' && tr.rigId === CANONICAL_RIG_IDS.FG_PIPES
+    );
+    assert.ok(fgShot2Track, 'Expected FG_PIPES track in shot-2 for smooth exit transition');
+    assert.equal(fgShot2Track.transform.keyframes[0].opacity, 0.85);
+    assert.equal(
+      fgShot2Track.transform.keyframes[fgShot2Track.transform.keyframes.length - 1].opacity,
+      0
+    );
   });
 });

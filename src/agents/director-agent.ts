@@ -331,7 +331,8 @@ export function buildDeterministicDirectorStoryboard(
           CANONICAL_RIG_IDS.FACTORIES,
           CANONICAL_RIG_IDS.SMOKE_CHIMNEY,
           CANONICAL_RIG_IDS.RUNNER,
-          CANONICAL_RIG_IDS.RUNNER_AURA
+          CANONICAL_RIG_IDS.RUNNER_AURA,
+          CANONICAL_RIG_IDS.FG_PIPES
         ]
       },
       {
@@ -347,8 +348,8 @@ export function buildDeterministicDirectorStoryboard(
         viewpoint: 'POV_FIRST_PERSON',
         cameraStart: {
           projectionMode: 'perspective',
-          position: [295, 130, 95],
-          target: [295, 126, 0],
+          position: [295, 134, 95],
+          target: [295, 132, 0],
           up: [0, 1, 0],
           verticalFovDegrees: 35,
           nearPlane: 1,
@@ -357,8 +358,8 @@ export function buildDeterministicDirectorStoryboard(
         },
         cameraEnd: {
           projectionMode: 'perspective',
-          position: [315, 132, 70],
-          target: [315, 128, 0],
+          position: [315, 136, 70],
+          target: [315, 134, 0],
           up: [0, 1, 0],
           verticalFovDegrees: 30,
           nearPlane: 1,

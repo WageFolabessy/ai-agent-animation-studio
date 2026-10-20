@@ -54,7 +54,12 @@ export const RigShapeSchema = z.discriminatedUnion('kind', [
   }).strict(),
   z.object({ kind: z.literal('polygon'), points: z.array(Vec2Schema).min(3) }).strict(),
   z.object({ kind: z.literal('ellipse'), radius: Vec2Schema }).strict(),
-  z.object({ kind: z.literal('rect'), size: Vec2Schema }).strict(),
+  z.object({
+    kind: z.literal('rect'),
+    size: Vec2Schema,
+    rx: FiniteNumberSchema.min(0).optional(),
+    ry: FiniteNumberSchema.min(0).optional()
+  }).strict(),
   z.object({ kind: z.literal('morph') }).strict()
 ]);
 export type RigShape = z.infer<typeof RigShapeSchema>;

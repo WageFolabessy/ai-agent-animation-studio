@@ -27,11 +27,15 @@ export function buildDeterministicChoreography(
 
   // Continuous runner X waypoints across shots (strictly increasing in +X)
   const runnerWaypointsX = [-110, 0, 160, 295, 315];
+  const runnerLoopFrames =
+    input.rigs.get(CANONICAL_RIG_IDS.RUNNER)?.poseInterpolation?.loopFrames ?? 24;
+  let accumulatedPoseClock = 0;
 
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
     const startFrame = shot.frameRange.startFrameInclusive;
     const lastFrame = Math.max(startFrame, shot.frameRange.endFrameExclusive - 1);
+    const shotDurationFrames = Math.max(1, shot.frameRange.endFrameExclusive - startFrame);
     const midFrame = Math.floor((startFrame + lastFrame) / 2);
 
     const startX = runnerWaypointsX[Math.min(i, runnerWaypointsX.length - 2)];
@@ -42,6 +46,10 @@ export function buildDeterministicChoreography(
     const strideTimeScale = Number(
       Math.max(0.35, Math.min(2.5, (speedPerFrame / 2.44) * 1.15)).toFixed(2)
     );
+    const shotPoseStart = Number(
+      (((accumulatedPoseClock % runnerLoopFrames) + runnerLoopFrames) % runnerLoopFrames).toFixed(4)
+    );
+    accumulatedPoseClock += shotDurationFrames * strideTimeScale;
 
     for (const rigId of shot.activeRigIds) {
       if (rigId === CANONICAL_RIG_IDS.SKYLINE) {
@@ -102,21 +110,72 @@ export function buildDeterministicChoreography(
           morphBindings: []
         });
       } else if (rigId === CANONICAL_RIG_IDS.FG_PIPES) {
-        const pipePos: [number, number, number] = i === 0 ? [0, 0, 320] : [130, 0, 220];
+        const pipeKeyframes =
+          i === 0
+            ? [
+                {
+                  frame: startFrame,
+                  position: [0, 0, 320] as [number, number, number],
+                  rotationZDegrees: 0,
+                  scale: [1, 1] as [number, number],
+                  opacity: 0.92,
+                  easing: 'linear' as const
+                }
+              ]
+            : i === 1 && lastFrame > startFrame
+              ? [
+                  {
+                    frame: startFrame,
+                    position: [130, 0, 220] as [number, number, number],
+                    rotationZDegrees: 0,
+                    scale: [1, 1] as [number, number],
+                    opacity: 0.92,
+                    easing: 'linear' as const
+                  },
+                  {
+                    frame: lastFrame,
+                    position: [60, 0, 220] as [number, number, number],
+                    rotationZDegrees: 0,
+                    scale: [1, 1] as [number, number],
+                    opacity: 0.85,
+                    easing: 'linear' as const
+                  }
+                ]
+              : lastFrame > startFrame
+                ? [
+                    {
+                      frame: startFrame,
+                      position: [60, 0, 220] as [number, number, number],
+                      rotationZDegrees: 0,
+                      scale: [1, 1] as [number, number],
+                      opacity: 0.85,
+                      easing: 'easeOutQuad' as const
+                    },
+                    {
+                      frame: lastFrame,
+                      position: [-260, 0, 240] as [number, number, number],
+                      rotationZDegrees: 0,
+                      scale: [1, 1] as [number, number],
+                      opacity: 0,
+                      easing: 'linear' as const
+                    }
+                  ]
+                : [
+                    {
+                      frame: startFrame,
+                      position: [-260, 0, 240] as [number, number, number],
+                      rotationZDegrees: 0,
+                      scale: [1, 1] as [number, number],
+                      opacity: 0,
+                      easing: 'linear' as const
+                    }
+                  ];
+
         tracks.push({
           shotId: shot.id,
           rigId,
           transform: {
-            keyframes: [
-              {
-                frame: startFrame,
-                position: pipePos,
-                rotationZDegrees: 0,
-                scale: [1, 1],
-                opacity: 0.92,
-                easing: 'linear'
-              }
-            ]
+            keyframes: pipeKeyframes
           },
           morphKeyframes: {},
           morphBindings: []
@@ -201,9 +260,9 @@ export function buildDeterministicChoreography(
           const blinkMid = Math.min(lastFrame - 1, midFrame);
           const blinkEnd = Math.min(lastFrame, midFrame + 3);
           morphKeyframes.browRaise = [
-            { frame: startFrame, weight: 0.25 },
-            { frame: midFrame, weight: 0.85 },
-            { frame: lastFrame, weight: 0.65 }
+            { frame: startFrame, weight: 0.15 },
+            { frame: midFrame, weight: 0.45 },
+            { frame: lastFrame, weight: 0.35 }
           ];
           if (blinkStart < blinkMid && blinkMid < blinkEnd) {
             morphKeyframes.blink = [
@@ -215,8 +274,8 @@ export function buildDeterministicChoreography(
           }
         } else if (lastFrame > startFrame) {
           morphKeyframes.browRaise = [
-            { frame: startFrame, weight: 0.2 },
-            { frame: lastFrame, weight: 0.55 }
+            { frame: startFrame, weight: 0.1 },
+            { frame: lastFrame, weight: 0.3 }
           ];
         }
 
@@ -228,22 +287,22 @@ export function buildDeterministicChoreography(
           },
           pose: {
             timeScale: strideTimeScale,
-            startPoseFrame: 0
+            startPoseFrame: shotPoseStart
           },
           morphKeyframes,
           morphBindings: [
             {
               target: 'mouthOpen',
               source: 'audio.rms',
-              gain: isCloseUp ? 1.15 : 0.85,
-              bias: 0.05,
+              gain: isCloseUp ? 0.65 : 0.5,
+              bias: 0.02,
               spring: { zeta: 0.45, omega: 22 }
             },
             {
               target: 'browRaise',
               source: 'audio.onsetStrength',
-              gain: 0.45,
-              bias: 0.1,
+              gain: 0.25,
+              bias: 0.05,
               spring: { zeta: 0.5, omega: 18 }
             }
           ]
