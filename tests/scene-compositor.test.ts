@@ -276,3 +276,66 @@ test('SceneCompositor: Rasterization smoke test (rasterizes max 2 frames without
   const buffer = rasterizer.rasterize(output.svg);
   assert.equal(buffer.length, 1920 * 1080 * 4);
 });
+
+test('SceneCompositor: Eye ellipse parts scale vertically with blink morph weight and lyric backing capsule renders', () => {
+  const compositor = new SceneCompositor({ width: 1920, height: 1080, fps: 30 });
+  const rigs = new Map<string, AssetRigContract>([
+    [
+      'rig_char',
+      {
+        id: 'rig_char',
+        name: 'Char',
+        type: 'character',
+        renderMode: 'billboard',
+        baseTransform: { position: [0, 0, 0], rotationZDegrees: 0, scale: [1, 1] },
+        parts: [
+          {
+            id: 'char-eye-l',
+            jointId: null,
+            localOffset2D: [0, 0],
+            shape: { kind: 'ellipse', radius: [2.0, 2.0] },
+            style: { fill: { kind: 'solid', color: '#ff0055' }, opacity: 1.0, lit: false }
+          }
+        ],
+        secondaryMotion: [],
+        svgAsset: { idNamespace: 'char_ns' }
+      }
+    ]
+  ]);
+
+  const openFrame = createMockFrameState();
+  openFrame.entities = [
+    {
+      rigId: 'rig_char',
+      worldPosition: [0, 0, 0],
+      worldRotationZDegrees: 0,
+      scale: [1, 1],
+      jointAngles: {},
+      jointOffsets: {},
+      morphWeights: { blink: 0 },
+      opacity: 1
+    }
+  ];
+
+  const blinkFrame = createMockFrameState();
+  blinkFrame.entities = [
+    {
+      rigId: 'rig_char',
+      worldPosition: [0, 0, 0],
+      worldRotationZDegrees: 0,
+      scale: [1, 1],
+      jointAngles: {},
+      jointOffsets: {},
+      morphWeights: { blink: 1.0 },
+      opacity: 1
+    }
+  ];
+
+  const outOpen = compositor.renderFrame(openFrame, rigs);
+  const outBlink = compositor.renderFrame(blinkFrame, rigs);
+
+  // When blink=0, rx === ry === 2.0 so it emits a <circle>; when blink=1.0, ry = 0.30 !== rx so it emits a flattened <polygon>
+  assert.ok(outOpen.svg.includes('<circle '), 'Open eye with equal radii should emit <circle>');
+  assert.ok(outBlink.svg.includes('<polygon '), 'Blinking eye with squashed ry should emit flattened <polygon>');
+  assert.ok(outOpen.svg.includes('fill="#060814" opacity="0.78"'), 'Lyric backing plate rect must be emitted');
+});

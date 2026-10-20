@@ -178,8 +178,8 @@ export const fgPipesRig: AssetRigContract = {
     {
       id: 'fg-pipe-horiz',
       jointId: null,
-      localOffset2D: [0, 250],
-      shape: { kind: 'rect', size: [960, 22] },
+      localOffset2D: [0, 185],
+      shape: { kind: 'rect', size: [960, 20] },
       style: {
         fill: { kind: 'palette', role: 'secondary', shade: 0.15 },
         opacity: 0.92,
@@ -189,8 +189,8 @@ export const fgPipesRig: AssetRigContract = {
     {
       id: 'fg-pipe-support-left',
       jointId: null,
-      localOffset2D: [-380, 125],
-      shape: { kind: 'rect', size: [26, 250] },
+      localOffset2D: [-210, 92],
+      shape: { kind: 'rect', size: [24, 185] },
       style: {
         fill: { kind: 'palette', role: 'secondary', shade: 0.05 },
         opacity: 0.92,
@@ -200,8 +200,8 @@ export const fgPipesRig: AssetRigContract = {
     {
       id: 'fg-pipe-support-right',
       jointId: null,
-      localOffset2D: [380, 125],
-      shape: { kind: 'rect', size: [26, 250] },
+      localOffset2D: [210, 92],
+      shape: { kind: 'rect', size: [24, 185] },
       style: {
         fill: { kind: 'palette', role: 'secondary', shade: 0.05 },
         opacity: 0.92,
@@ -211,8 +211,8 @@ export const fgPipesRig: AssetRigContract = {
     {
       id: 'fg-valve-glow',
       jointId: null,
-      localOffset2D: [-380, 250],
-      shape: { kind: 'ellipse', radius: [12, 12] },
+      localOffset2D: [-210, 185],
+      shape: { kind: 'ellipse', radius: [11, 11] },
       style: {
         fill: { kind: 'palette', role: 'accent', shade: 0.2 },
         opacity: 1.0,
@@ -368,10 +368,10 @@ export const runnerRig: AssetRigContract = {
       {
         id: 'coat_tail',
         parentId: 'torso',
-        localOffset2D: [-9, 8],
-        length: 30,
-        rotationZDegrees: -15,
-        constraintsDeg: [-60, 60]
+        localOffset2D: [-7, 20],
+        length: 18,
+        rotationZDegrees: -10,
+        constraintsDeg: [-45, 45]
       }
     ]
   },
@@ -541,22 +541,22 @@ export const runnerRig: AssetRigContract = {
         name: 'blink',
         segments: [
           {
-            p0: [-8.5, 0.2],
-            p1: [-5, 0.8],
-            p2: [5, 0.8],
-            p3: [8.5, 0.2]
+            p0: [-8.5, 1.4],
+            p1: [-5, 2.6],
+            p2: [5, 2.6],
+            p3: [8.5, 1.4]
           },
           {
-            p0: [8.5, 0.2],
-            p1: [8.5, -0.8],
-            p2: [4, -1.5],
-            p3: [0, -1.8]
+            p0: [8.5, 1.4],
+            p1: [8.8, -1.5],
+            p2: [4.8, -4.2],
+            p3: [0, -5.0]
           },
           {
-            p0: [0, -1.8],
-            p1: [-4, -1.5],
-            p2: [-8.5, -0.8],
-            p3: [-8.5, 0.2]
+            p0: [0, -5.0],
+            p1: [-4.8, -4.2],
+            p2: [-8.8, -1.5],
+            p3: [-8.5, 1.4]
           }
         ]
       }
@@ -566,19 +566,21 @@ export const runnerRig: AssetRigContract = {
     {
       id: 'runner-coat-tail',
       jointId: 'coat_tail',
-      localOffset2D: [-8, -10],
+      localOffset2D: [-4, -4],
       shape: {
         kind: 'polygon',
         points: [
-          [2, 4],
-          [-28, -10],
-          [-22, -32],
-          [6, -8]
+          [2, 3],
+          [-15, -2],
+          [-19, -11],
+          [-9, -10],
+          [3, -2]
         ]
       },
       style: {
-        fill: { kind: 'palette', role: 'accent', shade: 0.1 },
-        opacity: 0.92,
+        fill: { kind: 'palette', role: 'accent', shade: -0.2 },
+        stroke: { paint: { kind: 'palette', role: 'secondary', shade: -0.3 }, width: 0.8 },
+        opacity: 0.82,
         lit: true
       }
     },

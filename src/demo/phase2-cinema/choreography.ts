@@ -151,7 +151,7 @@ export const demoChoreography: ChoreographyContract = {
         keyframes: [
           {
             frame: 60,
-            position: [150, 0, 220],
+            position: [130, 0, 220],
             rotationZDegrees: 0,
             scale: [1, 1],
             opacity: 0.92,
@@ -194,6 +194,42 @@ export const demoChoreography: ChoreographyContract = {
     },
 
     // --- SHOT 2 [100, 135): Orbit Perspective (Circular Arc) ---
+    {
+      shotId: 'shot-2',
+      rigId: 'rig-skyline',
+      transform: {
+        keyframes: [
+          {
+            frame: 100,
+            position: [120, 200, -900],
+            rotationZDegrees: 0,
+            scale: [1, 1],
+            opacity: 0.85,
+            easing: 'linear'
+          }
+        ]
+      },
+      morphKeyframes: {},
+      morphBindings: []
+    },
+    {
+      shotId: 'shot-2',
+      rigId: 'rig-factories',
+      transform: {
+        keyframes: [
+          {
+            frame: 100,
+            position: [180, 150, -400],
+            rotationZDegrees: 0,
+            scale: [1, 1],
+            opacity: 0.95,
+            easing: 'linear'
+          }
+        ]
+      },
+      morphKeyframes: {},
+      morphBindings: []
+    },
     {
       shotId: 'shot-2',
       rigId: 'rig-runner',

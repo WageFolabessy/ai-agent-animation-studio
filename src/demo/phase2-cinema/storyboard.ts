@@ -137,7 +137,7 @@ export const demoStoryboard: DirectorStoryboardContract = {
       },
       palette: demoPalette,
       narrativeAction: 'Arc orbit camera wrapping around runner and active particle emitter',
-      activeRigIds: ['rig-runner', 'rig-smoke']
+      activeRigIds: ['rig-skyline', 'rig-factories', 'rig-smoke', 'rig-runner']
     },
     {
       id: 'shot-3',
@@ -150,20 +150,20 @@ export const demoStoryboard: DirectorStoryboardContract = {
       cameraEasing: 'springImpulse',
       cameraStart: {
         projectionMode: 'perspective',
-        position: [310, 140, 150],
-        target: [300, 138, 0],
+        position: [306, 134, 135],
+        target: [298, 131, 0],
         up: [0, 1, 0],
-        verticalFovDegrees: 40,
+        verticalFovDegrees: 38,
         nearPlane: 5,
         farPlane: 2000,
         rollDegrees: 8
       },
       cameraEnd: {
         projectionMode: 'perspective',
-        position: [305, 138, 115],
-        target: [300, 138, 0],
+        position: [303, 133, 110],
+        target: [299, 131, 0],
         up: [0, 1, 0],
-        verticalFovDegrees: 40,
+        verticalFovDegrees: 38,
         nearPlane: 5,
         farPlane: 2000,
         rollDegrees: 16

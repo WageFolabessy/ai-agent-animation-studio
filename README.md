@@ -201,7 +201,7 @@ ai-agent-animation-studio/
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
 | `typecheck` | `tsc --noEmit` | Strict static typecheck without emitting JavaScript |
-| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (98 tests) |
+| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (99 tests) |
 | `test:schemas` | `tsx --test tests/schemas.test.ts` | Tests primitive schemas and Zod 4 contracts |
 | `test:invariants` | `tsx --test tests/invariants.test.ts` | Tests cross-contract timeline, skeleton, and choreography invariants |
 | `test:backpressure`| `tsx --test tests/backpressure.test.ts` | Tests FFmpeg streamer backpressure and lifecycle |
@@ -297,7 +297,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   - Hard Fail: Aggregate memory must strictly not exceed **600 MB** for any iteration.
   - Memory Plateau: Long-run memory growth (e.g. 540 frames vs 180 frames) must not exceed `max(32 MB, 10% of short run)`, preventing unbounded memory leaks.
 - **Rendering Throughput:**  
-  Median effective rendering speed must be at least **15 FPS** (measured **27.39 FPS** in Phase 2 demo, **48.63 FPS** in smoke benchmark).
+  Median effective rendering speed must be at least **15 FPS** (measured **21.39 FPS** in Phase 2 demo, **40.16 FPS** in smoke benchmark).
 - **Color Space Conformance:**  
   Encoded video must strictly carry standard BT.709 television metadata:
   - `color_space=bt709`
@@ -311,10 +311,10 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 
 | Metric | Target / Gate Limit | Measured Value | Result |
 | :--- | :--- | :--- | :--- |
-| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **27.39 FPS** | **PASS** |
-| **Median Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) | **334.49 MB** (Node: 204 MB, FFmpeg: 130 MB) | **PASS (Green)** |
-| **Memory Plateau Growth** | $\le 33.45\text{ MB}$ ($10\%$ of short) | **$+12.53\text{ MB}$** ($180\text{f}: 334.49 \to 540\text{f}: 347.02\text{ MB}$) | **PASS** |
-| **Drawables per Frame** | $\le 220$ | **102 peak** | **PASS** |
+| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **21.39 FPS** | **PASS** |
+| **Median Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) | **314.25 MB** (Node: 184 MB, FFmpeg: 130 MB) | **PASS (Green)** |
+| **Memory Plateau Growth** | $\le 32.00\text{ MB}$ | **$+12.02\text{ MB}$** ($180\text{f}: 314.25 \to 540\text{f}: 326.27\text{ MB}$) | **PASS** |
+| **Drawables per Frame** | $\le 220$ | **103 peak** | **PASS** |
 | **Gradient Shapes per Frame** | $\le 100$ | **22 peak** | **PASS** |
 | **Live Particles per Frame** | $\le 150$ | **35 peak** | **PASS** |
 | **Filters / Masks** | $0$ | **0** | **PASS** |

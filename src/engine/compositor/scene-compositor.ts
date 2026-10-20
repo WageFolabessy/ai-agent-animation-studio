@@ -508,12 +508,21 @@ export class SceneCompositor {
       }
 
       if (alpha > 0.01) {
+        const textY = this.height - 84;
+        const boxW = Math.min(this.width - 120, Math.max(360, Math.ceil(len * fontSize * 0.62 + 64)));
+        const boxH = Math.ceil(fontSize * 1.45);
+        const boxX = (this.width - boxW) / 2;
+        const boxY = textY - Math.ceil(fontSize * 0.92);
+
         builder.addGroup({ opacity: alpha }, (b) => {
+          // Semi-transparent dark backing plate for high-contrast lyric legibility
+          b.addRect(boxX, boxY, boxW, boxH, '#060814', 0.78);
+          stats.drawablesCount++;
           // Drop shadow / offset dark duplicate for legibility
           b.addText(
             lyric.text,
             this.width / 2 + 2,
-            this.height - 90 + 2,
+            textY + 2,
             fontSize,
             '#000000',
             BUNDLED_FONT_FAMILY,
@@ -523,7 +532,7 @@ export class SceneCompositor {
           b.addText(
             lyric.text,
             this.width / 2,
-            this.height - 90,
+            textY,
             fontSize,
             frameState.palette.primary,
             BUNDLED_FONT_FAMILY,
@@ -614,7 +623,11 @@ export class SceneCompositor {
       }
 
       case 'ellipse': {
-        const [rxLocal, ryLocal] = part.shape.radius;
+        const [rxLocal, ryRaw] = part.shape.radius;
+        const blinkWeight = part.id.includes('eye')
+          ? Math.max(0, Math.min(1, entity.morphWeights.blink ?? 0))
+          : 0;
+        const ryLocal = ryRaw * (1 - 0.85 * blinkWeight);
         if (
           Math.abs(rxLocal - ryLocal) < 1e-4 &&
           Math.abs(ctx.entityScale[0] - ctx.entityScale[1]) < 1e-4 &&
@@ -795,7 +808,11 @@ export class SceneCompositor {
         break;
       }
       case 'ellipse': {
-        const [rx, ry] = part.shape.radius;
+        const [rx, ryRaw] = part.shape.radius;
+        const blinkWeight = part.id.includes('eye')
+          ? Math.max(0, Math.min(1, entity.morphWeights.blink ?? 0))
+          : 0;
+        const ry = ryRaw * (1 - 0.85 * blinkWeight);
         const steps = 12;
         worldPolygon = [];
         for (let i = 0; i < steps; i++) {

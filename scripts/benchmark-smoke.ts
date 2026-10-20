@@ -116,13 +116,21 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
 
   const basis = computeCameraBasis(camera);
 
-  // Simulated audio pulse with continuous analytical exponential decay (transients at frames 30, 60, 90, 120)
+  // Simulated audio pulse with smooth 2-frame attack (t_attack ~ 0.067s) and 10-14 frame exponential decay
   const ONSET_FRAMES = [30, 60, 90, 120];
+  const ATTACK_FRAMES = 2;
   let pulseSum = 0;
   for (const onsetFrame of ONSET_FRAMES) {
     if (onsetFrame <= frameIndex) {
-      const dtSeconds = (frameIndex - onsetFrame) / fps;
-      pulseSum += exponentialDecay(dtSeconds, 5.0);
+      const dtFrames = frameIndex - onsetFrame;
+      if (dtFrames < ATTACK_FRAMES) {
+        // Smooth cosine attack ramp over 2 frames before reaching peak at dtFrames === ATTACK_FRAMES
+        const attackProgress = (dtFrames + 1) / (ATTACK_FRAMES + 1);
+        pulseSum += 0.5 * (1 - Math.cos(attackProgress * Math.PI));
+      } else {
+        const decaySeconds = (dtFrames - ATTACK_FRAMES) / fps;
+        pulseSum += exponentialDecay(decaySeconds, 4.5);
+      }
     }
   }
   const pulse = Math.min(1, pulseSum);
@@ -146,7 +154,8 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
         const radius = Math.max(1, 4 - zc / 150);
         sortables.push({
           kind: 'star',
-          depthKey: zc,
+          // Skybox backdrop layer: keep stars behind world geometry across full 270-deg camera orbit
+          depthKey: camera.farPlane - (camera.farPlane - zc) * 1e-3,
           tier: 0,
           index: submitIndex++,
           x: proj.x,
@@ -261,8 +270,8 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
       const cA = camVertices[vA];
       const cB = camVertices[vB];
       const { zMean } = computePointsDepthKey([cA, cB], camera.nearPlane, camera.farPlane);
-      // Key by minVisibleFaceDepth so tilted parent faces never overwrite their own far boundary edges
-      const edgeDepthKey = Math.min(zMean, minVisibleFaceDepth);
+      // Strictly sort all visible hull wireframe edges in front of all visible cube faces (minVisibleFaceDepth - 0.1)
+      const edgeDepthKey = minVisibleFaceDepth - 0.5 + zMean * 1e-4;
       sortables.push({
         kind: 'cube_edge',
         depthKey: edgeDepthKey,
@@ -407,6 +416,7 @@ async function runSmokeBenchmark(): Promise<void> {
   if (global.gc) {
     global.gc();
   }
+  await new Promise((r) => setTimeout(r, 1000));
   console.log('✓ Warm-up complete; warmup metrics discarded.');
 
   // --- 3 FULL ITERATIONS (150 Frames Each) ---
@@ -507,13 +517,11 @@ async function runSmokeBenchmark(): Promise<void> {
     );
     console.log(`  - Output: ${finalPath} (${(outputBytes / (1024 * 1024)).toFixed(2)} MB, duration: ${duration.toFixed(3)}s)`);
 
-    // Cooldown pause between iterations
-    if (iter < 3) {
-      if (global.gc) {
-        global.gc();
-      }
-      await new Promise((r) => setTimeout(r, 3000));
+    // Cooldown pause after each iteration
+    if (global.gc) {
+      global.gc();
     }
+    await new Promise((r) => setTimeout(r, 2000));
   }
 
   // --- SUMMARY & MEDIAN METRICS ---
