@@ -20,16 +20,22 @@ export function computeLightingPulse(
   frameIndex: number,
   fps: number,
   palette: ColorLightingPalette,
-  getAudioFeatureAtFrame: (f: number) => AudioFrameFeature
+  getAudioFeatureAtFrame: (f: number) => AudioFrameFeature,
+  onsetFrames: readonly number[] = []
 ): LightingPulseResult {
   const currentAudio = getAudioFeatureAtFrame(frameIndex);
+  const onsetSet = onsetFrames.length > 0 ? new Set(onsetFrames) : null;
 
   const onsetSpring = evaluateSpringResponse(
     frameIndex,
     fps,
     0.7, // zeta
     14,  // omega
-    (f) => getAudioFeatureAtFrame(f).onsetStrength
+    (f) => {
+      const featOnset = getAudioFeatureAtFrame(f).onsetStrength;
+      const discreteImpulse = onsetSet?.has(f) ? 1.0 : 0.0;
+      return Math.max(featOnset, discreteImpulse);
+    }
   );
 
   const rawPulse =

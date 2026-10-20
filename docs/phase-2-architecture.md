@@ -117,7 +117,7 @@ The Phase 2 procedural sequence is authored in `src/demo/phase2-cinema/` and exe
   - `rig-factories`: Planar parallax midground factory roofs and smoke stacks.
   - `rig-fg-pipes`: Planar parallax foreground industrial pipes.
   - `rig-smoke`: Particle emitter generating buoyancy smoke particles with audio burst response.
-  - `rig-runner`: 12-joint articulated cybernetic runner with 14 parts, looping running cycle pose track, coat-tail secondary spring motion, and 3 facial morph targets (`mouthOpen`, `browRaise`, `blink`).
+  - `rig-runner`: 12-joint articulated cybernetic runner with 15 parts (including layered helmet cranium and morphed visor/jaw), looping running cycle pose track, coat-tail secondary spring motion, and 3 facial morph targets (`mouthOpen`, `browRaise`, `blink`).
 
 ---
 
@@ -127,13 +127,13 @@ Measured on the target machine (Intel Core Ultra 5 125H, 18 threads, WSL2 Linux)
 
 | Criterion | Target / Limit | Measured Phase 2 Demo | Status |
 | :--- | :--- | :--- | :--- |
-| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **26.86 FPS** (Runs: 26.9, 25.8, 27.0) | **PASS** |
+| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **27.39 FPS** (Runs: 29.6, 27.4, 27.1) | **PASS** |
 | **Generation Time** | $\le 12.0\text{ ms}$ (p95) | **0.7 ms avg / 1.4 ms p95** | **PASS** |
-| **Rasterization Time** | $\le 50.0\text{ ms}$ (median) | **33.0 ms avg / 41.5 ms p95** | **PASS** |
-| **Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) / $\le 600\text{ MB}$ (Hard) | **335.51 MB** (Node: 206 MB, FFmpeg: 130 MB) | **PASS (Green)** |
-| **Memory Plateau Growth** | $\le \max(32\text{ MB}, 10\%)$ over $3\times$ run | **$-3.35\text{ MB}$** ($180\text{f}: 335.51 \to 540\text{f}: 332.16\text{ MB}$) | **PASS** |
-| **Drawables per Frame** | $\le 220$ | **91 peak** | **PASS** |
-| **Gradient Shapes per Frame**| $\le 100$ | **21 peak** | **PASS** |
+| **Rasterization Time** | $\le 50.0\text{ ms}$ (median) | **32.5 ms avg / 41.0 ms p95** | **PASS** |
+| **Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) / $\le 600\text{ MB}$ (Hard) | **334.49 MB** (Node: 204 MB, FFmpeg: 130 MB) | **PASS (Green)** |
+| **Memory Plateau Growth** | $\le \max(32\text{ MB}, 10\%)$ over $3\times$ run | **$+12.53\text{ MB}$** ($180\text{f}: 334.49 \to 540\text{f}: 347.02\text{ MB}$) | **PASS** |
+| **Drawables per Frame** | $\le 220$ | **102 peak** | **PASS** |
+| **Gradient Shapes per Frame**| $\le 100$ | **22 peak** | **PASS** |
 | **Live Particles per Frame** | $\le 150$ | **35 peak** | **PASS** |
 | **Filters / Masks** | $0$ | **0** | **PASS** |
 | **Output Video Conformance** | H.264, 1920x1080 @ 30fps, BT.709 tv | Validated via `ffprobe` (duration 6.000s) | **PASS** |

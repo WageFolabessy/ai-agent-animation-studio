@@ -6,7 +6,7 @@ import type {
 export const demoPalette: ColorLightingPalette = {
   background: '#0a0a14',
   primary: '#00f0ff',
-  secondary: '#1a1d36',
+  secondary: '#283868',
   accent: '#ff0055',
   ambientLightColor: '#2a3250',
   ambientIntensity: 0.35,

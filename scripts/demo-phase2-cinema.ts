@@ -123,7 +123,13 @@ async function main() {
   const generateFrameSvg = (frameIndex: number): string => {
     const frameState = stateBuilder.buildFrameState(frameIndex);
     const env = getDemoEnvironment(frameState.shotId);
-    const result = compositor.renderFrame(frameState, demoRigsMap, env, DEMO_ONSET_FRAMES);
+    const result = compositor.renderFrame(
+      frameState,
+      demoRigsMap,
+      env,
+      DEMO_ONSET_FRAMES,
+      (f) => audioReader.getFrameFeature(f)
+    );
 
     budgetTracker.drawablesCount = Math.max(budgetTracker.drawablesCount, result.stats.drawablesCount);
     budgetTracker.gradientShapesCount = Math.max(budgetTracker.gradientShapesCount, result.stats.gradientShapesCount);

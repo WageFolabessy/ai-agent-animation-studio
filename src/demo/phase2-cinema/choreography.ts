@@ -47,10 +47,10 @@ export const demoChoreography: ChoreographyContract = {
         keyframes: [
           {
             frame: 0,
-            position: [0, 50, 700],
+            position: [0, 0, 320],
             rotationZDegrees: 0,
             scale: [1, 1],
-            opacity: 0.95,
+            opacity: 0.92,
             easing: 'linear'
           }
         ]
@@ -151,10 +151,10 @@ export const demoChoreography: ChoreographyContract = {
         keyframes: [
           {
             frame: 60,
-            position: [200, 50, 700],
+            position: [150, 0, 220],
             rotationZDegrees: 0,
             scale: [1, 1],
-            opacity: 0.95,
+            opacity: 0.92,
             easing: 'linear'
           }
         ]

@@ -170,7 +170,7 @@ export const fgPipesRig: AssetRigContract = {
   type: 'parallax_foreground',
   renderMode: 'planar',
   baseTransform: {
-    position: [0, 50, 700],
+    position: [0, 0, 320],
     rotationZDegrees: 0,
     scale: [1, 1]
   },
@@ -178,41 +178,41 @@ export const fgPipesRig: AssetRigContract = {
     {
       id: 'fg-pipe-horiz',
       jointId: null,
-      localOffset2D: [0, -180],
-      shape: { kind: 'rect', size: [1800, 48] },
+      localOffset2D: [0, 250],
+      shape: { kind: 'rect', size: [960, 22] },
       style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.4 },
-        opacity: 0.95,
+        fill: { kind: 'palette', role: 'secondary', shade: 0.15 },
+        opacity: 0.92,
         lit: true
       }
     },
     {
       id: 'fg-pipe-support-left',
       jointId: null,
-      localOffset2D: [-500, -260],
-      shape: { kind: 'rect', size: [40, 160] },
+      localOffset2D: [-380, 125],
+      shape: { kind: 'rect', size: [26, 250] },
       style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.5 },
-        opacity: 0.95,
+        fill: { kind: 'palette', role: 'secondary', shade: 0.05 },
+        opacity: 0.92,
         lit: true
       }
     },
     {
       id: 'fg-pipe-support-right',
       jointId: null,
-      localOffset2D: [500, -260],
-      shape: { kind: 'rect', size: [40, 160] },
+      localOffset2D: [380, 125],
+      shape: { kind: 'rect', size: [26, 250] },
       style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.5 },
-        opacity: 0.95,
+        fill: { kind: 'palette', role: 'secondary', shade: 0.05 },
+        opacity: 0.92,
         lit: true
       }
     },
     {
       id: 'fg-valve-glow',
       jointId: null,
-      localOffset2D: [-200, -180],
-      shape: { kind: 'ellipse', radius: [20, 20] },
+      localOffset2D: [-380, 250],
+      shape: { kind: 'ellipse', radius: [12, 12] },
       style: {
         fill: { kind: 'palette', role: 'accent', shade: 0.2 },
         opacity: 1.0,
@@ -288,23 +288,23 @@ export const runnerRig: AssetRigContract = {
       {
         id: 'torso',
         parentId: 'root',
-        localOffset2D: [0, 20],
-        length: 25,
+        localOffset2D: [0, 10],
+        length: 26,
         rotationZDegrees: 0,
         constraintsDeg: [-25, 25]
       },
       {
         id: 'head',
         parentId: 'torso',
-        localOffset2D: [0, 25],
-        length: 15,
+        localOffset2D: [0, 26],
+        length: 16,
         rotationZDegrees: 0,
         constraintsDeg: [-30, 30]
       },
       {
         id: 'arm_l_upper',
         parentId: 'torso',
-        localOffset2D: [-12, 18],
+        localOffset2D: [-10, 22],
         length: 20,
         rotationZDegrees: -20,
         constraintsDeg: [-120, 120]
@@ -312,7 +312,7 @@ export const runnerRig: AssetRigContract = {
       {
         id: 'arm_l_lower',
         parentId: 'arm_l_upper',
-        localOffset2D: [0, -20],
+        localOffset2D: [0, -18],
         length: 18,
         rotationZDegrees: 30,
         constraintsDeg: [-10, 140]
@@ -320,7 +320,7 @@ export const runnerRig: AssetRigContract = {
       {
         id: 'arm_r_upper',
         parentId: 'torso',
-        localOffset2D: [12, 18],
+        localOffset2D: [10, 22],
         length: 20,
         rotationZDegrees: 20,
         constraintsDeg: [-120, 120]
@@ -328,7 +328,7 @@ export const runnerRig: AssetRigContract = {
       {
         id: 'arm_r_lower',
         parentId: 'arm_r_upper',
-        localOffset2D: [0, -20],
+        localOffset2D: [0, -18],
         length: 18,
         rotationZDegrees: -30,
         constraintsDeg: [-10, 140]
@@ -336,39 +336,39 @@ export const runnerRig: AssetRigContract = {
       {
         id: 'leg_l_upper',
         parentId: 'root',
-        localOffset2D: [-8, -5],
-        length: 25,
+        localOffset2D: [-6, -2],
+        length: 24,
         rotationZDegrees: -25,
         constraintsDeg: [-90, 90]
       },
       {
         id: 'leg_l_lower',
         parentId: 'leg_l_upper',
-        localOffset2D: [0, -25],
-        length: 25,
+        localOffset2D: [0, -22],
+        length: 24,
         rotationZDegrees: 40,
         constraintsDeg: [0, 140]
       },
       {
         id: 'leg_r_upper',
         parentId: 'root',
-        localOffset2D: [8, -5],
-        length: 25,
+        localOffset2D: [6, -2],
+        length: 24,
         rotationZDegrees: 25,
         constraintsDeg: [-90, 90]
       },
       {
         id: 'leg_r_lower',
         parentId: 'leg_r_upper',
-        localOffset2D: [0, -25],
-        length: 25,
+        localOffset2D: [0, -22],
+        length: 24,
         rotationZDegrees: -40,
         constraintsDeg: [0, 140]
       },
       {
         id: 'coat_tail',
         parentId: 'torso',
-        localOffset2D: [-10, -5],
+        localOffset2D: [-9, 8],
         length: 30,
         rotationZDegrees: -15,
         constraintsDeg: [-60, 60]
@@ -472,22 +472,22 @@ export const runnerRig: AssetRigContract = {
   morphTopology: {
     baseSegments: [
       {
-        p0: [-10, 0],
-        p1: [-10, 12],
-        p2: [10, 12],
-        p3: [10, 0]
+        p0: [-8.5, 2.5],
+        p1: [-5, 5.5],
+        p2: [5, 5.5],
+        p3: [8.5, 2.5]
       },
       {
-        p0: [10, 0],
-        p1: [10, -6],
-        p2: [5, -12],
-        p3: [0, -14]
+        p0: [8.5, 2.5],
+        p1: [9, -1.5],
+        p2: [5, -4.5],
+        p3: [0, -5.5]
       },
       {
-        p0: [0, -14],
-        p1: [-5, -12],
-        p2: [-10, -6],
-        p3: [-10, 0]
+        p0: [0, -5.5],
+        p1: [-5, -4.5],
+        p2: [-9, -1.5],
+        p3: [-8.5, 2.5]
       }
     ],
     targets: [
@@ -495,22 +495,22 @@ export const runnerRig: AssetRigContract = {
         name: 'mouthOpen',
         segments: [
           {
-            p0: [-10, 0],
-            p1: [-10, 12],
-            p2: [10, 12],
-            p3: [10, 0]
+            p0: [-8.5, 2.5],
+            p1: [-5, 5.5],
+            p2: [5, 5.5],
+            p3: [8.5, 2.5]
           },
           {
-            p0: [10, 0],
-            p1: [10, -8],
-            p2: [6, -18],
-            p3: [0, -22]
+            p0: [8.5, 2.5],
+            p1: [9.5, -4.0],
+            p2: [5.5, -10.5],
+            p3: [0, -12.0]
           },
           {
-            p0: [0, -22],
-            p1: [-6, -18],
-            p2: [-10, -8],
-            p3: [-10, 0]
+            p0: [0, -12.0],
+            p1: [-5.5, -10.5],
+            p2: [-9.5, -4.0],
+            p3: [-8.5, 2.5]
           }
         ]
       },
@@ -518,22 +518,22 @@ export const runnerRig: AssetRigContract = {
         name: 'browRaise',
         segments: [
           {
-            p0: [-10, 0],
-            p1: [-10, 16],
-            p2: [10, 16],
-            p3: [10, 0]
+            p0: [-9.0, 3.5],
+            p1: [-5.5, 10.5],
+            p2: [5.5, 10.5],
+            p3: [9.0, 3.5]
           },
           {
-            p0: [10, 0],
-            p1: [10, -6],
-            p2: [5, -12],
-            p3: [0, -14]
+            p0: [9.0, 3.5],
+            p1: [9, -1.5],
+            p2: [5, -4.5],
+            p3: [0, -5.5]
           },
           {
-            p0: [0, -14],
-            p1: [-5, -12],
-            p2: [-10, -6],
-            p3: [-10, 0]
+            p0: [0, -5.5],
+            p1: [-5, -4.5],
+            p2: [-9, -1.5],
+            p3: [-9.0, 3.5]
           }
         ]
       },
@@ -541,22 +541,22 @@ export const runnerRig: AssetRigContract = {
         name: 'blink',
         segments: [
           {
-            p0: [-10, -2],
-            p1: [-10, 6],
-            p2: [10, 6],
-            p3: [10, -2]
+            p0: [-8.5, 0.2],
+            p1: [-5, 0.8],
+            p2: [5, 0.8],
+            p3: [8.5, 0.2]
           },
           {
-            p0: [10, -2],
-            p1: [10, -7],
-            p2: [5, -13],
-            p3: [0, -14]
+            p0: [8.5, 0.2],
+            p1: [8.5, -0.8],
+            p2: [4, -1.5],
+            p3: [0, -1.8]
           },
           {
-            p0: [0, -14],
-            p1: [-5, -13],
-            p2: [-10, -7],
-            p3: [-10, -2]
+            p0: [0, -1.8],
+            p1: [-4, -1.5],
+            p2: [-8.5, -0.8],
+            p3: [-8.5, 0.2]
           }
         ]
       }
@@ -564,67 +564,32 @@ export const runnerRig: AssetRigContract = {
   },
   parts: [
     {
-      id: 'runner-pelvis',
-      jointId: 'root',
-      localOffset2D: [0, 0],
-      shape: { kind: 'ellipse', radius: [14, 10] },
+      id: 'runner-coat-tail',
+      jointId: 'coat_tail',
+      localOffset2D: [-8, -10],
+      shape: {
+        kind: 'polygon',
+        points: [
+          [2, 4],
+          [-28, -10],
+          [-22, -32],
+          [6, -8]
+        ]
+      },
       style: {
-        fill: { kind: 'palette', role: 'primary', shade: -0.2 },
-        opacity: 1.0,
+        fill: { kind: 'palette', role: 'accent', shade: 0.1 },
+        opacity: 0.92,
         lit: true
-      }
-    },
-    {
-      id: 'runner-torso',
-      jointId: 'torso',
-      localOffset2D: [0, 10],
-      shape: { kind: 'rect', size: [22, 28] },
-      style: {
-        fill: { kind: 'palette', role: 'secondary', shade: 0.1 },
-        opacity: 1.0,
-        lit: true
-      }
-    },
-    {
-      id: 'runner-head-morph',
-      jointId: 'head',
-      localOffset2D: [0, 8],
-      shape: { kind: 'morph' },
-      style: {
-        fill: { kind: 'palette', role: 'primary', shade: 0.1 },
-        opacity: 1.0,
-        lit: true
-      }
-    },
-    {
-      id: 'runner-eye-l',
-      jointId: 'head',
-      localOffset2D: [-4, 6],
-      shape: { kind: 'ellipse', radius: [2, 2] },
-      style: {
-        fill: { kind: 'palette', role: 'accent', shade: 0.2 },
-        opacity: 1.0,
-        lit: false
-      }
-    },
-    {
-      id: 'runner-eye-r',
-      jointId: 'head',
-      localOffset2D: [4, 6],
-      shape: { kind: 'ellipse', radius: [2, 2] },
-      style: {
-        fill: { kind: 'palette', role: 'accent', shade: 0.2 },
-        opacity: 1.0,
-        lit: false
       }
     },
     {
       id: 'runner-arm-l-up',
       jointId: 'arm_l_upper',
-      localOffset2D: [0, -10],
-      shape: { kind: 'rect', size: [8, 18] },
+      localOffset2D: [0, -9],
+      shape: { kind: 'rect', size: [7, 18] },
       style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.1 },
+        fill: { kind: 'palette', role: 'secondary', shade: 0.25 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.3 }, width: 1.0 },
         opacity: 0.95,
         lit: true
       }
@@ -635,19 +600,90 @@ export const runnerRig: AssetRigContract = {
       localOffset2D: [0, -8],
       shape: { kind: 'rect', size: [6, 16] },
       style: {
-        fill: { kind: 'palette', role: 'primary', shade: 0.05 },
+        fill: { kind: 'palette', role: 'primary', shade: -0.1 },
         opacity: 0.95,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-leg-l-up',
+      jointId: 'leg_l_upper',
+      localOffset2D: [0, -11],
+      shape: { kind: 'rect', size: [9, 22] },
+      style: {
+        fill: { kind: 'palette', role: 'secondary', shade: 0.2 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.3 }, width: 1.0 },
+        opacity: 0.95,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-leg-l-low',
+      jointId: 'leg_l_lower',
+      localOffset2D: [0, -11],
+      shape: { kind: 'rect', size: [7, 22] },
+      style: {
+        fill: { kind: 'palette', role: 'primary', shade: -0.15 },
+        opacity: 0.95,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-pelvis',
+      jointId: 'root',
+      localOffset2D: [0, 2],
+      shape: { kind: 'ellipse', radius: [11, 8] },
+      style: {
+        fill: { kind: 'palette', role: 'secondary', shade: 0.35 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.2 },
+        opacity: 1.0,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-torso',
+      jointId: 'torso',
+      localOffset2D: [0, 12],
+      shape: { kind: 'rect', size: [20, 26] },
+      style: {
+        fill: { kind: 'palette', role: 'secondary', shade: 0.3 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.1 }, width: 1.4 },
+        opacity: 1.0,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-leg-r-up',
+      jointId: 'leg_r_upper',
+      localOffset2D: [0, -11],
+      shape: { kind: 'rect', size: [9, 22] },
+      style: {
+        fill: { kind: 'palette', role: 'secondary', shade: 0.35 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.15 }, width: 1.2 },
+        opacity: 0.98,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-leg-r-low',
+      jointId: 'leg_r_lower',
+      localOffset2D: [0, -11],
+      shape: { kind: 'rect', size: [7, 22] },
+      style: {
+        fill: { kind: 'palette', role: 'primary', shade: 0.05 },
+        opacity: 0.98,
         lit: true
       }
     },
     {
       id: 'runner-arm-r-up',
       jointId: 'arm_r_upper',
-      localOffset2D: [0, -10],
-      shape: { kind: 'rect', size: [8, 18] },
+      localOffset2D: [0, -9],
+      shape: { kind: 'rect', size: [7, 18] },
       style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.1 },
-        opacity: 0.95,
+        fill: { kind: 'palette', role: 'secondary', shade: 0.4 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.15 }, width: 1.2 },
+        opacity: 0.98,
         lit: true
       }
     },
@@ -657,72 +693,66 @@ export const runnerRig: AssetRigContract = {
       localOffset2D: [0, -8],
       shape: { kind: 'rect', size: [6, 16] },
       style: {
-        fill: { kind: 'palette', role: 'primary', shade: 0.05 },
-        opacity: 0.95,
+        fill: { kind: 'palette', role: 'primary', shade: 0.1 },
+        opacity: 0.98,
         lit: true
       }
     },
     {
-      id: 'runner-leg-l-up',
-      jointId: 'leg_l_upper',
-      localOffset2D: [0, -12],
-      shape: { kind: 'rect', size: [10, 22] },
-      style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.2 },
-        opacity: 0.95,
-        lit: true
-      }
-    },
-    {
-      id: 'runner-leg-l-low',
-      jointId: 'leg_l_lower',
-      localOffset2D: [0, -12],
-      shape: { kind: 'rect', size: [8, 22] },
-      style: {
-        fill: { kind: 'palette', role: 'primary', shade: -0.1 },
-        opacity: 0.95,
-        lit: true
-      }
-    },
-    {
-      id: 'runner-leg-r-up',
-      jointId: 'leg_r_upper',
-      localOffset2D: [0, -12],
-      shape: { kind: 'rect', size: [10, 22] },
-      style: {
-        fill: { kind: 'palette', role: 'secondary', shade: -0.2 },
-        opacity: 0.95,
-        lit: true
-      }
-    },
-    {
-      id: 'runner-leg-r-low',
-      jointId: 'leg_r_lower',
-      localOffset2D: [0, -12],
-      shape: { kind: 'rect', size: [8, 22] },
-      style: {
-        fill: { kind: 'palette', role: 'primary', shade: -0.1 },
-        opacity: 0.95,
-        lit: true
-      }
-    },
-    {
-      id: 'runner-coat-tail',
-      jointId: 'coat_tail',
-      localOffset2D: [-12, -15],
+      id: 'runner-head-cranium',
+      jointId: 'head',
+      localOffset2D: [0, 8],
       shape: {
         kind: 'polygon',
         points: [
-          [0, 0],
-          [-25, -15],
-          [-20, -35],
-          [5, -10]
+          [-11, -6],
+          [-12, 8],
+          [-6, 15],
+          [6, 15],
+          [12, 8],
+          [11, -6],
+          [0, -13]
         ]
       },
       style: {
-        fill: { kind: 'palette', role: 'accent', shade: 0.1 },
-        opacity: 0.9,
+        fill: { kind: 'palette', role: 'secondary', shade: 0.4 },
+        stroke: { paint: { kind: 'palette', role: 'primary', shade: 0.0 }, width: 1.5 },
+        opacity: 1.0,
         lit: true
+      }
+    },
+    {
+      id: 'runner-head-morph',
+      jointId: 'head',
+      localOffset2D: [0, 7],
+      shape: { kind: 'morph' },
+      style: {
+        fill: { kind: 'palette', role: 'primary', shade: 0.15 },
+        stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.1 }, width: 1.2 },
+        opacity: 0.96,
+        lit: true
+      }
+    },
+    {
+      id: 'runner-eye-l',
+      jointId: 'head',
+      localOffset2D: [-4, 8],
+      shape: { kind: 'ellipse', radius: [1.8, 1.8] },
+      style: {
+        fill: { kind: 'palette', role: 'accent', shade: 0.25 },
+        opacity: 1.0,
+        lit: false
+      }
+    },
+    {
+      id: 'runner-eye-r',
+      jointId: 'head',
+      localOffset2D: [4, 8],
+      shape: { kind: 'ellipse', radius: [1.8, 1.8] },
+      style: {
+        fill: { kind: 'palette', role: 'accent', shade: 0.25 },
+        opacity: 1.0,
+        lit: false
       }
     }
   ],

@@ -103,15 +103,16 @@ test('SceneCompositor: Renders valid SVG passing policy with depth-sorted primit
   const environment: SceneEnvironment = {
     polygons: [
       {
-        // Ground plane (CCW viewed from above)
+        // Ground plane (CCW viewed from above: n = (0, 1, 0))
         vertices: [
-          [-500, 0, -500],
-          [500, 0, -500],
+          [-500, 0, 500],
           [500, 0, 500],
-          [-500, 0, 500]
+          [500, 0, -500],
+          [-500, 0, -500]
         ],
         fill: '#151525',
-        opacity: 0.8
+        opacity: 0.8,
+        tier: 0
       }
     ],
     lines: [
@@ -136,8 +137,49 @@ test('SceneCompositor: Renders valid SVG passing policy with depth-sorted primit
   assert.ok(output.stats.particlesCount <= 150, 'Particles budget exceeded');
   assert.equal(output.stats.filtersCount, 0, 'No filters allowed');
 
+  // Verify ground plane polygon was NOT back-face culled and was emitted before the grid line
+  const idxGround = output.svg.indexOf('fill="#151525"');
+  const idxGridLine = output.svg.indexOf('stroke="#00d4ff"');
+  assert.ok(idxGround !== -1, 'Ground plane polygon must be emitted (not back-face culled)');
+  assert.ok(idxGridLine !== -1, 'Grid line must be emitted');
+  assert.ok(idxGround < idxGridLine, 'Ground plane (tier 0) must be emitted before surface grid line');
+
   // Verify lyric overlay was emitted
   assert.ok(output.svg.includes('Visual Cinema Engine'));
+});
+
+test('SceneCompositor: Continuous lighting pulse decays smoothly across post-onset frames and lyric fade applies opacity', () => {
+  const compositor = new SceneCompositor({ width: 1920, height: 1080, fps: 30 });
+
+  // Frame 2 after an onset at frame 0 (current frame is NOT an onset)
+  const frame2 = createMockFrameState();
+  frame2.frameIndex = 2;
+  frame2.timeSeconds = 2 / 30;
+  frame2.audio.frameIndex = 2;
+  frame2.audio.isOnset = false;
+  frame2.audio.onsetStrength = 0;
+  frame2.lyric = {
+    lineId: 'line_fade',
+    text: 'Fading Lyric Line',
+    progress: 0.05, // 50% of 0.1 fade-in window -> opacity = 0.5
+    emphasis: 0.2
+  };
+
+  const outWithOnset = compositor.renderFrame(frame2, new Map(), undefined, [0]);
+  const outWithoutOnset = compositor.renderFrame(frame2, new Map(), undefined, []);
+
+  // Because frame 0 was an onset in onsetFrames=[0], frame 2 still has non-zero exponential decay pulse
+  assert.notEqual(
+    outWithOnset.svg,
+    outWithoutOnset.svg,
+    'Post-onset frame 2 must retain decayed lighting pulse compared to no-onset baseline'
+  );
+
+  // Verify lyric fade-in group opacity="0.50" is applied
+  assert.ok(
+    outWithOnset.svg.includes('<g opacity="0.50">'),
+    'Lyric overlay at progress=0.05 must be wrapped in <g opacity="0.50">'
+  );
 });
 
 test('SceneCompositor: Back-to-front ordering puts far primitives before near primitives', () => {

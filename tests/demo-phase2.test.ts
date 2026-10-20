@@ -82,7 +82,13 @@ test('Demo Phase 2: All 180 frames generate policy-valid SVG within §8.4 budget
   for (let f = 0; f < DEMO_TOTAL_FRAMES; f++) {
     const frameState = builder.buildFrameState(f);
     const env = getDemoEnvironment(frameState.shotId);
-    const result = compositor.renderFrame(frameState, demoRigsMap, env, DEMO_ONSET_FRAMES);
+    const result = compositor.renderFrame(
+      frameState,
+      demoRigsMap,
+      env,
+      DEMO_ONSET_FRAMES,
+      (idx) => audioReader.getFrameFeature(idx)
+    );
 
     // Validate SVG Security Policy
     assertValidSvgPolicy(result.svg);
@@ -137,11 +143,23 @@ test('Demo Phase 2: Determinism check (identical SHA-256 hashes across independe
   for (const f of sampleFrames) {
     const s1 = builder1.buildFrameState(f);
     const env1 = getDemoEnvironment(s1.shotId);
-    const r1 = comp1.renderFrame(s1, demoRigsMap, env1, DEMO_ONSET_FRAMES);
+    const r1 = comp1.renderFrame(
+      s1,
+      demoRigsMap,
+      env1,
+      DEMO_ONSET_FRAMES,
+      (idx) => audioReader1.getFrameFeature(idx)
+    );
 
     const s2 = builder2.buildFrameState(f);
     const env2 = getDemoEnvironment(s2.shotId);
-    const r2 = comp2.renderFrame(s2, demoRigsMap, env2, DEMO_ONSET_FRAMES);
+    const r2 = comp2.renderFrame(
+      s2,
+      demoRigsMap,
+      env2,
+      DEMO_ONSET_FRAMES,
+      (idx) => audioReader2.getFrameFeature(idx)
+    );
 
     const hash1 = crypto.createHash('sha256').update(r1.svg).digest('hex');
     const hash2 = crypto.createHash('sha256').update(r2.svg).digest('hex');

@@ -1,4 +1,5 @@
 import type { FrameStateContract, ActiveEntityState } from '../../schemas/frame.contract.js';
+import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
 import type { AssetRigContract, RigPart, RigPaint } from '../../schemas/rig.contract.js';
 import type { Vec2, Vec3 } from '../../schemas/primitives.schema.js';
 import { BUNDLED_FONT_FAMILY } from '../../config/fonts.js';
@@ -136,7 +137,8 @@ export class SceneCompositor {
     frameState: FrameStateContract,
     rigs: Map<string, AssetRigContract>,
     environment: SceneEnvironment = {},
-    onsetFrames: readonly number[] = []
+    onsetFrames: readonly number[] = [],
+    getAudioFeatureAtFrame?: (f: number) => AudioFrameFeature
   ): CompositorOutput {
     const builder = new SvgBuilder({
       width: this.width,
@@ -154,12 +156,26 @@ export class SceneCompositor {
     const basis = computeCameraBasis(frameState.camera);
     const camera = frameState.camera;
 
+    const fallbackAudioLookup = (f: number): AudioFrameFeature => {
+      if (f === frameState.frameIndex) {
+        return frameState.audio;
+      }
+      return {
+        ...frameState.audio,
+        frameIndex: f,
+        timestamp: f / this.fps,
+        onsetStrength: 0,
+        isOnset: false
+      };
+    };
+
     // 1. Setup backdrop gradient and audio-reactive glow
     const pulseResult = computeLightingPulse(
       frameState.frameIndex,
       this.fps,
       frameState.palette,
-      () => frameState.audio
+      getAudioFeatureAtFrame ?? fallbackAudioLookup,
+      onsetFrames
     );
 
     builder.addLinearGradient('backdrop_linear', {
@@ -231,21 +247,27 @@ export class SceneCompositor {
 
         // Camera space conversion
         const camVerts = poly.vertices.map((v) => worldToCameraSpace(v, camera, basis));
+        const polyTier = poly.tier ?? 2;
 
         const polyItem: CameraSpacePolygon = {
           kind: 'env_polygon',
           vertices: camVerts,
-          depthKey: 0,
-          tier: poly.tier ?? 2,
+          depthKey: polyTier === 0 ? camera.farPlane : 0,
+          tier: polyTier,
           index: submitIndex++,
           fill: poly.fill,
           opacity: poly.opacity ?? 1,
           worldVertices: poly.vertices
         };
 
-        const pieces = splitLargePolygon(polyItem, camera.nearPlane, camera.farPlane);
-        for (const p of pieces) {
-          sortables.push(p);
+        if (polyTier === 0) {
+          // Backdrop / ground-floor plane: keep as a single continuous polygon Behind scene objects & surface grid lines
+          sortables.push(polyItem);
+        } else {
+          const pieces = splitLargePolygon(polyItem, camera.nearPlane, camera.farPlane);
+          for (const p of pieces) {
+            sortables.push(p);
+          }
         }
       }
     }
@@ -373,13 +395,12 @@ export class SceneCompositor {
 
     // 4. Emit sorted primitives into SvgBuilder
     for (const item of sortables) {
-      stats.drawablesCount++;
-
       switch (item.kind) {
         case 'env_polygon': {
           const camVerts = item.vertices as Vec3[];
           const clipped = clipAndProjectCameraPolygon(camVerts, camera, this.width, this.height);
           if (clipped && clipped.vertices.length >= 3) {
+            stats.drawablesCount++;
             const pts = clipped.vertices.map((v) => [v.x, v.y] as [number, number]);
             // If the polygon was split to prevent depth sorting artifacts, add a 1px same-color stroke
             const stroke = item.wasSplit ? (item.fill as string) : undefined;
@@ -394,6 +415,7 @@ export class SceneCompositor {
           const p1 = item.p1 as Vec3;
           const clipped = clipAndProjectCameraLine(p0, p1, camera, this.width, this.height);
           if (clipped) {
+            stats.drawablesCount++;
             builder.addLine(
               clipped.p0.x,
               clipped.p0.y,
@@ -408,6 +430,7 @@ export class SceneCompositor {
         }
 
         case 'particle': {
+          stats.drawablesCount++;
           stats.particlesCount++;
           const screenCenter = item.screenCenter as { x: number; y: number };
           builder.addCircle(
@@ -484,26 +507,28 @@ export class SceneCompositor {
       }
 
       if (alpha > 0.01) {
-        // Drop shadow / offset dark duplicate for legibility
-        builder.addText(
-          lyric.text,
-          this.width / 2 + 2,
-          this.height - 90 + 2,
-          fontSize,
-          '#000000',
-          BUNDLED_FONT_FAMILY,
-          'middle'
-        );
-        // Foreground lyric text
-        builder.addText(
-          lyric.text,
-          this.width / 2,
-          this.height - 90,
-          fontSize,
-          frameState.palette.primary,
-          BUNDLED_FONT_FAMILY,
-          'middle'
-        );
+        builder.addGroup({ opacity: alpha }, (b) => {
+          // Drop shadow / offset dark duplicate for legibility
+          b.addText(
+            lyric.text,
+            this.width / 2 + 2,
+            this.height - 90 + 2,
+            fontSize,
+            '#000000',
+            BUNDLED_FONT_FAMILY,
+            'middle'
+          );
+          // Foreground lyric text
+          b.addText(
+            lyric.text,
+            this.width / 2,
+            this.height - 90,
+            fontSize,
+            frameState.palette.primary,
+            BUNDLED_FONT_FAMILY,
+            'middle'
+          );
+        });
       }
     }
 
@@ -570,6 +595,8 @@ export class SceneCompositor {
       return allLeft || allRight || allTop || allBottom;
     };
 
+    const optionalStroke = strokeColor !== 'none' ? strokeColor : undefined;
+
     switch (part.shape.kind) {
       case 'rect': {
         const [w, h] = part.shape.size;
@@ -580,29 +607,49 @@ export class SceneCompositor {
           transformPoint([-w / 2, h / 2])
         ];
         if (isOffScreen(pts)) return;
-        builder.addPolygon(pts, fillInfo.fillAttr, strokeColor, strokeWidth, opacity);
+        stats.drawablesCount++;
+        builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         break;
       }
 
       case 'ellipse': {
-        const center = transformPoint([0, 0]);
-        const rx = part.shape.radius[0] * ctx.scaleFactor * ctx.entityScale[0];
+        const [rxLocal, ryLocal] = part.shape.radius;
         if (
-          center[0] + rx < 0 ||
-          center[0] - rx > this.width ||
-          center[1] + rx < 0 ||
-          center[1] - rx > this.height
+          Math.abs(rxLocal - ryLocal) < 1e-4 &&
+          Math.abs(ctx.entityScale[0] - ctx.entityScale[1]) < 1e-4 &&
+          !optionalStroke
         ) {
-          return;
+          const center = transformPoint([0, 0]);
+          const rScreen = rxLocal * ctx.scaleFactor * ctx.entityScale[0];
+          if (
+            center[0] + rScreen < 0 ||
+            center[0] - rScreen > this.width ||
+            center[1] + rScreen < 0 ||
+            center[1] - rScreen > this.height
+          ) {
+            return;
+          }
+          stats.drawablesCount++;
+          builder.addCircle(center[0], center[1], rScreen, fillInfo.fillAttr, opacity);
+        } else {
+          const steps = 12;
+          const pts: [number, number][] = [];
+          for (let i = 0; i < steps; i++) {
+            const angle = (i * Math.PI * 2) / steps;
+            pts.push(transformPoint([rxLocal * Math.cos(angle), ryLocal * Math.sin(angle)]));
+          }
+          if (isOffScreen(pts)) return;
+          stats.drawablesCount++;
+          builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         }
-        builder.addCircle(center[0], center[1], rx, fillInfo.fillAttr, opacity);
         break;
       }
 
       case 'polygon': {
         const pts = part.shape.points.map((p) => transformPoint(p));
         if (isOffScreen(pts)) return;
-        builder.addPolygon(pts, fillInfo.fillAttr, strokeColor, strokeWidth, opacity);
+        stats.drawablesCount++;
+        builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         break;
       }
 
@@ -622,11 +669,12 @@ export class SceneCompositor {
         if (part.shape.closed) {
           transformedCommands.push({ cmd: 'Z' });
         }
+        stats.drawablesCount++;
         builder.addPath(transformedCommands, {
           fill: fillInfo.fillAttr !== 'none' ? fillInfo.fillAttr : undefined,
           stroke:
-            strokeColor !== 'none'
-              ? { paint: strokeColor, width: strokeWidth, lineJoin: 'round', lineCap: 'round' }
+            optionalStroke !== undefined
+              ? { paint: optionalStroke, width: strokeWidth, lineJoin: 'round', lineCap: 'round' }
               : undefined,
           opacity
         });
@@ -656,11 +704,12 @@ export class SceneCompositor {
         });
         transformedCommands.push({ cmd: 'Z' });
 
+        stats.drawablesCount++;
         builder.addPath(transformedCommands, {
           fill: fillInfo.fillAttr !== 'none' ? fillInfo.fillAttr : undefined,
           stroke:
-            strokeColor !== 'none'
-              ? { paint: strokeColor, width: strokeWidth, lineJoin: 'round', lineCap: 'round' }
+            optionalStroke !== undefined
+              ? { paint: optionalStroke, width: strokeWidth, lineJoin: 'round', lineCap: 'round' }
               : undefined,
           opacity
         });
@@ -765,6 +814,7 @@ export class SceneCompositor {
         this.height
       );
       if (clipped && clipped.vertices.length >= 3) {
+        stats.drawablesCount++;
         const pts = clipped.vertices.map((v) => [v.x, v.y] as [number, number]);
         builder.addPolygon(pts, fillInfo.fillAttr, undefined, 0, opacity);
       }

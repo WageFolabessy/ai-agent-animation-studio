@@ -28,7 +28,7 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Strict Painter's Algorithm depth-sorted scene compositor with camera-space pre-clip centroid depth keying ($z_c$), recursive large-primitive subdivision ($z = z_{\text{mean}}$), and outward CCW face winding.
   - Isolated boundary edge rendering eliminating polygon stroke priority clashes.
   - Continuous analytical impulse decay lighting pulses ($I(t) = I_{\text{peak}} \cdot e^{-\lambda \Delta t}$) and zero-filter radial gradient glows.
-  - 4-shot Phase 2 cinema demo (`npm run demo:phase2`) verified at **26.86 FPS**, **335.51 MB** RSS, and zero memory growth.
+  - 4-shot Phase 2 cinema demo (`npm run demo:phase2`) verified at **27.39 FPS**, **334.49 MB** RSS, and bounded memory plateau.
 - **Phase 3 & 4: Planned Only**
   - Offline audio signal analysis and stem separation (Phase 3).
   - Multi-agent director, rig, and compositor LLM orchestration (Phase 4).
@@ -81,13 +81,15 @@ ai-agent-animation-studio/
 ├── package-lock.json              # Exact pinned dependency lockfile
 ├── tsconfig.json                  # Strict TypeScript configuration (NodeNext, ES2022)
 ├── docs/
-│   └── phase-1-architecture.md    # Historical Phase 1 specification and architectural notes
+│   ├── phase-1-architecture.md    # Phase 1 specification and architectural notes
+│   └── phase-2-architecture.md    # Phase 2 cinema, kinematics, morphing & compositor specification
 ├── python/
 │   ├── README.md                  # Python offline ML audio analysis tooling guide
 │   └── __init__.py                # Package root
 ├── scripts/
 │   ├── conformance-render.ts      # Conformance test (Gate B: pixel, color, metadata validation)
-│   └── benchmark-smoke.ts         # Smoke benchmark (Gate C: 3 runs @ 1080p, memory/speed gate)
+│   ├── benchmark-smoke.ts         # Smoke benchmark (Gate C: 3 runs @ 1080p, memory/speed gate)
+│   └── demo-phase2-cinema.ts      # Phase 2 multi-shot procedural cinema demo & plateau benchmark
 ├── src/
 │   ├── agents/
 │   │   ├── README.md              # AI agents overview
@@ -100,40 +102,78 @@ ai-agent-animation-studio/
 │   │   ├── fonts.ts               # Font path and font family constants
 │   │   ├── paths.ts               # Project root and output directory resolution
 │   │   └── render-config.ts       # Zod schemas, thread mapping, and x264 parameters
+│   ├── demo/
+│   │   └── phase2-cinema/
+│   │       ├── audio-fixture.ts   # Deterministic 180-frame 120 BPM audio & lyric fixture
+│   │       ├── choreography.ts    # Multi-shot entity tracks, poses, and morph bindings
+│   │       ├── environment.ts     # 3D architectural prisms, ground floor, and isolated grid lines
+│   │       ├── index.ts           # Barrel export for Phase 2 demo modules
+│   │       ├── rigs.ts            # Procedural character, parallax, pipe, and particle rigs
+│   │       └── storyboard.ts      # 3-act, 4-shot director storyboard contract
 │   ├── diagnostics/
 │   │   ├── artifact-hygiene.ts    # Recursive scanner detecting leaked .png/.svg files
-│   │   ├── benchmark-gates.ts     # Memory and performance gate evaluator
+│   │   ├── benchmark-gates.ts     # Memory, plateau, and performance gate evaluator
 │   │   ├── ffprobe.ts             # Type-safe, shell-safe video metadata probing
 │   │   ├── memory-sampler.ts      # Linux /proc/<pid>/statm RSS sampler
 │   │   └── timing.ts              # Per-frame and aggregate profiler
 │   ├── engine/
 │   │   ├── camera/
 │   │   │   ├── camera-3d.ts       # 3D camera coordinate basis, view matrix, and transforms
-│   │   │   ├── clipping.ts        # Sutherland-Hodgman frustum & Liang-Barsky viewport clipping
+│   │   │   ├── clipping.ts        # Sutherland-Hodgman frustum & 1/z perspective viewport clipping
 │   │   │   └── projection.ts      # 3D-to-2D screen projection and single-point visibility
-│   │   └── compositor/
-│   │       ├── svg-builder.ts     # Type-safe SVG XML generator
-│   │       └── svg-policy-validator.ts # Security scanner enforcing zero scripts/external URLs
+│   │   ├── compositor/
+│   │   │   ├── depth-sort.ts      # Pre-clip camera-space depth keys & recursive primitive splitting
+│   │   │   ├── lighting.ts        # Lambertian shading & continuous impulse decay lighting pulses
+│   │   │   ├── scene-compositor.ts # Painter's algorithm 2.5D scene compositor & budget tracker
+│   │   │   ├── svg-builder.ts     # Type-safe SVG XML generator (paths, groups, gradients)
+│   │   │   └── svg-policy-validator.ts # Security scanner enforcing zero scripts/external URLs
+│   │   ├── director/
+│   │   │   ├── camera-shake.ts    # Continuous impulse-decay trauma camera shake system
+│   │   │   ├── choreography.ts    # Entity track interpolation and audio-reactive morph evaluation
+│   │   │   ├── frame-state-builder.ts # Deterministic FrameStateContract orchestrator
+│   │   │   └── shot-sequencer.ts  # O(log N) shot lookup, DOLLY/TRACKING, and circular ORBIT slerp
+│   │   ├── effects/
+│   │   │   └── particles.ts       # Stateless analytical particle emitter & burst evaluator
+│   │   ├── math/
+│   │   │   ├── color.ts           # Deterministic RGB/Hex conversion, mixing, and shading
+│   │   │   ├── easing.ts          # Camera & pose easing functions and Hermite spline interpolation
+│   │   │   ├── index.ts           # Barrel export for engine math modules
+│   │   │   ├── noise.ts           # Seeded 1D value noise and FNV-1a deterministic PRNG
+│   │   │   └── spring.ts          # Analytical damped harmonic oscillator & exponential decay solver
+│   │   └── rigging/
+│   │       ├── billboard.ts       # Billboard similarity transform & world-plane 3D projection
+│   │       ├── deformer.ts        # Pose track sampler, secondary spring solver & part deformer
+│   │       ├── kinematics.ts      # Planar Forward Kinematics (FK) solver with joint clamping
+│   │       └── morpher.ts         # Piecewise Cubic Bezier shape morpher & SVG path converter
 │   ├── renderer/
 │   │   ├── ffmpeg-streamer.ts     # ChildProcess streamer with backpressure and abort handling
 │   │   ├── pipeline.ts            # High-level SVG -> Resvg -> FFmpeg streaming pipeline
 │   │   └── rasterizer.ts          # Resvg native in-memory rasterizer
 │   └── schemas/
 │       ├── audio.contract.ts      # Audio analysis manifest and feature reader contracts
+│       ├── choreography.contract.ts # Per-shot entity tracks, poses, and morph bindings schema
 │       ├── frame.contract.ts      # Per-frame rendering state schema
 │       ├── index.ts               # Central export for all schemas
 │       ├── invariants.ts          # Cross-contract validation and continuity verification
 │       ├── primitives.schema.ts   # Vec2, Vec3, Color, CameraTransform, and FrameRange
-│       ├── rig.contract.ts        # Planar 2.5D asset rigs, skeletons, bindings, and morph targets
+│       ├── rig.contract.ts        # Planar 2.5D asset rigs, skeletons, parts, and morph targets
 │       └── storyboard.contract.ts # Director storyboards, acts, and cinematic shots
 └── tests/
     ├── backpressure.test.ts       # Streamer backpressure, drain, and EPIPE recovery
-    ├── benchmark-gates.test.ts    # Memory gate and artifact hygiene tests
-    ├── clipping.test.ts           # Near/far frustum and 2D screen clipping tests
+    ├── benchmark-gates.test.ts    # Memory gate, plateau check, and artifact hygiene tests
+    ├── clipping.test.ts           # Near/far frustum, 1/z depth, and canonical cube culling tests
+    ├── demo-phase2.test.ts        # Phase 2 demo contracts, 180-frame budget, and determinism tests
+    ├── depth-sort.test.ts         # Pre-clip depth keys, primitive splitting, and sort order tests
+    ├── effects-director.test.ts   # Particle emitter, choreography, and FrameStateBuilder tests
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
-    ├── invariants.test.ts         # Storyboard timeline, act, and joint cycle invariants
+    ├── invariants.test.ts         # Storyboard timeline, act, rig, and choreography invariants
+    ├── math.test.ts               # Easing, spring physics, noise, and color math tests
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
-    └── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
+    ├── rigging.test.ts            # FK chain, joint clamping, Bezier morphing, and billboard tests
+    ├── scene-compositor.test.ts   # Painter's algorithm, cube culling, pulse decay, and lyric fade
+    ├── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
+    ├── shot-sequencer.test.ts     # Shot lookup, ORBIT slerp, and trauma camera shake tests
+    └── svg-builder.test.ts        # Path commands, gradients, group nesting, and XML escaping tests
 ```
 
 ---
@@ -161,7 +201,7 @@ ai-agent-animation-studio/
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
 | `typecheck` | `tsc --noEmit` | Strict static typecheck without emitting JavaScript |
-| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (97 tests) |
+| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (98 tests) |
 | `test:schemas` | `tsx --test tests/schemas.test.ts` | Tests primitive schemas and Zod 4 contracts |
 | `test:invariants` | `tsx --test tests/invariants.test.ts` | Tests cross-contract timeline, skeleton, and choreography invariants |
 | `test:backpressure`| `tsx --test tests/backpressure.test.ts` | Tests FFmpeg streamer backpressure and lifecycle |
@@ -206,16 +246,20 @@ The studio uses strongly typed Zod schemas to guarantee consistency between plan
 2. **Director Storyboard (`storyboard.contract.ts`):**  
    Encapsulates narrative structure into three contiguous acts (`acts`) and cinematic shots (`shots`). Each shot defines camera transitions, movement types, viewpoints, depth-of-field blur, color lighting palettes, and active asset rig references.
 3. **Asset Rig (`rig.contract.ts`):**  
-   Specifies 2.5D visual assets, parallax Z depth, base transform matrices, planar skeletal bone joints with angle constraints, geometry element bindings, pose keyframes, and morph targets.
-4. **Frame State (`frame.contract.ts`):**  
-   The atomic state contract passed to the compositor at frame `f`, combining interpolated camera positions, lighting palettes, active lyric status, and articulated character entities.
-5. **Contract Invariants (`invariants.ts`):**  
+   Specifies 2.5D visual assets (`character`, `prop`, `background_parallax`, `particle_emitter`), render modes (`billboard` or `world_plane`), single-source-of-truth 3D base transforms (`baseTransform.position[2]`), planar skeletal bone joints with angle constraints, procedural geometry parts (`rect`, `circle`, `ellipse`, `polygon`, `bezier_path`, `morphed_path` with $C^0$ continuous morph targets), secondary spring attachments, and stateless particle emitter specs.
+4. **Choreography (`choreography.contract.ts`):**  
+   Defines per-shot entity placement tracks (`transformTrack`), pose selectors (`poseId`), keyframe overrides, and audio-reactive/keyframed morph bindings (`morphBindings`).
+5. **Frame State (`frame.contract.ts`):**  
+   The atomic state contract passed to the compositor at frame `f`, combining interpolated camera positions, lighting palettes, active lyric status, and articulated character entities (`jointAngles`, `jointOffsets`, `morphWeights`).
+6. **Contract Invariants (`invariants.ts`):**  
    Enforces cross-contract invariants:
    - Storyboard, audio, and render config frame counts and frame rates must match identically.
    - Audio `durationSeconds * fps` must match `totalFrames` within +/- 1 frame.
    - Act 1 must start at frame 0, acts must be contiguous, and Act 3 must end at `totalFrames`.
    - The first shot must start at frame 0 and the last shot must end at `totalFrames`.
-   - Skeletal joint trees must contain exactly 1 root and have zero dependency cycles.
+   - `cameraStart.projectionMode` and `cameraEnd.projectionMode` must match within every shot.
+   - Skeletal joint trees must contain exactly 1 root and have zero dependency cycles; all parts, secondary motion chains, and pose tracks must reference valid joints with strictly increasing frame numbers.
+   - Piecewise Cubic Bezier morph bases and deltas must maintain strict $C^0$ continuity across segment boundaries.
 
 ---
 
@@ -253,7 +297,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   - Hard Fail: Aggregate memory must strictly not exceed **600 MB** for any iteration.
   - Memory Plateau: Long-run memory growth (e.g. 540 frames vs 180 frames) must not exceed `max(32 MB, 10% of short run)`, preventing unbounded memory leaks.
 - **Rendering Throughput:**  
-  Median effective rendering speed must be at least **15 FPS** (measured **26.86 FPS** in Phase 2 demo, **25.99 FPS** in smoke benchmark).
+  Median effective rendering speed must be at least **15 FPS** (measured **27.39 FPS** in Phase 2 demo, **25.99 FPS** in smoke benchmark).
 - **Color Space Conformance:**  
   Encoded video must strictly carry standard BT.709 television metadata:
   - `color_space=bt709`
@@ -267,11 +311,11 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 
 | Metric | Target / Gate Limit | Measured Value | Result |
 | :--- | :--- | :--- | :--- |
-| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **26.86 FPS** | **PASS** |
-| **Median Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) | **335.51 MB** (Node: 206 MB, FFmpeg: 130 MB) | **PASS (Green)** |
-| **Memory Plateau Growth** | $\le 33.55\text{ MB}$ ($10\%$ of short) | **$-3.35\text{ MB}$** ($180\text{f}: 335.51 \to 540\text{f}: 332.16\text{ MB}$) | **PASS** |
-| **Drawables per Frame** | $\le 220$ | **91 peak** | **PASS** |
-| **Gradient Shapes per Frame** | $\le 100$ | **21 peak** | **PASS** |
+| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **27.39 FPS** | **PASS** |
+| **Median Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) | **334.49 MB** (Node: 204 MB, FFmpeg: 130 MB) | **PASS (Green)** |
+| **Memory Plateau Growth** | $\le 33.45\text{ MB}$ ($10\%$ of short) | **$+12.53\text{ MB}$** ($180\text{f}: 334.49 \to 540\text{f}: 347.02\text{ MB}$) | **PASS** |
+| **Drawables per Frame** | $\le 220$ | **102 peak** | **PASS** |
+| **Gradient Shapes per Frame** | $\le 100$ | **22 peak** | **PASS** |
 | **Live Particles per Frame** | $\le 150$ | **35 peak** | **PASS** |
 | **Filters / Masks** | $0$ | **0** | **PASS** |
 

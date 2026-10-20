@@ -14,7 +14,7 @@ export function getDemoEnvironment(shotId: string): SceneEnvironment {
           ],
           fill: '#0c101d',
           opacity: 0.95,
-          tier: 2
+          tier: 0
         }
       ],
       lines: [
@@ -34,7 +34,7 @@ export function getDemoEnvironment(shotId: string): SceneEnvironment {
     ],
     fill: '#0c101d',
     opacity: 0.95,
-    tier: 2
+    tier: 0
   };
 
   const gridLines: EnvironmentLine[] = [];
