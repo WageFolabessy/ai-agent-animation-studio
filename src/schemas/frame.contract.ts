@@ -9,6 +9,7 @@ export const ActiveEntityStateSchema = z.object({
   worldRotationZDegrees: z.number().finite().min(-360).max(360),
   scale: Vec2Schema,
   jointAngles: z.record(z.string(), z.number().finite()).default({}),
+  jointOffsets: z.record(z.string(), Vec2Schema).default({}),
   morphWeights: z.record(z.string(), z.number().finite().min(0).max(1)).default({}),
   opacity: z.number().finite().min(0).max(1).default(1)
 }).strict();

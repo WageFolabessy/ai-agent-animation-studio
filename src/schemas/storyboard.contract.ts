@@ -51,7 +51,10 @@ export const CinematicShotSchema = z.object({
   palette: ColorLightingPaletteSchema,
   narrativeAction: z.string().min(1),
   activeRigIds: z.array(z.string().min(1)).min(1)
-}).strict();
+}).strict().refine(
+  (shot) => shot.cameraStart.projectionMode === shot.cameraEnd.projectionMode,
+  { message: 'Camera projectionMode must match between start and end' }
+);
 export type CinematicShot = z.infer<typeof CinematicShotSchema>;
 
 export const StoryboardActSchema = z.object({

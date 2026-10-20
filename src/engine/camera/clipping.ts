@@ -18,6 +18,33 @@ export interface ClippedPolygon {
 }
 
 /**
+ * How camera-space depth varies along a segment in screen space.
+ * - `perspective`: screen position is affine in `1 / z`, so depth is interpolated as `1 / z`.
+ * - `linear`: orthographic projection, where screen position is affine in `z` itself.
+ */
+export type DepthInterpolation = 'perspective' | 'linear';
+
+/** Depth interpolation mode that is exact for the given camera. */
+export function depthInterpolationFor(camera: CameraTransform): DepthInterpolation {
+  return camera.projectionMode === 'perspective' ? 'perspective' : 'linear';
+}
+
+/**
+ * Interpolates camera-space depth between two screen-space points at parameter `s`.
+ * Perspective mode requires strictly positive depths (guaranteed after near-plane clipping)
+ * and throws otherwise, because a `1 / z` blend across the camera plane is meaningless.
+ */
+export function interpolateDepth(mode: DepthInterpolation, z0: number, z1: number, s: number): number {
+  if (mode === 'linear') {
+    return z0 + s * (z1 - z0);
+  }
+  if (!(z0 > 0) || !(z1 > 0)) {
+    throw new Error(`Perspective depth interpolation requires positive depths (received ${z0}, ${z1})`);
+  }
+  return 1 / (1 / z0 + s * (1 / z1 - 1 / z0));
+}
+
+/**
  * Projects a camera-space point to SVG canvas coordinates. The point must already be
  * clipped against the near/far planes; this function performs no visibility test.
  */
@@ -52,17 +79,18 @@ export function projectCameraPointToScreen(
 
 /**
  * Liang-Barsky clipping of a 2D segment against the viewport `[0, width] x [0, height]`.
- * Returns `null` when the segment lies entirely outside; depth is interpolated linearly.
+ * Returns `null` when the segment lies entirely outside. Depth is interpolated with
+ * `depthMode` (perspective-correct `1 / z` by default).
  */
 export function clipLineToViewport(
   p0: ScreenPoint,
   p1: ScreenPoint,
   screenWidth: number,
-  screenHeight: number
+  screenHeight: number,
+  depthMode: DepthInterpolation = 'perspective'
 ): ClippedLineSegment | null {
   const dx = p1.x - p0.x;
   const dy = p1.y - p0.y;
-  const dz = p1.zDepth - p0.zDepth;
 
   let tEnter = 0;
   let tLeave = 1;
@@ -94,8 +122,16 @@ export function clipLineToViewport(
   }
 
   return {
-    p0: { x: p0.x + tEnter * dx, y: p0.y + tEnter * dy, zDepth: p0.zDepth + tEnter * dz },
-    p1: { x: p0.x + tLeave * dx, y: p0.y + tLeave * dy, zDepth: p0.zDepth + tLeave * dz }
+    p0: {
+      x: p0.x + tEnter * dx,
+      y: p0.y + tEnter * dy,
+      zDepth: interpolateDepth(depthMode, p0.zDepth, p1.zDepth, tEnter)
+    },
+    p1: {
+      x: p0.x + tLeave * dx,
+      y: p0.y + tLeave * dy,
+      zDepth: interpolateDepth(depthMode, p0.zDepth, p1.zDepth, tLeave)
+    }
   };
 }
 
@@ -106,16 +142,17 @@ export function clipLineToViewport(
  *
  * @returns the visible screen segment, or `null` if nothing is visible.
  */
-export function clipAndProjectLine(
-  p0World: Vec3,
-  p1World: Vec3,
+/**
+ * Clips a camera-space 3D segment parametrically against the near/far planes,
+ * projects it, then clips the projection against the viewport.
+ */
+export function clipAndProjectCameraLine(
+  c0: Vec3,
+  c1: Vec3,
   camera: CameraTransform,
-  basis: CameraBasis,
   screenWidth = 1920,
   screenHeight = 1080
 ): ClippedLineSegment | null {
-  const c0 = worldToCameraSpace(p0World, camera, basis);
-  const c1 = worldToCameraSpace(p1World, camera, basis);
   const { nearPlane, farPlane } = camera;
 
   const dz = c1[2] - c0[2];
@@ -146,7 +183,27 @@ export function clipAndProjectLine(
   const s0 = projectCameraPointToScreen(pointAt(tStart), camera, screenWidth, screenHeight);
   const s1 = projectCameraPointToScreen(pointAt(tEnd), camera, screenWidth, screenHeight);
 
-  return clipLineToViewport(s0, s1, screenWidth, screenHeight);
+  return clipLineToViewport(s0, s1, screenWidth, screenHeight, depthInterpolationFor(camera));
+}
+
+/**
+ * Clips a 3D segment parametrically against the near/far planes in camera space,
+ * projects it, then clips the projection against the viewport. A segment with one
+ * endpoint behind the camera is shortened rather than discarded.
+ *
+ * @returns the visible screen segment, or `null` if nothing is visible.
+ */
+export function clipAndProjectLine(
+  p0World: Vec3,
+  p1World: Vec3,
+  camera: CameraTransform,
+  basis: CameraBasis,
+  screenWidth = 1920,
+  screenHeight = 1080
+): ClippedLineSegment | null {
+  const c0 = worldToCameraSpace(p0World, camera, basis);
+  const c1 = worldToCameraSpace(p1World, camera, basis);
+  return clipAndProjectCameraLine(c0, c1, camera, screenWidth, screenHeight);
 }
 
 /**
@@ -154,7 +211,7 @@ export function clipAndProjectLine(
  * `signedDistance(p) >= 0` means "inside"; `intersect` builds the vertex where an
  * edge crosses the boundary, given the interpolation parameter `t` along `a -> b`.
  */
-function clipAgainstHalfSpace<T>(
+export function clipAgainstHalfSpace<T>(
   polygon: readonly T[],
   signedDistance: (point: T) => number,
   intersect: (a: T, b: T, t: number) => T
@@ -188,21 +245,69 @@ function intersectAtDepth(planeZ: number) {
 }
 
 /** Intersection on a vertical viewport edge; `x` is set exactly to the boundary. */
-function intersectAtScreenX(boundX: number) {
+function intersectAtScreenX(boundX: number, depthMode: DepthInterpolation) {
   return (a: ScreenPoint, b: ScreenPoint, t: number): ScreenPoint => ({
     x: boundX,
     y: lerp(a.y, b.y, t),
-    zDepth: lerp(a.zDepth, b.zDepth, t)
+    zDepth: interpolateDepth(depthMode, a.zDepth, b.zDepth, t)
   });
 }
 
 /** Intersection on a horizontal viewport edge; `y` is set exactly to the boundary. */
-function intersectAtScreenY(boundY: number) {
+function intersectAtScreenY(boundY: number, depthMode: DepthInterpolation) {
   return (a: ScreenPoint, b: ScreenPoint, t: number): ScreenPoint => ({
     x: lerp(a.x, b.x, t),
     y: boundY,
-    zDepth: lerp(a.zDepth, b.zDepth, t)
+    zDepth: interpolateDepth(depthMode, a.zDepth, b.zDepth, t)
   });
+}
+
+/**
+ * Clips a polygon against the near/far planes in camera space (Sutherland-Hodgman),
+ * projects the result, then clips it against the four viewport edges. The returned
+ * polygon is a real clipped primitive, not a visibility flag.
+ *
+ * @returns the clipped polygon (at least 3 vertices), or `null` if nothing is visible.
+ */
+/**
+ * Clips a camera-space polygon against the near/far planes (Sutherland-Hodgman),
+ * projects the result, then clips it against the four viewport edges.
+ */
+export function clipAndProjectCameraPolygon(
+  cameraVertices: readonly Vec3[],
+  camera: CameraTransform,
+  screenWidth = 1920,
+  screenHeight = 1080
+): ClippedPolygon | null {
+  if (cameraVertices.length < 3) {
+    return null;
+  }
+
+  const { nearPlane, farPlane } = camera;
+
+  const nearClipped = clipAgainstHalfSpace(cameraVertices, (p) => p[2] - nearPlane, intersectAtDepth(nearPlane));
+  if (nearClipped.length < 3) return null;
+
+  const depthClipped = clipAgainstHalfSpace(nearClipped, (p) => farPlane - p[2], intersectAtDepth(farPlane));
+  if (depthClipped.length < 3) return null;
+
+  const projected = depthClipped.map((v) => projectCameraPointToScreen(v, camera, screenWidth, screenHeight));
+
+  const depthMode = depthInterpolationFor(camera);
+  const viewportStages: Array<(polygon: ScreenPoint[]) => ScreenPoint[]> = [
+    (polygon) => clipAgainstHalfSpace(polygon, (p) => p.x, intersectAtScreenX(0, depthMode)),
+    (polygon) => clipAgainstHalfSpace(polygon, (p) => screenWidth - p.x, intersectAtScreenX(screenWidth, depthMode)),
+    (polygon) => clipAgainstHalfSpace(polygon, (p) => p.y, intersectAtScreenY(0, depthMode)),
+    (polygon) => clipAgainstHalfSpace(polygon, (p) => screenHeight - p.y, intersectAtScreenY(screenHeight, depthMode))
+  ];
+
+  let clipped = projected;
+  for (const stage of viewportStages) {
+    clipped = stage(clipped);
+    if (clipped.length < 3) return null;
+  }
+
+  return { vertices: clipped };
 }
 
 /**
@@ -222,30 +327,6 @@ export function clipAndProjectPolygon(
   if (verticesWorld.length < 3) {
     return null;
   }
-
-  const { nearPlane, farPlane } = camera;
   const cameraSpace = verticesWorld.map((v) => worldToCameraSpace(v, camera, basis));
-
-  const nearClipped = clipAgainstHalfSpace(cameraSpace, (p) => p[2] - nearPlane, intersectAtDepth(nearPlane));
-  if (nearClipped.length < 3) return null;
-
-  const depthClipped = clipAgainstHalfSpace(nearClipped, (p) => farPlane - p[2], intersectAtDepth(farPlane));
-  if (depthClipped.length < 3) return null;
-
-  const projected = depthClipped.map((v) => projectCameraPointToScreen(v, camera, screenWidth, screenHeight));
-
-  const viewportStages: Array<(polygon: ScreenPoint[]) => ScreenPoint[]> = [
-    (polygon) => clipAgainstHalfSpace(polygon, (p) => p.x, intersectAtScreenX(0)),
-    (polygon) => clipAgainstHalfSpace(polygon, (p) => screenWidth - p.x, intersectAtScreenX(screenWidth)),
-    (polygon) => clipAgainstHalfSpace(polygon, (p) => p.y, intersectAtScreenY(0)),
-    (polygon) => clipAgainstHalfSpace(polygon, (p) => screenHeight - p.y, intersectAtScreenY(screenHeight))
-  ];
-
-  let clipped = projected;
-  for (const stage of viewportStages) {
-    clipped = stage(clipped);
-    if (clipped.length < 3) return null;
-  }
-
-  return { vertices: clipped };
+  return clipAndProjectCameraPolygon(cameraSpace, camera, screenWidth, screenHeight);
 }

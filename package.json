@@ -11,7 +11,8 @@
     "test:invariants": "tsx --test tests/invariants.test.ts",
     "test:backpressure": "tsx --test tests/backpressure.test.ts",
     "test": "tsx --test tests/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo:phase2": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase2-cinema.ts"
   },
   "dependencies": {
     "@resvg/resvg-js": "2.6.2",

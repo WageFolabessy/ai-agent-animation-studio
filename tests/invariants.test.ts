@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateProjectContracts } from '../src/schemas/invariants.js';
+import { validateProjectContracts, validateChoreography } from '../src/schemas/invariants.js';
 import { createRenderConfig } from '../src/config/render-config.js';
 import type { AudioAnalysisManifest } from '../src/schemas/audio.contract.js';
 import type { DirectorStoryboardContract } from '../src/schemas/storyboard.contract.js';
 import type { AssetRigContract } from '../src/schemas/rig.contract.js';
+import type { ChoreographyContract } from '../src/schemas/choreography.contract.js';
 
 function getValidFixtures() {
   const audioManifest: AudioAnalysisManifest = {
@@ -182,7 +183,7 @@ function getValidFixtures() {
         id: 'rig_character',
         name: 'Main Character',
         type: 'character',
-        parallaxDepthZ: 0,
+        renderMode: 'billboard',
         baseTransform: {
           position: [0, 0, 0],
           rotationZDegrees: 0,
@@ -195,9 +196,18 @@ function getValidFixtures() {
             { id: 'joint_arm', parentId: 'joint_root', localOffset2D: [0, 10], length: 5, rotationZDegrees: 45 }
           ]
         },
+        parts: [
+          {
+            id: 'part_body',
+            jointId: 'joint_root',
+            localOffset2D: [0, 0],
+            shape: { kind: 'rect', size: [20, 30] },
+            style: { fill: { kind: 'solid', color: '#123456' }, opacity: 1, lit: true }
+          }
+        ],
+        secondaryMotion: [],
         svgAsset: {
-          idNamespace: 'char_ns',
-          viewBox: '0 0 100 100'
+          idNamespace: 'char_ns'
         }
       }
     ]
@@ -329,3 +339,165 @@ test('Invariants: Accepts audio manifest when durationSeconds * fps is within bo
   assert.equal(reportBoundary.isValid, true);
   assert.equal(reportBoundary.errors.some((e) => e.code === 'AUDIO_DURATION_TOTAL_FRAMES_MISMATCH'), false);
 });
+
+test('Invariants: Detects rig map key mismatch against rig.id', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+  const rig = rigs.get('rig_character')!;
+  const badMap = new Map<string, AssetRigContract>([['wrong_key', rig]]);
+
+  const report = validateProjectContracts(audioManifest, storyboard, renderConfig, badMap);
+  assert.equal(report.isValid, false);
+  assert.ok(report.errors.some((e) => e.code === 'RIG_MAP_KEY_MISMATCH'));
+});
+
+test('Invariants: Detects camera projectionMode mismatch between start and end', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+  // storyboard shot cameraEnd set to orthographic while cameraStart is perspective
+  storyboard.shots[0].cameraEnd = {
+    projectionMode: 'orthographic',
+    position: [0, 0, 100],
+    target: [0, 0, 0],
+    up: [0, 1, 0],
+    nearPlane: 1,
+    farPlane: 1000,
+    rollDegrees: 0,
+    orthographicHeight: 1080
+  };
+
+  const report = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(report.isValid, false);
+  assert.ok(report.errors.some((e) => e.code === 'CAMERA_PROJECTION_MODE_MISMATCH'));
+});
+
+test('Invariants: Detects part referencing non-existent joint or missing skeleton', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+  const rig = rigs.get('rig_character')!;
+  rig.parts.push({
+    id: 'part_orphan',
+    jointId: 'joint_does_not_exist',
+    localOffset2D: [0, 0],
+    shape: { kind: 'rect', size: [10, 10] },
+    style: { opacity: 1, lit: true }
+  });
+
+  const report = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(report.isValid, false);
+  assert.ok(report.errors.some((e) => e.code === 'PART_JOINT_NOT_FOUND'));
+});
+
+test('Invariants: Detects morph segment C0 discontinuity', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+  const rig = rigs.get('rig_character')!;
+  rig.morphTopology = {
+    baseSegments: [
+      { p0: [0, 0], p1: [10, 10], p2: [20, 10], p3: [30, 0] },
+      // Discontinuity: next segment starts at [35, 0] instead of [30, 0]
+      { p0: [35, 0], p1: [40, 10], p2: [50, 10], p3: [60, 0] }
+    ],
+    targets: []
+  };
+
+  const report = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(report.isValid, false);
+  assert.ok(report.errors.some((e) => e.code === 'MORPH_C0_DISCONTINUITY'));
+});
+
+test('Invariants: Detects particle emitter requirements and capacity violations', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+  rigs.set('rig_emitter', {
+    id: 'rig_emitter',
+    name: 'Particle Emitter',
+    type: 'particle_emitter',
+    baseTransform: { position: [0, 0, 0], rotationZDegrees: 0, scale: [1, 1] },
+    parts: [],
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'emitter_ns' }
+    // emitter missing!
+  });
+
+  const reportNoEmitter = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(reportNoEmitter.isValid, false);
+  assert.ok(reportNoEmitter.errors.some((e) => e.code === 'EMITTER_REQUIRED'));
+
+  // Now provide emitter that violates capacity
+  const emitterRig = rigs.get('rig_emitter')!;
+  emitterRig.emitter = {
+    seed: 42,
+    maxParticles: 50,
+    ratePerSecond: 100, // 100 * (60 frames / 30 fps) = 200 particles > 50 max
+    lifetimeFrames: 60,
+    spawn: { kind: 'point' },
+    velocity: { angleDegrees: 0, spreadDegrees: 45, speedMin: 10, speedMax: 50 },
+    gravity: [0, -9.8],
+    radiusRange: [1, 5],
+    paintRole: 'primary',
+    baseOpacity: 0.8
+  };
+
+  const reportOverCapacity = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(reportOverCapacity.isValid, false);
+  assert.ok(reportOverCapacity.errors.some((e) => e.code === 'EMITTER_CAPACITY'));
+});
+
+test('Invariants: validateChoreography validates tracks, detects unknown shot/rig, bounds, and order', () => {
+  const { storyboard, rigs } = getValidFixtures();
+
+  const validChoreography: ChoreographyContract = {
+    projectId: 'demo_proj',
+    tracks: [
+      {
+        rigId: 'rig_character',
+        shotId: 'shot_1',
+        transform: {
+          keyframes: [
+            { frame: 0, position: [0, 0, 0], rotationZDegrees: 0, scale: [1, 1], opacity: 1, easing: 'linear' },
+            { frame: 25, position: [100, 0, 0], rotationZDegrees: 10, scale: [1, 1], opacity: 1, easing: 'easeInOutSine' }
+          ]
+        },
+        morphKeyframes: {},
+        morphBindings: []
+      }
+    ]
+  };
+
+  const reportValid = validateChoreography(validChoreography, storyboard, rigs);
+  assert.equal(reportValid.isValid, true);
+  assert.equal(reportValid.errors.length, 0);
+
+  // Unknown shot ID
+  const invalidShotChoreo: ChoreographyContract = {
+    projectId: 'demo_proj',
+    tracks: [
+      {
+        ...validChoreography.tracks[0],
+        shotId: 'shot_unknown'
+      }
+    ]
+  };
+  const reportBadShot = validateChoreography(invalidShotChoreo, storyboard, rigs);
+  assert.equal(reportBadShot.isValid, false);
+  assert.ok(reportBadShot.errors.some((e) => e.code === 'TRACK_SHOT_NOT_FOUND'));
+
+  // Keyframe out of shot bounds (shot 1 is [0, 50), frame 55 is out of bounds)
+  const oobChoreo: ChoreographyContract = {
+    projectId: 'demo_proj',
+    tracks: [
+      {
+        rigId: 'rig_character',
+        shotId: 'shot_1',
+        transform: {
+          keyframes: [
+            { frame: 0, position: [0, 0, 0], rotationZDegrees: 0, scale: [1, 1], opacity: 1, easing: 'linear' },
+            { frame: 55, position: [100, 0, 0], rotationZDegrees: 10, scale: [1, 1], opacity: 1, easing: 'easeInOutSine' }
+          ]
+        },
+        morphKeyframes: {},
+        morphBindings: []
+      }
+    ]
+  };
+  const reportOOB = validateChoreography(oobChoreo, storyboard, rigs);
+  assert.equal(reportOOB.isValid, false);
+  assert.ok(reportOOB.errors.some((e) => e.code === 'TRACK_KEYFRAME_OUT_OF_BOUNDS'));
+});
+

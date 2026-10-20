@@ -136,3 +136,179 @@ test('Clipping: Polygon partially crossing screen viewport boundaries is clipped
 
   assert.ok(foundBoundaryVertex, 'Clipped polygon must have a vertex clipped precisely at x=1920 boundary');
 });
+
+// --- Perspective-correct depth interpolation after viewport clipping (Phase 2, Step 0A) ---
+
+const wideCamera: CameraTransform = {
+  projectionMode: 'perspective',
+  position: [0, 0, 500],
+  target: [0, 0, 0],
+  up: [0, 1, 0],
+  verticalFovDegrees: 60,
+  nearPlane: 1,
+  farPlane: 5000,
+  rollDegrees: 0
+};
+const wideBasis = computeCameraBasis(wideCamera);
+
+test('Clipping: Perspective depth at viewport edge uses 1/z interpolation (regression)', () => {
+  const p0: Vec3 = [0, 0, 490]; // camera-space depth 10
+  const p1: Vec3 = [3000, 0, -1500]; // camera-space depth 2000
+
+  const clipped = clipAndProjectLine(p0, p1, wideCamera, wideBasis, 1920, 1080);
+  assert.ok(clipped !== null);
+  assert.ok(Math.abs(clipped.p1.x - 1920) < 1e-6, 'Endpoint must lie on the right viewport edge');
+
+  // Closed form: x_c(t) = 3000 t, z_c(t) = 10 + 1990 t, edge where x_c / z_c = k.
+  const k = Math.tan((30 * Math.PI) / 180) * (1920 / 1080);
+  const tEdge = (10 * k) / (3000 - 1990 * k);
+  const expectedDepth = 10 + 1990 * tEdge;
+
+  assert.ok(Math.abs(expectedDepth - 31.33) < 0.05, `closed form sanity: ${expectedDepth}`);
+  assert.ok(
+    Math.abs(clipped.p1.zDepth - expectedDepth) < 1e-6,
+    `Clipped depth ${clipped.p1.zDepth} must equal ${expectedDepth}`
+  );
+  assert.ok(clipped.p1.zDepth < 100, 'Linear screen-space interpolation (~1371.7) must not be used');
+});
+
+test('Clipping: Orthographic depth stays linear in screen space after viewport clipping', () => {
+  const orthoCamera: CameraTransform = {
+    projectionMode: 'orthographic',
+    position: [0, 0, 500],
+    target: [0, 0, 0],
+    up: [0, 1, 0],
+    orthographicHeight: 400,
+    nearPlane: 1,
+    farPlane: 5000,
+    rollDegrees: 0
+  };
+  const orthoBasis = computeCameraBasis(orthoCamera);
+
+  const clipped = clipAndProjectLine([0, 0, 0], [3000, 0, -1500], orthoCamera, orthoBasis, 1920, 1080);
+  assert.ok(clipped !== null);
+
+  const halfWidth = (400 * (1920 / 1080)) / 2;
+  const t = halfWidth / 3000;
+  const expectedDepth = 500 + t * 1500;
+  assert.ok(Math.abs(clipped.p1.zDepth - expectedDepth) < 1e-6);
+});
+
+test('Clipping: Clipped polygon vertices stay on the original camera-space plane (round trip)', () => {
+  let seed = 0x1badf00d;
+  const rng = (): number => {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const tanHalf = Math.tan((30 * Math.PI) / 180);
+  const aspect = 1920 / 1080;
+  const toWorld = (c: Vec3): Vec3 => [
+    wideCamera.position[0] + wideBasis.right[0] * c[0] + wideBasis.up[0] * c[1] + wideBasis.forward[0] * c[2],
+    wideCamera.position[1] + wideBasis.right[1] * c[0] + wideBasis.up[1] * c[1] + wideBasis.forward[1] * c[2],
+    wideCamera.position[2] + wideBasis.right[2] * c[0] + wideBasis.up[2] * c[1] + wideBasis.forward[2] * c[2]
+  ];
+
+  let checkedPolygons = 0;
+  for (let i = 0; i < 200; i++) {
+    const cam: Vec3[] = [0, 1, 2].map(() => {
+      const z = 5 + rng() * 400;
+      return [(rng() * 2 - 1) * z * 2.5, (rng() * 2 - 1) * z * 1.5, z] as Vec3;
+    });
+
+    const clipped = clipAndProjectPolygon(cam.map(toWorld), wideCamera, wideBasis, 1920, 1080);
+    if (clipped === null) continue;
+    checkedPolygons++;
+
+    const e1: Vec3 = [cam[1][0] - cam[0][0], cam[1][1] - cam[0][1], cam[1][2] - cam[0][2]];
+    const e2: Vec3 = [cam[2][0] - cam[0][0], cam[2][1] - cam[0][1], cam[2][2] - cam[0][2]];
+    const n: Vec3 = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const nLen = Math.hypot(...n);
+
+    for (const v of clipped.vertices) {
+      const z = v.zDepth;
+      const xc = ((v.x / 1920) * 2 - 1) * z * tanHalf * aspect;
+      const yc = (1 - (v.y / 1080) * 2) * z * tanHalf;
+      const distance = Math.abs(n[0] * (xc - cam[0][0]) + n[1] * (yc - cam[0][1]) + n[2] * (z - cam[0][2])) / nLen;
+      assert.ok(distance < 1e-6, `Vertex off the source plane by ${distance} (case ${i})`);
+    }
+  }
+  assert.ok(checkedPolygons > 50, `Expected many visible polygons, got ${checkedPolygons}`);
+});
+
+test('Clipping: Canonical 3D cube from elevated perspective renders top and outer front faces, culls interior/bottom/back', () => {
+  const cubeVertices: Vec3[] = [
+    [-60, -60, -60], // 0: back bottom left
+    [60, -60, -60],  // 1: back bottom right
+    [60, 60, -60],   // 2: back top right
+    [-60, 60, -60],  // 3: back top left
+    [-60, -60, 60],  // 4: front bottom left
+    [60, -60, 60],   // 5: front bottom right
+    [60, 60, 60],    // 6: front top right
+    [-60, 60, 60]    // 7: front top left
+  ];
+
+  // Strictly CCW winding viewed from outside
+  const cubeFaces: { name: string; indices: [number, number, number, number] }[] = [
+    { name: 'front', indices: [4, 5, 6, 7] },  // +Z
+    { name: 'back', indices: [1, 0, 3, 2] },   // -Z
+    { name: 'left', indices: [0, 4, 7, 3] },   // -X
+    { name: 'right', indices: [5, 1, 2, 6] },  // +X
+    { name: 'top', indices: [7, 6, 2, 3] },    // +Y
+    { name: 'bottom', indices: [0, 1, 5, 4] }  // -Y
+  ];
+
+  const elevatedCamera: CameraTransform = {
+    projectionMode: 'perspective',
+    position: [0, 100, 320],
+    target: [0, 0, 0],
+    up: [0, 1, 0],
+    verticalFovDegrees: 60,
+    nearPlane: 1,
+    farPlane: 2000,
+    rollDegrees: 0
+  };
+
+  const visibleFaceNames: string[] = [];
+  const culledFaceNames: string[] = [];
+
+  for (const face of cubeFaces) {
+    const [i0, i1, i2] = face.indices;
+    const w0 = cubeVertices[i0];
+    const w1 = cubeVertices[i1];
+    const w2 = cubeVertices[i2];
+
+    const edge1: Vec3 = [w1[0] - w0[0], w1[1] - w0[1], w1[2] - w0[2]];
+    const edge2: Vec3 = [w2[0] - w0[0], w2[1] - w0[1], w2[2] - w0[2]];
+    // Outward normal from CCW winding
+    const normal: Vec3 = [
+      edge1[1] * edge2[2] - edge1[2] * edge2[1],
+      edge1[2] * edge2[0] - edge1[0] * edge2[2],
+      edge1[0] * edge2[1] - edge1[1] * edge2[0]
+    ];
+
+    const toCam: Vec3 = [
+      elevatedCamera.position[0] - w0[0],
+      elevatedCamera.position[1] - w0[1],
+      elevatedCamera.position[2] - w0[2]
+    ];
+    const dot = normal[0] * toCam[0] + normal[1] * toCam[1] + normal[2] * toCam[2];
+
+    if (dot > 0) {
+      visibleFaceNames.push(face.name);
+    } else {
+      culledFaceNames.push(face.name);
+    }
+  }
+
+  // Top (+Y) and Front (+Z) MUST be facing camera and visible
+  assert.ok(visibleFaceNames.includes('top'), 'Top face must be visible from elevated perspective');
+  assert.ok(visibleFaceNames.includes('front'), 'Front face must be visible from elevated perspective');
+
+  // Bottom (-Y) and Back (-Z) MUST be facing away and culled
+  assert.ok(culledFaceNames.includes('bottom'), 'Bottom face must be culled');
+  assert.ok(culledFaceNames.includes('back'), 'Back face must be culled');
+});
+

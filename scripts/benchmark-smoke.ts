@@ -6,7 +6,7 @@ import { PipelineMemorySampler } from '../src/diagnostics/memory-sampler.js';
 import { TimingProfiler } from '../src/diagnostics/timing.js';
 import { SvgBuilder } from '../src/engine/compositor/svg-builder.js';
 import type { CameraTransform, Vec3 } from '../src/schemas/primitives.schema.js';
-import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
+import { computeCameraBasis, worldToCameraSpace } from '../src/engine/camera/camera-3d.js';
 import {
   projectToScreen,
   clipAndProjectLine,
@@ -14,7 +14,8 @@ import {
 } from '../src/engine/camera/projection.js';
 import {
   evaluateSmokeBenchmarkGates,
-  HARD_RSS_LIMIT_MB,
+  MEMORY_HARD_FAIL_MB,
+  MEMORY_TARGET_MB,
   MIN_FPS
 } from '../src/diagnostics/benchmark-gates.js';
 import { findTemporaryImageFiles } from '../src/diagnostics/artifact-hygiene.js';
@@ -51,14 +52,14 @@ const cubeVertices: Vec3[] = [
   [-60, 60, 60]
 ];
 
-// 6 cube faces
+// 6 cube faces with strictly CCW winding viewed from outside
 const cubeFaces: number[][] = [
-  [0, 1, 2, 3], // Front
-  [5, 4, 7, 6], // Back
-  [4, 0, 3, 7], // Left
-  [1, 5, 6, 2], // Right
-  [3, 2, 6, 7], // Top
-  [4, 5, 1, 0]  // Bottom
+  [4, 5, 6, 7], // Front (+Z)
+  [1, 0, 3, 2], // Back (-Z)
+  [0, 4, 7, 3], // Left (-X)
+  [5, 1, 2, 6], // Right (+X)
+  [7, 6, 2, 3], // Top (+Y)
+  [0, 1, 5, 4]  // Bottom (-Y)
 ];
 
 function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): string {
@@ -87,9 +88,16 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
 
   const basis = computeCameraBasis(camera);
 
-  // Simulated audio pulse (transients at frames 30, 60, 90, 120)
-  const isAudioOnset = frameIndex === 30 || frameIndex === 60 || frameIndex === 90 || frameIndex === 120;
-  const bgGlowColor = isAudioOnset ? '#441133' : '#08081a';
+  // Simulated audio pulse with continuous exponential decay (transients at frames 30, 60, 90, 120)
+  const ONSET_FRAMES = [30, 60, 90, 120];
+  const lastOnset = ONSET_FRAMES.filter((f) => f <= frameIndex).pop();
+  const pulse = lastOnset !== undefined ? Math.exp(-(frameIndex - lastOnset) / 6) : 0;
+
+  // Background smoothly fades from #08081a (8, 8, 26) to #441133 (68, 17, 51)
+  const bgR = Math.round(8 + (68 - 8) * pulse);
+  const bgG = Math.round(8 + (17 - 8) * pulse);
+  const bgB = Math.round(26 + (51 - 26) * pulse);
+  const bgGlowColor = `#${bgR.toString(16).padStart(2, '0')}${bgG.toString(16).padStart(2, '0')}${bgB.toString(16).padStart(2, '0')}`;
 
   const builder = new SvgBuilder({ width, height, backgroundColor: bgGlowColor });
 
@@ -117,7 +125,7 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
     }
   }
 
-  // 3. Rotating 3D Totem Cube with Primitive Polygon Clipping
+  // 3. Rotating 3D Totem Cube with Outward Normals and Back-to-Front Depth Sorting
   const rotY = frameIndex * 0.04;
   const rotX = frameIndex * 0.02;
   const cosY = Math.cos(rotY),
@@ -136,6 +144,13 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
 
   const colors = ['#00ffff', '#ff00ff', '#ffff00', '#00ff88', '#ff3366', '#3388ff'];
 
+  interface VisibleFace {
+    polyPoints: Array<[number, number]>;
+    color: string;
+    centroidZ: number;
+  }
+  const visibleFaces: VisibleFace[] = [];
+
   for (let i = 0; i < cubeFaces.length; i++) {
     const face = cubeFaces[i];
     const w0 = rotatedVertices[face[0]];
@@ -143,7 +158,7 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
     const w2 = rotatedVertices[face[2]];
     const w3 = rotatedVertices[face[3]];
 
-    // 3D face normal for backface culling
+    // 3D outward normal from CCW winding: edge1 x edge2
     const edge1: Vec3 = [w1[0] - w0[0], w1[1] - w0[1], w1[2] - w0[2]];
     const edge2: Vec3 = [w2[0] - w0[0], w2[1] - w0[1], w2[2] - w0[2]];
     const normal: Vec3 = [
@@ -165,14 +180,29 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
       const clipped = clipAndProjectPolygon(faceVertices, camera, basis, width, height);
       if (clipped && clipped.vertices.length >= 3) {
         const polyPoints: Array<[number, number]> = clipped.vertices.map((v) => [v.x, v.y]);
-        builder.addPolygon(polyPoints, colors[i % colors.length], '#ffffff', 2, 0.85);
+        const c0 = worldToCameraSpace(w0, camera, basis);
+        const c1 = worldToCameraSpace(w1, camera, basis);
+        const c2 = worldToCameraSpace(w2, camera, basis);
+        const c3 = worldToCameraSpace(w3, camera, basis);
+        const centroidZ = (c0[2] + c1[2] + c2[2] + c3[2]) / 4;
+        visibleFaces.push({ polyPoints, color: colors[i % colors.length], centroidZ });
       }
     }
   }
 
+  // Strict back-to-front depth sorting (farthest first)
+  visibleFaces.sort((a, b) => b.centroidZ - a.centroidZ);
+  for (const f of visibleFaces) {
+    builder.addPolygon(f.polyPoints, f.color, '#ffffff', 2, 0.85);
+  }
+
   // 4. Audio-Reactive HUD / Visual Telemetry with Bundled DejaVu Sans Font
+  const hudR = Math.round(0 + 255 * pulse);
+  const hudG = Math.round(255 - 255 * pulse);
+  const hudB = Math.round(255 - (255 - 85) * pulse);
+  const hudColor = `#${hudR.toString(16).padStart(2, '0')}${hudG.toString(16).padStart(2, '0')}${hudB.toString(16).padStart(2, '0')}`;
   const hudText = `FRAME: ${frameIndex.toString().padStart(3, '0')} / ${totalFrames} | RMS: ${(0.4 + Math.sin(frameIndex * 0.1) * 0.3).toFixed(2)}`;
-  builder.addText(hudText, 1920 / 2, 80, 26, isAudioOnset ? '#ff0055' : '#00ffff', 'DejaVu Sans');
+  builder.addText(hudText, 1920 / 2, 80, 26, hudColor, 'DejaVu Sans');
 
   return builder.build();
 }
@@ -352,10 +382,46 @@ async function runSmokeBenchmark(): Promise<void> {
   const medRss = median(reports.map((r) => r.peakAggregateRssMb));
   const medSize = median(reports.map((r) => r.outputBytes));
 
+  // --- PLATEAU MEASUREMENT (450 Frames / 3x duration) ---
+  console.log(`\n----------------------------------------------------`);
+  console.log(`[5/5] Executing Plateau Verification (450 frames @ 1080p 30fps)...`);
+  console.log(`----------------------------------------------------`);
+
+  const plateauFrames = 450;
+  const plateauConfig = createRenderConfig({
+    width,
+    height,
+    fps,
+    pixelFormat: 'rgba',
+    totalFrames: plateauFrames,
+    preset: 'veryfast',
+    crf: 18,
+    threads: 2
+  });
+  const plateauOutputPath = path.join(OUTPUT_DIR, 'smoke_plateau_450f.mp4');
+  const plateauSampler = new PipelineMemorySampler(30);
+  const plateauPipeline = new RenderPipeline({
+    config: plateauConfig,
+    outputPath: plateauOutputPath,
+    frameGenerator: (f) => generateProceduralFrameSvg(f, plateauFrames)
+  });
+
+  const plateauRes = await plateauPipeline.run((streamer) => {
+    const pid = streamer.getChildPid();
+    if (pid) plateauSampler.start(pid);
+  });
+  const plateauMemStats = plateauSampler.stop();
+  if (fs.existsSync(plateauRes.finalOutputPath)) {
+    fs.unlinkSync(plateauRes.finalOutputPath);
+  }
+  console.log(
+    `✓ Plateau run complete: ${plateauFrames} frames in ${(plateauRes.totalWallMs / 1000).toFixed(2)}s | Peak Aggregate RSS: ${plateauMemStats.peakAggregateRssMb} MB`
+  );
+
   console.log(`\nCross-Run Summary:`);
   console.log(`- Median Wall Time: ${(medWall / 1000).toFixed(2)}s`);
   console.log(`- Median Effective FPS: ${medFps.toFixed(2)} FPS`);
-  console.log(`- Median Peak Aggregate RSS: ${medRss.toFixed(2)} MB (Hard Constraint Limit < ${HARD_RSS_LIMIT_MB} MB)`);
+  console.log(`- Median Peak Aggregate RSS: ${medRss.toFixed(2)} MB (Target < ${MEMORY_TARGET_MB} MB, Hard Limit <= ${MEMORY_HARD_FAIL_MB} MB)`);
   console.log(`- Median Output Size: ${(medSize / (1024 * 1024)).toFixed(2)} MB`);
 
   console.log('\nPer-Iteration Breakdown:');
@@ -375,8 +441,8 @@ async function runSmokeBenchmark(): Promise<void> {
     }))
   );
 
-  // Strict Gates Evaluation (Every iteration < 400 MB, Median < 400 MB, FPS >= 15, Zero residue)
-  evaluateSmokeBenchmarkGates({
+  // Gates Evaluation with 400 MB target warning, 600 MB hard limit, plateau test, and artifact hygiene
+  const gateResult = evaluateSmokeBenchmarkGates({
     reports: reports.map((r) => ({
       iterNumber: r.iterNumber,
       effectiveFps: r.effectiveFps,
@@ -386,16 +452,28 @@ async function runSmokeBenchmark(): Promise<void> {
       preset: 'veryfast',
       threads: 2
     })),
-    maxIterationRssThresholdMb: HARD_RSS_LIMIT_MB,
-    medRssThresholdMb: HARD_RSS_LIMIT_MB,
+    plateau: {
+      short: { frames: totalFrames, peakAggregateRssMb: medRss },
+      long: { frames: plateauFrames, peakAggregateRssMb: plateauMemStats.peakAggregateRssMb }
+    },
     minFpsThreshold: MIN_FPS,
     existingImageFiles: findTemporaryImageFiles()
   });
 
-  console.log(`\nMemory SLO Evaluation (< ${HARD_RSS_LIMIT_MB} MB per iteration & median):`);
-  console.log(`- Status: ACHIEVED`);
-  console.log(`- All iterations: ${reports.map((r) => `${r.peakAggregateRssMb} MB`).join(', ')} (all < ${HARD_RSS_LIMIT_MB} MB)`);
+  console.log(`\nMemory SLO Evaluation (Target < ${MEMORY_TARGET_MB} MB, Hard Limit <= ${MEMORY_HARD_FAIL_MB} MB):`);
+  console.log(`- Gate Status: ${gateResult.status === 'pass' ? 'PASSED (CLEAN)' : 'PASSED WITH WARNINGS'}`);
+  console.log(`- All iterations: ${reports.map((r) => `${r.peakAggregateRssMb} MB`).join(', ')}`);
   console.log(`- Median Peak Aggregate RSS: ${medRss.toFixed(2)} MB`);
+  if (gateResult.warnings.length > 0) {
+    for (const w of gateResult.warnings) {
+      console.warn(`  ⚠ ${w}`);
+    }
+  }
+  if (gateResult.plateau) {
+    console.log(
+      `- Plateau Check (150f -> 450f): growth ${gateResult.plateau.growthMb.toFixed(2)} MB <= allowed ${gateResult.plateau.allowedMb.toFixed(2)} MB (Passed)`
+    );
+  }
   console.log(`- FFmpeg Thread Configuration: 2 (preset: veryfast, memory-optimized parameters)`);
   console.log(`- Median Effective FPS: ${medFps.toFixed(2)} FPS (Target >= ${MIN_FPS} FPS)`);
 

@@ -170,13 +170,13 @@ test('RenderConfig & Thread Mapping: Configuration and safe mapping verification
   assert.deepEqual(mapFfmpegThreads(4), ['-threads', '4']);
 });
 
-test('AssetRigContract: Validates geometry bindings, pose interpolation, and view angle variants', () => {
+test('AssetRigContract: Validates parts, pose interpolation, and view angle variants', () => {
   const validRig = {
     id: 'rig_hero',
     name: 'Hero Character',
     type: 'character',
     viewAngle: 'three_quarter',
-    parallaxDepthZ: 0,
+    renderMode: 'billboard',
     baseTransform: {
       position: [0, 0, 0],
       rotationZDegrees: 0,
@@ -201,21 +201,25 @@ test('AssetRigContract: Validates geometry bindings, pose interpolation, and vie
         }
       ]
     },
-    geometryBindings: [
+    parts: [
       {
+        id: 'part_torso',
         jointId: 'joint_root',
-        svgElementId: 'path_torso',
-        bindOffset2D: [0, 0],
-        weight: 1.0
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [40, 60] },
+        style: { fill: { kind: 'solid', color: '#112233' }, opacity: 1, lit: true }
       },
       {
+        id: 'part_head',
         jointId: 'joint_head',
-        svgElementId: 'path_head',
-        weight: 0.8
+        localOffset2D: [0, 0],
+        shape: { kind: 'ellipse', radius: [20, 20] },
+        style: { fill: { kind: 'palette', role: 'primary', shade: 0.1 }, opacity: 1, lit: true }
       }
     ],
     poseInterpolation: {
       interpolationMode: 'linear',
+      loopFrames: 60,
       keyframes: [
         {
           frame: 0,
@@ -236,14 +240,13 @@ test('AssetRigContract: Validates geometry bindings, pose interpolation, and vie
       ]
     },
     svgAsset: {
-      idNamespace: 'hero_ns',
-      viewBox: '0 0 500 500'
+      idNamespace: 'hero_ns'
     }
   };
 
   const parsed = AssetRigContractSchema.parse(validRig);
   assert.equal(parsed.viewAngle, 'three_quarter');
-  assert.equal(parsed.geometryBindings?.length, 2);
+  assert.equal(parsed.parts.length, 2);
   assert.equal(parsed.poseInterpolation?.keyframes.length, 2);
 
   // Invalid viewAngle
@@ -254,12 +257,17 @@ test('AssetRigContract: Validates geometry bindings, pose interpolation, and vie
     });
   });
 
-  // Invalid geometry binding weight (> 1.0)
+  // Invalid part style opacity (> 1.0)
   assert.throws(() => {
     AssetRigContractSchema.parse({
       ...validRig,
-      geometryBindings: [
-        { jointId: 'joint_root', svgElementId: 'path_torso', weight: 1.5 }
+      parts: [
+        {
+          id: 'part_torso',
+          jointId: 'joint_root',
+          shape: { kind: 'rect', size: [40, 60] },
+          style: { opacity: 1.5 }
+        }
       ]
     });
   });
@@ -276,6 +284,61 @@ test('AssetRigContract: Validates geometry bindings, pose interpolation, and vie
       }
     });
   });
+});
+
+test('ChoreographyContract: Validates entity tracks and morph bindings', async () => {
+  const { ChoreographyContractSchema } = await import('../src/schemas/choreography.contract.js');
+
+  const validChoreo = {
+    projectId: 'demo_phase2',
+    tracks: [
+      {
+        rigId: 'rig_hero',
+        shotId: 'shot_1',
+        transform: {
+          keyframes: [
+            {
+              frame: 0,
+              position: [0, 100, 500],
+              rotationZDegrees: 0,
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: 30,
+              position: [50, 100, 500],
+              rotationZDegrees: 10,
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'easeInQuad'
+            }
+          ]
+        },
+        pose: {
+          timeScale: 1,
+          startPoseFrame: 0
+        },
+        morphKeyframes: {
+          mouth_open: [{ frame: 0, weight: 0 }, { frame: 15, weight: 0.8 }]
+        },
+        morphBindings: [
+          {
+            target: 'mouth_open',
+            source: 'audio.rms',
+            gain: 1.5,
+            bias: 0.1,
+            spring: { zeta: 0.6, omega: 15 }
+          }
+        ]
+      }
+    ]
+  };
+
+  const parsed = ChoreographyContractSchema.parse(validChoreo);
+  assert.equal(parsed.tracks.length, 1);
+  assert.equal(parsed.tracks[0].transform.keyframes.length, 2);
+  assert.equal(parsed.tracks[0].morphBindings.length, 1);
 });
 
 test('SvgViewBox: Validates negative, decimal, whitespace-delimited viewBoxes and rejects invalid dimensions', async () => {

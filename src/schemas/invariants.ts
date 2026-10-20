@@ -2,6 +2,7 @@ import type { AudioAnalysisManifest } from './audio.contract.js';
 import type { DirectorStoryboardContract } from './storyboard.contract.js';
 import type { RenderConfig } from '../config/render-config.js';
 import type { AssetRigContract } from './rig.contract.js';
+import type { ChoreographyContract } from './choreography.contract.js';
 
 export interface ValidationErrorItem {
   code: string;
@@ -157,6 +158,57 @@ export function validateProjectContracts(
       });
     }
 
+    // Camera projection mode consistency
+    if (shot.cameraStart.projectionMode !== shot.cameraEnd.projectionMode) {
+      errors.push({
+        code: 'CAMERA_PROJECTION_MODE_MISMATCH',
+        path: `storyboard.shots[${i}].cameraStart.projectionMode`,
+        severity: 'fatal',
+        message: `Shot "${shot.id}" cameraStart projectionMode (${shot.cameraStart.projectionMode}) does not match cameraEnd (${shot.cameraEnd.projectionMode})`,
+        relatedIds: [shot.id]
+      });
+    }
+
+    // Static movement consistency check
+    if (shot.movement === 'STATIC') {
+      const start = shot.cameraStart;
+      const end = shot.cameraEnd;
+      const posDiff = Math.hypot(
+        start.position[0] - end.position[0],
+        start.position[1] - end.position[1],
+        start.position[2] - end.position[2]
+      );
+      const tgtDiff = Math.hypot(
+        start.target[0] - end.target[0],
+        start.target[1] - end.target[1],
+        start.target[2] - end.target[2]
+      );
+      const upDiff = Math.hypot(
+        start.up[0] - end.up[0],
+        start.up[1] - end.up[1],
+        start.up[2] - end.up[2]
+      );
+      const rollDiff = Math.abs((start.rollDegrees ?? 0) - (end.rollDegrees ?? 0));
+      if (posDiff > 1e-4 || tgtDiff > 1e-4 || upDiff > 1e-4 || rollDiff > 1e-4) {
+        errors.push({
+          code: 'STATIC_SHOT_CAMERA_MOVES',
+          path: `storyboard.shots[${i}].movement`,
+          severity: 'warning',
+          message: `Shot "${shot.id}" is marked as STATIC, but cameraStart and cameraEnd transforms differ.`
+        });
+      }
+    }
+
+    // Deferred depth of field warning
+    if (shot.depthOfFieldBlur !== undefined) {
+      errors.push({
+        code: 'DOF_DEFERRED',
+        path: `storyboard.shots[${i}].depthOfFieldBlur`,
+        severity: 'warning',
+        message: `Shot "${shot.id}" specifies depthOfFieldBlur which is deferred in Phase 2.`
+      });
+    }
+
     // Every shot must have valid bounds within [0, totalFrames)
     if (shot.frameRange.startFrameInclusive < 0 || shot.frameRange.endFrameExclusive > storyboard.totalFrames) {
       errors.push({
@@ -282,51 +334,70 @@ export function validateProjectContracts(
     }
   }
 
-  // 5. Asset Rig Invariants: Unique ID, single root, no cycles, unique morph targets
+  // 5. Asset Rig Invariants: Map key consistency, unique ID, skeleton, parts, morph, pose, secondary, emitter
   const rigIds = new Set<string>();
-  for (const [rigId, rig] of rigs.entries()) {
+  for (const [mapKey, rig] of rigs.entries()) {
+    if (mapKey !== rig.id) {
+      errors.push({
+        code: 'RIG_MAP_KEY_MISMATCH',
+        path: `rigs[${mapKey}]`,
+        severity: 'fatal',
+        message: `Rig Map key "${mapKey}" does not match rig.id "${rig.id}"`
+      });
+    }
+
     if (rigIds.has(rig.id)) {
       errors.push({
         code: 'DUPLICATE_RIG_ID',
-        path: `rigs[${rigId}]`,
+        path: `rigs[${mapKey}]`,
         severity: 'fatal',
         message: `Duplicate rig ID: "${rig.id}"`
       });
     }
     rigIds.add(rig.id);
 
+    // Deferred viewAngle warning
+    if (rig.viewAngle !== undefined) {
+      errors.push({
+        code: 'VIEW_ANGLE_DEFERRED',
+        path: `rigs[${mapKey}].viewAngle`,
+        severity: 'warning',
+        message: `Rig "${rig.id}" specifies viewAngle "${rig.viewAngle}" which is deferred in Phase 2.`
+      });
+    }
+
+    const skeletonJointIds = new Set<string>();
     if (rig.skeleton) {
       const joints = rig.skeleton.joints;
-      const jointIds = new Set<string>();
       const rootJoints = joints.filter((j) => j.parentId === null);
 
       if (rootJoints.length !== 1) {
         errors.push({
           code: 'SKELETON_ROOT_COUNT_INVALID',
-          path: `rigs[${rigId}].skeleton`,
+          path: `rigs[${mapKey}].skeleton`,
           severity: 'error',
-          message: `Rig "${rigId}" must have exactly 1 root joint (found ${rootJoints.length})`
+          message: `Rig "${rig.id}" must have exactly 1 root joint (found ${rootJoints.length})`
         });
       }
       if (rootJoints.length === 1 && rootJoints[0].id !== rig.skeleton.rootJointId) {
         errors.push({
           code: 'SKELETON_ROOT_ID_MISMATCH',
-          path: `rigs[${rigId}].skeleton.rootJointId`,
+          path: `rigs[${mapKey}].skeleton.rootJointId`,
           severity: 'error',
           message: 'rootJointId does not point to the actual root joint'
         });
       }
 
       for (const joint of joints) {
-        if (jointIds.has(joint.id)) {
+        if (skeletonJointIds.has(joint.id)) {
           errors.push({
             code: 'DUPLICATE_JOINT_ID',
-            path: `rigs[${rigId}].skeleton.joints`,
+            path: `rigs[${mapKey}].skeleton.joints`,
             severity: 'error',
-            message: `Duplicate joint ID "${joint.id}" in rig "${rigId}"`
+            message: `Duplicate joint ID "${joint.id}" in rig "${rig.id}"`
           });
         }
-        jointIds.add(joint.id);
+        skeletonJointIds.add(joint.id);
       }
 
       // Detect joint hierarchy cycles
@@ -338,9 +409,9 @@ export function validateProjectContracts(
           if (visited.has(curr)) {
             errors.push({
               code: 'SKELETON_CYCLE_DETECTED',
-              path: `rigs[${rigId}].skeleton`,
+              path: `rigs[${mapKey}].skeleton`,
               severity: 'fatal',
-              message: `Cycle detected at joint "${joint.id}" in rig "${rigId}"`
+              message: `Cycle detected at joint "${joint.id}" in rig "${rig.id}"`
             });
             break;
           }
@@ -349,7 +420,7 @@ export function validateProjectContracts(
           if (!parent) {
             errors.push({
               code: 'SKELETON_ORPHAN_PARENT',
-              path: `rigs[${rigId}].skeleton`,
+              path: `rigs[${mapKey}].skeleton`,
               severity: 'error',
               message: `Parent joint "${curr}" not found for joint "${joint.id}"`
             });
@@ -360,16 +431,88 @@ export function validateProjectContracts(
       }
     }
 
+    // Parts validation
+    const partIds = new Set<string>();
+    let morphPartCount = 0;
+    for (const part of rig.parts) {
+      if (partIds.has(part.id)) {
+        errors.push({
+          code: 'PART_DUPLICATE_ID',
+          path: `rigs[${mapKey}].parts`,
+          severity: 'error',
+          message: `Duplicate part ID "${part.id}" in rig "${rig.id}"`
+        });
+      }
+      partIds.add(part.id);
+
+      if (part.jointId !== null) {
+        if (!rig.skeleton) {
+          errors.push({
+            code: 'PART_SKELETON_REQUIRED',
+            path: `rigs[${mapKey}].parts[${part.id}]`,
+            severity: 'error',
+            message: `Part "${part.id}" references joint "${part.jointId}", but rig "${rig.id}" has no skeleton.`
+          });
+        } else if (!skeletonJointIds.has(part.jointId)) {
+          errors.push({
+            code: 'PART_JOINT_NOT_FOUND',
+            path: `rigs[${mapKey}].parts[${part.id}]`,
+            severity: 'error',
+            message: `Part "${part.id}" references joint "${part.jointId}" which does not exist in skeleton.`
+          });
+        }
+      }
+
+      if (part.shape.kind === 'morph') {
+        morphPartCount++;
+      }
+    }
+
+    if (morphPartCount > 1) {
+      errors.push({
+        code: 'MORPH_PART_DUPLICATE',
+        path: `rigs[${mapKey}].parts`,
+        severity: 'error',
+        message: `Rig "${rig.id}" contains ${morphPartCount} morph parts; at most one morph part is allowed per rig.`
+      });
+    }
+
+    if (morphPartCount === 1 && !rig.morphTopology) {
+      errors.push({
+        code: 'MORPH_PART_WITHOUT_TOPOLOGY',
+        path: `rigs[${mapKey}].parts`,
+        severity: 'error',
+        message: `Rig "${rig.id}" contains a morph part but has no morphTopology defined.`
+      });
+    }
+
+    // Morph topology validation & C0 continuity
     if (rig.morphTopology) {
       const morphNames = new Set<string>();
-      const baseCount = rig.morphTopology.baseSegments.length;
+      const baseSegments = rig.morphTopology.baseSegments;
+      const baseCount = baseSegments.length;
+
+      // Check C0 continuity of baseSegments: p3_s = p0_{s+1}
+      for (let s = 0; s < baseCount - 1; s++) {
+        const p3 = baseSegments[s].p3;
+        const nextP0 = baseSegments[s + 1].p0;
+        if (Math.abs(p3[0] - nextP0[0]) > 1e-6 || Math.abs(p3[1] - nextP0[1]) > 1e-6) {
+          errors.push({
+            code: 'MORPH_C0_DISCONTINUITY',
+            path: `rigs[${mapKey}].morphTopology.baseSegments[${s}]`,
+            severity: 'error',
+            message: `Base segments C0 discontinuity between segment ${s} endpoint [${p3}] and segment ${s + 1} startpoint [${nextP0}].`
+          });
+        }
+      }
+
       for (const target of rig.morphTopology.targets) {
         if (morphNames.has(target.name)) {
           errors.push({
             code: 'DUPLICATE_MORPH_TARGET_NAME',
-            path: `rigs[${rigId}].morphTopology.targets`,
+            path: `rigs[${mapKey}].morphTopology.targets`,
             severity: 'error',
-            message: `Duplicate morph target name "${target.name}" in rig "${rigId}"`
+            message: `Duplicate morph target name "${target.name}" in rig "${rig.id}"`
           });
         }
         morphNames.add(target.name);
@@ -377,9 +520,267 @@ export function validateProjectContracts(
         if (target.segments.length !== baseCount) {
           errors.push({
             code: 'MORPH_SEGMENT_COUNT_MISMATCH',
-            path: `rigs[${rigId}].morphTopology.targets[${target.name}]`,
+            path: `rigs[${mapKey}].morphTopology.targets[${target.name}]`,
             severity: 'fatal',
             message: `Morph target segment count for "${target.name}" (${target.segments.length}) != base (${baseCount})`
+          });
+        } else {
+          // Check C0 continuity of target segments
+          for (let s = 0; s < target.segments.length - 1; s++) {
+            const p3 = target.segments[s].p3;
+            const nextP0 = target.segments[s + 1].p0;
+            if (Math.abs(p3[0] - nextP0[0]) > 1e-6 || Math.abs(p3[1] - nextP0[1]) > 1e-6) {
+              errors.push({
+                code: 'MORPH_C0_DISCONTINUITY',
+                path: `rigs[${mapKey}].morphTopology.targets[${target.name}].segments[${s}]`,
+                severity: 'error',
+                message: `Morph target "${target.name}" C0 discontinuity between segment ${s} endpoint [${p3}] and segment ${s + 1} startpoint [${nextP0}].`
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Pose interpolation validation
+    if (rig.poseInterpolation) {
+      const { keyframes, interpolationMode, loopFrames } = rig.poseInterpolation;
+      if (interpolationMode === 'cubic_spline') {
+        for (const kf of keyframes) {
+          if (kf.easing !== undefined) {
+            errors.push({
+              code: 'POSE_EASING_IGNORED',
+              path: `rigs[${mapKey}].poseInterpolation.keyframes`,
+              severity: 'warning',
+              message: `Keyframe easing is ignored in cubic_spline mode for rig "${rig.id}".`
+            });
+            break;
+          }
+        }
+      }
+
+      // Keyframe ordering
+      for (let k = 0; k < keyframes.length; k++) {
+        if (k > 0 && keyframes[k].frame <= keyframes[k - 1].frame) {
+          errors.push({
+            code: 'POSE_KEYFRAME_ORDER',
+            path: `rigs[${mapKey}].poseInterpolation.keyframes[${k}]`,
+            severity: 'error',
+            message: `Pose keyframes must have strictly ascending frame numbers (found ${keyframes[k].frame} after ${keyframes[k - 1].frame}).`
+          });
+        }
+
+        // Check duplicate joints in keyframe and joint existence
+        const jointSeen = new Set<string>();
+        for (const jt of keyframes[k].jointTransforms) {
+          if (jointSeen.has(jt.jointId)) {
+            errors.push({
+              code: 'POSE_DUPLICATE_JOINT_IN_KEYFRAME',
+              path: `rigs[${mapKey}].poseInterpolation.keyframes[${k}].jointTransforms`,
+              severity: 'error',
+              message: `Duplicate joint "${jt.jointId}" in keyframe ${keyframes[k].frame} for rig "${rig.id}".`
+            });
+          }
+          jointSeen.add(jt.jointId);
+
+          if (!skeletonJointIds.has(jt.jointId)) {
+            errors.push({
+              code: 'POSE_JOINT_NOT_FOUND',
+              path: `rigs[${mapKey}].poseInterpolation.keyframes[${k}].jointTransforms[${jt.jointId}]`,
+              severity: 'error',
+              message: `Pose transform references joint "${jt.jointId}" which does not exist in skeleton.`
+            });
+          }
+        }
+      }
+
+      if (loopFrames !== undefined) {
+        if (keyframes[0].frame !== 0) {
+          errors.push({
+            code: 'POSE_KEYFRAME_ORDER',
+            path: `rigs[${mapKey}].poseInterpolation.keyframes[0]`,
+            severity: 'error',
+            message: `First pose keyframe must be at frame 0 when loopFrames is set for rig "${rig.id}".`
+          });
+        }
+        const lastFrame = keyframes[keyframes.length - 1].frame;
+        if (lastFrame > loopFrames) {
+          errors.push({
+            code: 'POSE_KEYFRAME_ORDER',
+            path: `rigs[${mapKey}].poseInterpolation.keyframes[${keyframes.length - 1}]`,
+            severity: 'error',
+            message: `Last pose keyframe frame (${lastFrame}) exceeds loopFrames (${loopFrames}) for rig "${rig.id}".`
+          });
+        }
+      }
+    }
+
+    // Secondary motion validation
+    for (const sm of rig.secondaryMotion) {
+      if (!skeletonJointIds.has(sm.jointId)) {
+        errors.push({
+          code: 'SECONDARY_JOINT_NOT_FOUND',
+          path: `rigs[${mapKey}].secondaryMotion[${sm.jointId}]`,
+          severity: 'error',
+          message: `Secondary motion references joint "${sm.jointId}" which does not exist in skeleton.`
+        });
+      }
+    }
+
+    // Particle emitter validation
+    if (rig.type === 'particle_emitter') {
+      if (!rig.emitter) {
+        errors.push({
+          code: 'EMITTER_REQUIRED',
+          path: `rigs[${mapKey}].emitter`,
+          severity: 'error',
+          message: `Rig "${rig.id}" is of type "particle_emitter" and must have an emitter defined.`
+        });
+      } else {
+        const burstCount = rig.emitter.audio?.onsetBurstCount ?? 0;
+        const estimatedMax =
+          Math.ceil(rig.emitter.ratePerSecond * (rig.emitter.lifetimeFrames / storyboard.fps)) + burstCount;
+        if (estimatedMax > rig.emitter.maxParticles) {
+          errors.push({
+            code: 'EMITTER_CAPACITY',
+            path: `rigs[${mapKey}].emitter.maxParticles`,
+            severity: 'error',
+            message: `Emitter capacity error in rig "${rig.id}": estimated active particles (${estimatedMax}) exceeds maxParticles (${rig.emitter.maxParticles}).`
+          });
+        }
+      }
+    } else if (rig.emitter) {
+      errors.push({
+        code: 'EMITTER_FORBIDDEN',
+        path: `rigs[${mapKey}].emitter`,
+        severity: 'error',
+        message: `Rig "${rig.id}" is of type "${rig.type}" but defines an emitter (only "particle_emitter" rigs can define emitter).`
+      });
+    }
+  }
+
+  return {
+    isValid: errors.filter((e) => e.severity === 'fatal' || e.severity === 'error').length === 0,
+    errors
+  };
+}
+
+/**
+ * Validates cross-contract choreography consistency against Storyboard shots and Asset Rigs.
+ */
+export function validateChoreography(
+  choreography: ChoreographyContract,
+  storyboard: DirectorStoryboardContract,
+  rigs: Map<string, AssetRigContract>
+): ValidationReport {
+  const errors: ValidationErrorItem[] = [];
+
+  const shotMap = new Map(storyboard.shots.map((s) => [s.id, s]));
+  const trackPairs = new Set<string>();
+
+  for (let t = 0; t < choreography.tracks.length; t++) {
+    const track = choreography.tracks[t];
+    const pairKey = `${track.shotId}:${track.rigId}`;
+
+    if (trackPairs.has(pairKey)) {
+      errors.push({
+        code: 'TRACK_DUPLICATE',
+        path: `choreography.tracks[${t}]`,
+        severity: 'error',
+        message: `Duplicate track for shot "${track.shotId}" and rig "${track.rigId}".`
+      });
+    }
+    trackPairs.add(pairKey);
+
+    const shot = shotMap.get(track.shotId);
+    if (!shot) {
+      errors.push({
+        code: 'TRACK_SHOT_NOT_FOUND',
+        path: `choreography.tracks[${t}].shotId`,
+        severity: 'error',
+        message: `Track references unknown shot "${track.shotId}".`
+      });
+    }
+
+    const rig = rigs.get(track.rigId);
+    if (!rig) {
+      errors.push({
+        code: 'TRACK_RIG_NOT_FOUND',
+        path: `choreography.tracks[${t}].rigId`,
+        severity: 'error',
+        message: `Track references unknown rig "${track.rigId}".`
+      });
+    }
+
+    if (shot && rig) {
+      if (!shot.activeRigIds.includes(track.rigId)) {
+        errors.push({
+          code: 'TRACK_RIG_NOT_ACTIVE_IN_SHOT',
+          path: `choreography.tracks[${t}].rigId`,
+          severity: 'error',
+          message: `Rig "${track.rigId}" is not declared in shot "${shot.id}" activeRigIds.`
+        });
+      }
+
+      // Check transform keyframes
+      const keyframes = track.transform.keyframes;
+      for (let k = 0; k < keyframes.length; k++) {
+        const kf = keyframes[k];
+        if (k > 0 && kf.frame <= keyframes[k - 1].frame) {
+          errors.push({
+            code: 'TRACK_KEYFRAME_ORDER',
+            path: `choreography.tracks[${t}].transform.keyframes[${k}]`,
+            severity: 'error',
+            message: `Track transform keyframes must be strictly ascending (found frame ${kf.frame} after ${keyframes[k - 1].frame}).`
+          });
+        }
+
+        if (
+          kf.frame < shot.frameRange.startFrameInclusive ||
+          kf.frame >= shot.frameRange.endFrameExclusive
+        ) {
+          errors.push({
+            code: 'TRACK_KEYFRAME_OUT_OF_BOUNDS',
+            path: `choreography.tracks[${t}].transform.keyframes[${k}].frame`,
+            severity: 'error',
+            message: `Keyframe frame ${kf.frame} is out of shot "${shot.id}" range [${shot.frameRange.startFrameInclusive}, ${shot.frameRange.endFrameExclusive}).`
+          });
+        }
+      }
+
+      // Morph target existence check
+      const rigMorphTargets = new Set(rig.morphTopology?.targets.map((tgt) => tgt.name) ?? []);
+
+      for (const [targetName, morphKeys] of Object.entries(track.morphKeyframes)) {
+        if (!rigMorphTargets.has(targetName)) {
+          errors.push({
+            code: 'TRACK_MORPH_TARGET_NOT_FOUND',
+            path: `choreography.tracks[${t}].morphKeyframes[${targetName}]`,
+            severity: 'error',
+            message: `Morph target "${targetName}" does not exist in rig "${rig.id}" morphTopology.`
+          });
+        }
+
+        for (let m = 0; m < morphKeys.length; m++) {
+          if (m > 0 && morphKeys[m].frame <= morphKeys[m - 1].frame) {
+            errors.push({
+              code: 'TRACK_KEYFRAME_ORDER',
+              path: `choreography.tracks[${t}].morphKeyframes[${targetName}][${m}]`,
+              severity: 'error',
+              message: `Morph keyframes for "${targetName}" must be strictly ascending.`
+            });
+          }
+        }
+      }
+
+      for (let b = 0; b < track.morphBindings.length; b++) {
+        const binding = track.morphBindings[b];
+        if (!rigMorphTargets.has(binding.target)) {
+          errors.push({
+            code: 'TRACK_MORPH_TARGET_NOT_FOUND',
+            path: `choreography.tracks[${t}].morphBindings[${b}].target`,
+            severity: 'error',
+            message: `Morph binding target "${binding.target}" does not exist in rig "${rig.id}" morphTopology.`
           });
         }
       }
