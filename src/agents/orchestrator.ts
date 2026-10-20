@@ -16,7 +16,7 @@ import {
 } from './director-agent.js';
 import { RigAgent } from './rig-agent.js';
 import { ChoreographerAgent } from './choreographer-agent.js';
-import { LlmJsonParseError } from './llm-provider.js';
+import { LlmJsonParseError, LlmSchemaValidationError } from './llm-provider.js';
 import type {
   AgentAttemptLog,
   LlmProvider,
@@ -24,6 +24,16 @@ import type {
   OrchestrationResult,
   StudioAgentRole
 } from './types.js';
+
+function extractDraftFromException(err: unknown): string | undefined {
+  if (err instanceof LlmSchemaValidationError) {
+    return err.rawDraft;
+  }
+  if (err instanceof LlmJsonParseError) {
+    return err.rawDraft || err.rawSnippet;
+  }
+  return undefined;
+}
 
 export class OrchestrationValidationError extends Error {
   public readonly agentRole: StudioAgentRole;
@@ -108,6 +118,7 @@ export class StudioAgentOrchestrator {
     // =========================================================================
     let storyboard: DirectorStoryboardContract | undefined;
     let directorRepairErrors: ValidationErrorItem[] = [];
+    let directorPreviousDraft: string | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const t0 = performance.now();
@@ -123,7 +134,8 @@ export class StudioAgentOrchestrator {
           width,
           height,
           attempt,
-          repairErrors: directorRepairErrors
+          repairErrors: directorRepairErrors,
+          previousDraft: directorPreviousDraft
         });
 
         // Validate storyboard-level invariants (ignoring RIG_NOT_FOUND until Stage 2)
@@ -151,6 +163,7 @@ export class StudioAgentOrchestrator {
         }
 
         directorRepairErrors = storyboardBlockingErrors;
+        directorPreviousDraft = JSON.stringify(candidate, null, 2);
       } catch (err) {
         const schemaErrors = convertExceptionToValidationErrors(err, 'director');
         attempts.push({
@@ -160,6 +173,7 @@ export class StudioAgentOrchestrator {
           durationMs: Number((performance.now() - t0).toFixed(2))
         });
         directorRepairErrors = schemaErrors;
+        directorPreviousDraft = extractDraftFromException(err);
       }
 
       if (attempt === maxAttempts) {
@@ -177,6 +191,7 @@ export class StudioAgentOrchestrator {
     let rigs: Map<string, AssetRigContract> | undefined;
     let projectValidation: ValidationReport | undefined;
     let rigRepairErrors: ValidationErrorItem[] = [];
+    let rigPreviousDraft: string | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const t0 = performance.now();
@@ -187,7 +202,8 @@ export class StudioAgentOrchestrator {
           storyboard,
           audioManifest: options.audioManifest,
           attempt,
-          repairErrors: rigRepairErrors
+          repairErrors: rigRepairErrors,
+          previousDraft: rigPreviousDraft
         });
 
         const report = validateProjectContracts(
@@ -214,6 +230,7 @@ export class StudioAgentOrchestrator {
         }
 
         rigRepairErrors = blockingErrors;
+        rigPreviousDraft = JSON.stringify({ rigs: Array.from(candidateRigs.values()) }, null, 2);
       } catch (err) {
         const schemaErrors = convertExceptionToValidationErrors(err, 'rig');
         attempts.push({
@@ -223,6 +240,7 @@ export class StudioAgentOrchestrator {
           durationMs: Number((performance.now() - t0).toFixed(2))
         });
         rigRepairErrors = schemaErrors;
+        rigPreviousDraft = extractDraftFromException(err);
       }
 
       if (attempt === maxAttempts) {
@@ -240,6 +258,7 @@ export class StudioAgentOrchestrator {
     let choreography: ChoreographyContract | undefined;
     let choreographyValidation: ValidationReport | undefined;
     let choreoRepairErrors: ValidationErrorItem[] = [];
+    let choreoPreviousDraft: string | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const t0 = performance.now();
@@ -251,7 +270,8 @@ export class StudioAgentOrchestrator {
           rigs,
           audioManifest: options.audioManifest,
           attempt,
-          repairErrors: choreoRepairErrors
+          repairErrors: choreoRepairErrors,
+          previousDraft: choreoPreviousDraft
         });
 
         const report = validateChoreography(candidateChoreo, storyboard, rigs);
@@ -273,6 +293,7 @@ export class StudioAgentOrchestrator {
         }
 
         choreoRepairErrors = blockingErrors;
+        choreoPreviousDraft = JSON.stringify(candidateChoreo, null, 2);
       } catch (err) {
         const schemaErrors = convertExceptionToValidationErrors(err, 'choreographer');
         attempts.push({
@@ -282,6 +303,7 @@ export class StudioAgentOrchestrator {
           durationMs: Number((performance.now() - t0).toFixed(2))
         });
         choreoRepairErrors = schemaErrors;
+        choreoPreviousDraft = extractDraftFromException(err);
       }
 
       if (attempt === maxAttempts) {

@@ -21,6 +21,8 @@ import { demoAudioManifest, DemoAudioFeatureReader } from '../src/demo/phase2-ci
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
 import { SceneCompositor } from '../src/engine/compositor/scene-compositor.js';
 import { samplePoseTrack } from '../src/engine/rigging/deformer.js';
+import { validateProjectContracts, validateChoreography } from '../src/schemas/invariants.js';
+import { createRenderConfig } from '../src/config/render-config.js';
 
 const demoReader = new DemoAudioFeatureReader();
 const getDemoAudioFeature = (f: number) => demoReader.getFrameFeature(f);
@@ -420,4 +422,149 @@ test('Phase 4 Agents & Orchestration Suite', async (t) => {
       0
     );
   });
+
+  await t.test('Embeds valid JSON Schema draft-07 into Director, Rig, and Choreographer system prompts', () => {
+    const provider = new DeterministicMockLlmProvider();
+    const director = new DirectorAgent(provider);
+    const rigAgent = new RigAgent(provider);
+    const choreographer = new ChoreographerAgent(provider);
+
+    const dirPrompt = director.buildSystemPrompt();
+    assert.ok(dirPrompt.includes('JSON Schema Contract (draft-07):'));
+    const dirSchemaStr = dirPrompt.split('JSON Schema Contract (draft-07):\n')[1]?.split('\nReturn ONLY valid JSON.')[0];
+    assert.ok(dirSchemaStr);
+    const dirParsed = JSON.parse(dirSchemaStr) as Record<string, unknown>;
+    assert.equal(dirParsed.type, 'object');
+    assert.ok(dirParsed.properties);
+
+    const rigPrompt = rigAgent.buildSystemPrompt();
+    assert.ok(rigPrompt.includes('JSON Schema Contract (draft-07):'));
+    assert.ok(rigPrompt.includes('PART_DETACHED_FROM_JOINT_PIVOT'));
+    assert.ok(rigPrompt.includes('FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'));
+    const rigSchemaStr = rigPrompt.split('JSON Schema Contract (draft-07):\n')[1]?.split('\nReturn ONLY valid JSON.')[0];
+    assert.ok(rigSchemaStr);
+    const rigParsed = JSON.parse(rigSchemaStr) as Record<string, unknown>;
+    assert.equal(rigParsed.type, 'object');
+    assert.ok(rigParsed.properties);
+
+    const choreoPrompt = choreographer.buildSystemPrompt();
+    assert.ok(choreoPrompt.includes('JSON Schema Contract (draft-07):'));
+    assert.ok(choreoPrompt.includes('FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'));
+    const choreoSchemaStr = choreoPrompt.split('JSON Schema Contract (draft-07):\n')[1]?.split('\nReturn ONLY valid JSON.')[0];
+    assert.ok(choreoSchemaStr);
+    const choreoParsed = JSON.parse(choreoSchemaStr) as Record<string, unknown>;
+    assert.equal(choreoParsed.type, 'object');
+    assert.ok(choreoParsed.properties);
+  });
+
+  await t.test('Preserves and forwards previousDraft in self-healing retries for both schema and invariant failures', async () => {
+    const capturedPrompts: Array<{ role: string; attempt: number; prompt: string }> = [];
+
+    const interceptorProvider = new DeterministicMockLlmProvider({
+      interceptor: (prompt, options) => {
+        const role = options.agentRole ?? 'unknown';
+        const attempt = options.attempt ?? 1;
+        capturedPrompts.push({ role, attempt, prompt });
+
+        // Attempt 1: return a payload with missing required field 'fps' to trigger Zod schema error
+        if (role === 'director' && attempt === 1) {
+          const raw = buildDeterministicDirectorStoryboard({ audioManifest: demoAudioManifest });
+          const broken = { ...raw, fps: undefined, customInvalidMarker: 'BROKEN_DIRECTOR_ATTEMPT_1' };
+          return broken;
+        }
+
+        return undefined;
+      }
+    });
+
+    const orchestrator = new StudioAgentOrchestrator(interceptorProvider);
+    const result = await orchestrator.orchestrate({
+      audioManifest: demoAudioManifest,
+      getAudioFeatureAtFrame: getDemoAudioFeature,
+      maxRetries: 2
+    });
+
+    assert.equal(result.projectValidation.isValid, true);
+
+    const directorAttempt2Prompt = capturedPrompts.find(
+      (p) => p.role === 'director' && p.attempt === 2
+    );
+    assert.ok(directorAttempt2Prompt, 'Expected director attempt 2 prompt to be recorded');
+    assert.ok(
+      directorAttempt2Prompt.prompt.includes('[PREVIOUS FAILED JSON DRAFT]'),
+      'Expected retry prompt to contain [PREVIOUS FAILED JSON DRAFT]'
+    );
+    assert.ok(
+      directorAttempt2Prompt.prompt.includes('BROKEN_DIRECTOR_ATTEMPT_1'),
+      'Expected retry prompt to embed the failed candidate draft'
+    );
+    assert.ok(
+      directorAttempt2Prompt.prompt.includes('[SELF-HEALING REPAIR DIAGNOSTICS]'),
+      'Expected retry prompt to contain [SELF-HEALING REPAIR DIAGNOSTICS]'
+    );
+  });
+
+  await t.test('Phase 4.5 Visual Polish: verifies zero double-offset, safe fg-pipe depth z=140, and neck/abdomen connectors', () => {
+    const catalog = buildDeterministicRigCatalog();
+    const runner = catalog.rigs.find((r) => r.id === CANONICAL_RIG_IDS.RUNNER)!;
+    const fgPipes = catalog.rigs.find((r) => r.id === CANONICAL_RIG_IDS.FG_PIPES)!;
+
+    // 1. Foreground pipe safe depth z = 140
+    assert.equal(fgPipes.baseTransform.position[2], 140);
+
+    // 2. Coat wing & hair ribbon set localOffset2D: [0, 0]
+    const coatWing = runner.parts.find((p) => p.id === 'coat_wing')!;
+    assert.deepEqual(coatWing.localOffset2D, [0, 0]);
+
+    const hairRibbon = runner.parts.find((p) => p.id === 'hair_ribbon')!;
+    assert.deepEqual(hairRibbon.localOffset2D, [0, 0]);
+
+    // 3. Abdomen and neck connectors exist and bridge the gaps
+    const abdomen = runner.parts.find((p) => p.id === 'abdomen_core')!;
+    assert.ok(abdomen, 'abdomen_core must exist');
+    assert.equal(abdomen.jointId, 'torso');
+    assert.deepEqual(abdomen.localOffset2D, [0, -6]);
+
+    const neck = runner.parts.find((p) => p.id === 'neck_collar')!;
+    assert.ok(neck, 'neck_collar must exist');
+    assert.equal(neck.jointId, 'torso');
+    assert.deepEqual(neck.localOffset2D, [2, 20]);
+
+    // 4. All parts in runner satisfy the PART_DETACHED_FROM_JOINT_PIVOT invariant
+    const storyboard = buildDeterministicDirectorStoryboard({ audioManifest: demoAudioManifest });
+    const rigsMap = new Map(catalog.rigs.map((r) => [r.id, r]));
+    const choreo = buildDeterministicChoreography({
+      storyboard,
+      rigs: rigsMap,
+      audioManifest: demoAudioManifest
+    });
+
+    const projectReport = validateProjectContracts(
+      demoAudioManifest,
+      storyboard,
+      createRenderConfig({
+        width: 1920,
+        height: 1080,
+        fps: 30,
+        pixelFormat: 'rgba',
+        totalFrames: demoAudioManifest.metadata.totalFrames
+      }),
+      rigsMap
+    );
+    assert.equal(
+      projectReport.errors.some((e) => e.code === 'PART_DETACHED_FROM_JOINT_PIVOT'),
+      false
+    );
+    assert.equal(
+      projectReport.errors.some((e) => e.code === 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'),
+      false
+    );
+
+    const choreoReport = validateChoreography(choreo, storyboard, rigsMap);
+    assert.equal(
+      choreoReport.errors.some((e) => e.code === 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'),
+      false
+    );
+  });
 });
+

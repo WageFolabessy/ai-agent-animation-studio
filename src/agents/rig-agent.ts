@@ -5,7 +5,11 @@ import {
   type NormalizedCubicBezierSegment
 } from '../schemas/rig.contract.js';
 import type { LlmProvider, RigAgentInput } from './types.js';
-import { CANONICAL_RIG_IDS, formatRepairFeedbackPrompt } from './director-agent.js';
+import {
+  CANONICAL_RIG_IDS,
+  formatContractJsonSchema,
+  formatRepairFeedbackPrompt
+} from './director-agent.js';
 
 export const RigCatalogContractSchema = z
   .object({
@@ -13,6 +17,8 @@ export const RigCatalogContractSchema = z
   })
   .strict();
 export type RigCatalogContract = z.infer<typeof RigCatalogContractSchema>;
+
+export const RIG_CATALOG_JSON_SCHEMA = formatContractJsonSchema(RigCatalogContractSchema);
 
 const baseMouthSegments: NormalizedCubicBezierSegment[] = [
   { p0: [-3.5, 0], p1: [-1.8, 0.45], p2: [1.8, 0.45], p3: [3.5, 0] },
@@ -187,7 +193,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
     type: 'parallax_foreground',
     renderMode: 'planar',
     baseTransform: {
-      position: [0, 0, 320],
+      position: [0, 0, 140],
       rotationZDegrees: 0,
       scale: [1, 1]
     },
@@ -398,7 +404,7 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         {
           id: 'coat_tail',
           parentId: 'torso',
-          localOffset2D: [-12, 2],
+          localOffset2D: [-10, 10],
           rotationZDegrees: -28,
           length: 26,
           constraintsDeg: [-85, 20]
@@ -417,14 +423,14 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
       {
         id: 'coat_wing',
         jointId: 'coat_tail',
-        localOffset2D: [-14, -10],
+        localOffset2D: [0, 0],
         shape: {
           kind: 'polygon',
           points: [
-            [4, 8],
-            [-32, -8],
-            [-26, -24],
-            [6, -4]
+            [2, 6],
+            [-28, -6],
+            [-24, -22],
+            [2, -4]
           ]
         },
         style: {
@@ -490,16 +496,39 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
         }
       },
       {
+        id: 'abdomen_core',
+        jointId: 'torso',
+        localOffset2D: [0, -6],
+        shape: { kind: 'rect', size: [14, 16], rx: 4.0, ry: 4.0 },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.1 },
+          opacity: 1,
+          lit: false
+        }
+      },
+      {
+        id: 'neck_collar',
+        jointId: 'torso',
+        localOffset2D: [2, 20],
+        shape: { kind: 'rect', size: [10, 10], rx: 3.0, ry: 3.0 },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.15 },
+          opacity: 1,
+          lit: false
+        }
+      },
+      {
         id: 'chest_armor',
         jointId: 'torso',
-        localOffset2D: [1, 8],
+        localOffset2D: [1, 7],
         shape: {
           kind: 'polygon',
           points: [
-            [-11, -12],
-            [13, -12],
-            [17, 14],
-            [-13, 14]
+            [-10, -11],
+            [12, -11],
+            [16, 4],
+            [13, 15],
+            [-12, 15]
           ]
         },
         style: {
@@ -512,14 +541,14 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
       {
         id: 'hair_ribbon',
         jointId: 'hair_tie',
-        localOffset2D: [-10, -2],
+        localOffset2D: [0, 0],
         shape: {
           kind: 'polygon',
           points: [
             [2, 3],
-            [-22, 6],
+            [-22, 5],
             [-18, -5],
-            [2, -2]
+            [2, -3]
           ]
         },
         style: {
@@ -531,15 +560,16 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
       {
         id: 'cranium',
         jointId: 'head',
-        localOffset2D: [1, 8],
+        localOffset2D: [1, 7],
         shape: {
           kind: 'polygon',
           points: [
-            [-11, -10],
-            [13, -10],
-            [16, 4],
-            [10, 14],
-            [-12, 13]
+            [-11, -9],
+            [12, -9],
+            [15, 3],
+            [11, 14],
+            [-10, 14],
+            [-13, 2]
           ]
         },
         style: {
@@ -784,6 +814,10 @@ export class RigAgent {
       '4. Separate stationary environmental particle emitters ("rig-smoke-chimney" fixed at the factory chimney top [-150, 220, -380]) from character-attached particle emitters ("rig-runner-aura").',
       '5. Particle emitters must satisfy ceil(ratePerSecond * (lifetimeFrames / fps)) + onsetBurstCount <= maxParticles.',
       '6. Morph topologies must maintain equal segment counts and strict C0 endpoint continuity.',
+      '7. Secondary-motion parts ("coat_wing", "hair_ribbon") must set localOffset2D: [0, 0] and anchor root vertices at the joint pivot [0, 0] to satisfy PART_DETACHED_FROM_JOINT_PIVOT.',
+      '8. Foreground parallax rigs ("rig-fg-pipes") must stay at a safe foreground depth (e.g. z = 140) strictly ahead of camera near-plane to satisfy FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE.',
+      'JSON Schema Contract (draft-07):',
+      RIG_CATALOG_JSON_SCHEMA,
       'Return ONLY valid JSON.'
     ].join('\n');
   }
@@ -799,7 +833,10 @@ export class RigAgent {
       'Ensure "rig-runner" sets facingDirection: "right" with anatomical backward knee flexion [-140, 0].'
     ].join('\n');
 
-    const repairSection = formatRepairFeedbackPrompt(input.repairErrors ?? []);
+    const repairSection = formatRepairFeedbackPrompt(
+      input.repairErrors ?? [],
+      input.previousDraft
+    );
     return `${basePrompt}${repairSection}`;
   }
 
@@ -811,6 +848,7 @@ export class RigAgent {
       agentRole: 'rig',
       attempt: input.attempt ?? 1,
       repairErrors: input.repairErrors ?? [],
+      previousDraft: input.previousDraft,
       context: {
         rigInput: input
       }

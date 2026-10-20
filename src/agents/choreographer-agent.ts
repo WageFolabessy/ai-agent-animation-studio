@@ -4,7 +4,13 @@ import {
   type EntityTrack
 } from '../schemas/choreography.contract.js';
 import type { ChoreographerAgentInput, LlmProvider } from './types.js';
-import { CANONICAL_RIG_IDS, formatRepairFeedbackPrompt } from './director-agent.js';
+import {
+  CANONICAL_RIG_IDS,
+  formatContractJsonSchema,
+  formatRepairFeedbackPrompt
+} from './director-agent.js';
+
+export const CHOREOGRAPHY_JSON_SCHEMA = formatContractJsonSchema(ChoreographyContractSchema);
 
 /**
  * Builds a deterministic, schema-valid ChoreographyContract synchronized with
@@ -115,7 +121,7 @@ export function buildDeterministicChoreography(
             ? [
                 {
                   frame: startFrame,
-                  position: [0, 0, 320] as [number, number, number],
+                  position: [0, 0, 140] as [number, number, number],
                   rotationZDegrees: 0,
                   scale: [1, 1] as [number, number],
                   opacity: 0.92,
@@ -126,7 +132,7 @@ export function buildDeterministicChoreography(
               ? [
                   {
                     frame: startFrame,
-                    position: [130, 0, 220] as [number, number, number],
+                    position: [130, 0, 140] as [number, number, number],
                     rotationZDegrees: 0,
                     scale: [1, 1] as [number, number],
                     opacity: 0.92,
@@ -134,7 +140,7 @@ export function buildDeterministicChoreography(
                   },
                   {
                     frame: lastFrame,
-                    position: [60, 0, 220] as [number, number, number],
+                    position: [60, 0, 140] as [number, number, number],
                     rotationZDegrees: 0,
                     scale: [1, 1] as [number, number],
                     opacity: 0.85,
@@ -145,7 +151,7 @@ export function buildDeterministicChoreography(
                 ? [
                     {
                       frame: startFrame,
-                      position: [60, 0, 220] as [number, number, number],
+                      position: [60, 0, 140] as [number, number, number],
                       rotationZDegrees: 0,
                       scale: [1, 1] as [number, number],
                       opacity: 0.85,
@@ -153,7 +159,7 @@ export function buildDeterministicChoreography(
                     },
                     {
                       frame: lastFrame,
-                      position: [-260, 0, 240] as [number, number, number],
+                      position: [-260, 0, 140] as [number, number, number],
                       rotationZDegrees: 0,
                       scale: [1, 1] as [number, number],
                       opacity: 0,
@@ -163,7 +169,7 @@ export function buildDeterministicChoreography(
                 : [
                     {
                       frame: startFrame,
-                      position: [-260, 0, 240] as [number, number, number],
+                      position: [-260, 0, 140] as [number, number, number],
                       rotationZDegrees: 0,
                       scale: [1, 1] as [number, number],
                       opacity: 0,
@@ -365,6 +371,9 @@ export class ChoreographerAgent {
       '3. For characters with facingDirection ("right" or "left"), horizontal translation dx MUST match the facing direction (dx >= 0 for "right", dx <= 0 for "left") to prevent moonwalking.',
       '4. Synchronize pose.timeScale with horizontal translation velocity.',
       '5. Keep world positions of stationary environment rigs ("rig-skyline", "rig-factories", "rig-smoke-chimney") constant across shot cuts.',
+      '6. Foreground parallax rigs ("rig-fg-pipes") must stay at a safe foreground depth (e.g. z = 140) strictly ahead of camera near-plane to satisfy FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE.',
+      'JSON Schema Contract (draft-07):',
+      CHOREOGRAPHY_JSON_SCHEMA,
       'Return ONLY valid JSON.'
     ].join('\n');
   }
@@ -392,7 +401,10 @@ export class ChoreographerAgent {
       `Rigs: ${JSON.stringify(rigSummaries)}`
     ].join('\n');
 
-    const repairSection = formatRepairFeedbackPrompt(input.repairErrors ?? []);
+    const repairSection = formatRepairFeedbackPrompt(
+      input.repairErrors ?? [],
+      input.previousDraft
+    );
     return `${basePrompt}${repairSection}`;
   }
 
@@ -406,6 +418,7 @@ export class ChoreographerAgent {
       agentRole: 'choreographer',
       attempt: input.attempt ?? 1,
       repairErrors: input.repairErrors ?? [],
+      previousDraft: input.previousDraft,
       context: {
         choreographerInput: input
       }

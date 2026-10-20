@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   DirectorStoryboardContractSchema,
   type DirectorStoryboardContract
@@ -19,6 +20,17 @@ export const CANONICAL_RIG_IDS = {
   RUNNER_AURA: 'rig-runner-aura',
   FG_PIPES: 'rig-fg-pipes'
 } as const;
+
+/**
+ * Returns a compact JSON Schema (draft-07) string for embedding into agent system prompts.
+ */
+export function formatContractJsonSchema(schema: z.ZodType): string {
+  return JSON.stringify(z.toJSONSchema(schema, { target: 'draft-07' }));
+}
+
+export const DIRECTOR_STORYBOARD_JSON_SCHEMA = formatContractJsonSchema(
+  DirectorStoryboardContractSchema
+);
 
 /**
  * Summarizes frame-level acoustic features, beat events, and lyric timeline
@@ -103,21 +115,35 @@ export function summarizeAudioManifest(
 }
 
 /**
- * Formats validation errors into a structured self-healing repair prompt section.
+ * Formats validation errors and previous failed drafts into a structured
+ * self-healing repair prompt section.
  */
-export function formatRepairFeedbackPrompt(errors: readonly ValidationErrorItem[]): string {
-  if (errors.length === 0) return '';
+export function formatRepairFeedbackPrompt(
+  errors: readonly ValidationErrorItem[],
+  previousDraft?: string
+): string {
+  if (errors.length === 0 && (!previousDraft || previousDraft.trim().length === 0)) return '';
   const lines = errors.map(
     (err, idx) =>
       `  ${idx + 1}. [${err.severity.toUpperCase()}] ${err.code} at "${err.path}": ${err.message}`
   );
-  return [
-    '',
-    '[SELF-HEALING REPAIR DIAGNOSTICS]',
-    'Your previous JSON output failed contract invariant validation with the following errors:',
-    ...lines,
-    'Please fix all reported errors while preserving all valid fields and return ONLY valid JSON.'
-  ].join('\n');
+  const parts: string[] = [''];
+  if (previousDraft && previousDraft.trim().length > 0) {
+    const truncatedDraft =
+      previousDraft.length > 12_000
+        ? `${previousDraft.slice(0, 12_000)}\n... [truncated]`
+        : previousDraft;
+    parts.push('[PREVIOUS FAILED JSON DRAFT]', '```json', truncatedDraft, '```', '');
+  }
+  if (lines.length > 0) {
+    parts.push(
+      '[SELF-HEALING REPAIR DIAGNOSTICS]',
+      'Your previous JSON output failed contract invariant validation with the following errors:',
+      ...lines,
+      'Please fix all reported errors while preserving all valid fields and return ONLY valid JSON.'
+    );
+  }
+  return parts.join('\n');
 }
 
 /**
@@ -483,6 +509,8 @@ export class DirectorAgent {
       '3. Each shot must lie strictly within its referenced actNumber frameRange.',
       '4. Maintain background rig continuity ("rig-skyline", "rig-factories", "rig-smoke-chimney") across ALL shots including CLOSE_UP shots so the industrial horizon never disappears into a black void.',
       '5. Separate stationary factory smoke ("rig-smoke-chimney") from the character kinetic trail ("rig-runner-aura").',
+      'JSON Schema Contract (draft-07):',
+      DIRECTOR_STORYBOARD_JSON_SCHEMA,
       'Return ONLY valid JSON.'
     ].join('\n');
   }
@@ -504,7 +532,10 @@ export class DirectorAgent {
       `Available Canonical Rigs: ${JSON.stringify(Object.values(CANONICAL_RIG_IDS))}`
     ].join('\n');
 
-    const repairSection = formatRepairFeedbackPrompt(input.repairErrors ?? []);
+    const repairSection = formatRepairFeedbackPrompt(
+      input.repairErrors ?? [],
+      input.previousDraft
+    );
     return `${basePrompt}${repairSection}`;
   }
 
@@ -516,6 +547,7 @@ export class DirectorAgent {
       agentRole: 'director',
       attempt: input.attempt ?? 1,
       repairErrors: input.repairErrors ?? [],
+      previousDraft: input.previousDraft,
       context: {
         directorInput: input
       }

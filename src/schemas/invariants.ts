@@ -1,8 +1,62 @@
 import type { AudioAnalysisManifest } from './audio.contract.js';
 import type { DirectorStoryboardContract } from './storyboard.contract.js';
 import type { RenderConfig } from '../config/render-config.js';
-import type { AssetRigContract } from './rig.contract.js';
+import type { AssetRigContract, RigPart } from './rig.contract.js';
 import type { ChoreographyContract } from './choreography.contract.js';
+
+function computePartPivotDistance(part: RigPart): number {
+  const [ox, oy] = part.localOffset2D;
+  let minX = ox;
+  let maxX = ox;
+  let minY = oy;
+  let maxY = oy;
+
+  switch (part.shape.kind) {
+    case 'rect': {
+      const [w, h] = part.shape.size;
+      minX = ox - w / 2;
+      maxX = ox + w / 2;
+      minY = oy - h / 2;
+      maxY = oy + h / 2;
+      break;
+    }
+    case 'ellipse': {
+      const [rx, ry] = part.shape.radius;
+      minX = ox - rx;
+      maxX = ox + rx;
+      minY = oy - ry;
+      maxY = oy + ry;
+      break;
+    }
+    case 'polygon': {
+      const xs = part.shape.points.map((p) => ox + p[0]);
+      const ys = part.shape.points.map((p) => oy + p[1]);
+      minX = Math.min(...xs);
+      maxX = Math.max(...xs);
+      minY = Math.min(...ys);
+      maxY = Math.max(...ys);
+      break;
+    }
+    case 'path': {
+      const pts = part.shape.segments.flatMap((s) => [s.p0, s.p1, s.p2, s.p3]);
+      if (pts.length > 0) {
+        const xs = pts.map((p) => ox + p[0]);
+        const ys = pts.map((p) => oy + p[1]);
+        minX = Math.min(...xs);
+        maxX = Math.max(...xs);
+        minY = Math.min(...ys);
+        maxY = Math.max(...ys);
+      }
+      break;
+    }
+    case 'morph':
+      return 0;
+  }
+
+  const dx = Math.max(0, minX, -maxX);
+  const dy = Math.max(0, minY, -maxY);
+  return Math.hypot(dx, dy);
+}
 
 export interface ValidationErrorItem {
   code: string;
@@ -268,7 +322,8 @@ export function validateProjectContracts(
       }
       rigSet.add(rigId);
 
-      if (!rigs.has(rigId)) {
+      const activeRig = rigs.get(rigId);
+      if (!activeRig) {
         errors.push({
           code: 'RIG_NOT_FOUND',
           path: `storyboard.shots[${i}].activeRigIds`,
@@ -276,6 +331,25 @@ export function validateProjectContracts(
           message: `Rig ID "${rigId}" is not found in asset rig catalog`,
           relatedIds: [shot.id, rigId]
         });
+      } else if (
+        activeRig.type === 'parallax_foreground' &&
+        shot.cameraStart.target[2] < shot.cameraStart.position[2] &&
+        shot.cameraEnd.target[2] < shot.cameraEnd.position[2]
+      ) {
+        const minSafeCameraZ = Math.min(
+          shot.cameraStart.position[2] - shot.cameraStart.nearPlane,
+          shot.cameraEnd.position[2] - shot.cameraEnd.nearPlane
+        );
+        const rigZ = activeRig.baseTransform.position[2];
+        if (rigZ >= minSafeCameraZ) {
+          errors.push({
+            code: 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE',
+            path: `rigs[${rigId}].baseTransform.position`,
+            severity: 'error',
+            message: `Foreground rig "${rigId}" baseTransform Z (${rigZ}) crosses or sits behind camera near-plane boundary (${minSafeCameraZ}) in shot "${shot.id}". Keep foreground parallax rigs at a safe Z strictly less than ${minSafeCameraZ} (e.g. z = 140) so they do not vanish mid-shot.`,
+            relatedIds: [shot.id, rigId]
+          });
+        }
       }
     }
 
@@ -678,7 +752,7 @@ export function validateProjectContracts(
       }
     }
 
-    // Secondary motion validation
+    // Secondary motion validation & joint pivot attachment verification
     for (const sm of rig.secondaryMotion) {
       if (!skeletonJointIds.has(sm.jointId)) {
         errors.push({
@@ -687,6 +761,21 @@ export function validateProjectContracts(
           severity: 'error',
           message: `Secondary motion references joint "${sm.jointId}" which does not exist in skeleton.`
         });
+      } else {
+        for (const part of rig.parts) {
+          if (part.jointId === sm.jointId) {
+            const pivotDist = computePartPivotDistance(part);
+            if (pivotDist > 3.0) {
+              errors.push({
+                code: 'PART_DETACHED_FROM_JOINT_PIVOT',
+                path: `rigs[${mapKey}].parts[${part.id}].localOffset2D`,
+                severity: 'error',
+                message: `Secondary-motion part "${part.id}" on joint "${sm.jointId}" in rig "${rig.id}" is detached from the joint pivot [0, 0] by ${pivotDist.toFixed(2)} units (localOffset2D: [${part.localOffset2D[0]}, ${part.localOffset2D[1]}]), causing it to float and orbit in mid-air. Set part localOffset2D to [0, 0] and anchor root vertices at [0, 0].`,
+                relatedIds: [rig.id, sm.jointId, part.id]
+              });
+            }
+          }
+        }
       }
     }
 
@@ -822,6 +911,27 @@ export function validateChoreography(
               path: `choreography.tracks[${t}].transform.keyframes[${k}].position`,
               severity: 'error',
               message: `Moonwalk detected on rig "${rig.id}" in shot "${shot.id}": rig faces "${rig.facingDirection}" (scaleX=${scaleX}), but translates horizontally by dx=${dx.toFixed(2)} between frames ${prevKf.frame} and ${kf.frame}.`
+            });
+          }
+        }
+
+        // Foreground parallax near-plane clipping guard
+        if (
+          rig.type === 'parallax_foreground' &&
+          shot.cameraStart.target[2] < shot.cameraStart.position[2] &&
+          shot.cameraEnd.target[2] < shot.cameraEnd.position[2]
+        ) {
+          const minSafeCameraZ = Math.min(
+            shot.cameraStart.position[2] - shot.cameraStart.nearPlane,
+            shot.cameraEnd.position[2] - shot.cameraEnd.nearPlane
+          );
+          if (kf.position[2] >= minSafeCameraZ) {
+            errors.push({
+              code: 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE',
+              path: `choreography.tracks[${t}].transform.keyframes[${k}].position`,
+              severity: 'error',
+              message: `Foreground rig "${rig.id}" keyframe at frame ${kf.frame} in shot "${shot.id}" has Z=${kf.position[2]} >= camera near-plane boundary (${minSafeCameraZ}), causing the rig to clip behind the camera and vanish mid-shot. Keep foreground Z strictly below ${minSafeCameraZ} (e.g. z = 140).`,
+              relatedIds: [shot.id, rig.id]
             });
           }
         }

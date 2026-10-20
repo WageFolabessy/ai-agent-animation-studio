@@ -566,4 +566,157 @@ test('Invariants: Enforces sorted, non-overlapping lyric timeline and time-frame
   assert.ok(reportMismatch.errors.some((e) => e.code === 'LYRIC_TIME_FRAME_MISMATCH'));
 });
 
+test('Invariants: Detects floating secondary-motion parts detached from joint pivot (PART_DETACHED_FROM_JOINT_PIVOT)', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+  const charRig = rigs.get('rig_character')!;
+
+  // Add a secondary motion joint
+  charRig.secondaryMotion = [
+    {
+      jointId: 'joint_arm',
+      spring: { zeta: 0.5, omega: 20 },
+      drive: 'audio.onsetStrength',
+      gainDegrees: 25
+    }
+  ];
+
+  // 1. Attached part with localOffset2D: [0, 0] straddling [0, 0] -> PASS
+  charRig.parts.push({
+    id: 'part_sleeve',
+    jointId: 'joint_arm',
+    localOffset2D: [0, 0],
+    shape: {
+      kind: 'polygon',
+      points: [
+        [2, 3],
+        [-10, 0],
+        [2, -3]
+      ]
+    },
+    style: { opacity: 1, lit: false }
+  });
+
+  const validReport = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(validReport.isValid, true);
+  assert.equal(
+    validReport.errors.some((e) => e.code === 'PART_DETACHED_FROM_JOINT_PIVOT'),
+    false
+  );
+
+  // 2. Detached floating part with double-offset (localOffset2D: [-14, -10]) -> FAIL
+  charRig.parts.push({
+    id: 'part_floating_cape',
+    jointId: 'joint_arm',
+    localOffset2D: [-14, -10],
+    shape: {
+      kind: 'polygon',
+      points: [
+        [4, 8],
+        [-32, -8],
+        [-26, -24],
+        [6, -4]
+      ]
+    },
+    style: { opacity: 1, lit: false }
+  });
+
+  const brokenReport = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(brokenReport.isValid, false);
+  const detachedError = brokenReport.errors.find(
+    (e) => e.code === 'PART_DETACHED_FROM_JOINT_PIVOT'
+  );
+  assert.ok(detachedError, 'Expected PART_DETACHED_FROM_JOINT_PIVOT error');
+  assert.equal(detachedError.severity, 'error');
+  assert.ok(detachedError.relatedIds?.includes('part_floating_cape'));
+});
+
+test('Invariants: Detects foreground parallax rigs crossing camera near-plane (FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE)', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+
+  // Create a foreground parallax rig
+  rigs.set('rig_foreground', {
+    id: 'rig_foreground',
+    name: 'Foreground Gantry',
+    type: 'parallax_foreground',
+    renderMode: 'planar',
+    baseTransform: {
+      position: [0, 0, 50],
+      rotationZDegrees: 0,
+      scale: [1, 1]
+    },
+    parts: [
+      {
+        id: 'fg_beam',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [100, 20] },
+        style: { opacity: 1, lit: false }
+      }
+    ],
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'fg_ns' }
+  });
+
+  // Storyboard shot 1 has cameraStart at position [0, 0, 10], nearPlane: 0.1, target: [0, 0, 0].
+  // minSafeCameraZ = 10 - 0.1 = 9.9.
+  // Rig at z = 50 is BEHIND the camera (z = 50 >= 9.9)!
+  storyboard.shots[0].activeRigIds.push('rig_foreground');
+
+  const reportBaseTransform = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(reportBaseTransform.isValid, false);
+  const baseError = reportBaseTransform.errors.find(
+    (e) => e.code === 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'
+  );
+  assert.ok(baseError, 'Expected FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE in project contracts');
+
+  // Now fix baseTransform to safe z = 5 (< 9.9)
+  rigs.get('rig_foreground')!.baseTransform.position = [0, 0, 5];
+  const safeProjectReport = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(
+    safeProjectReport.errors.some((e) => e.code === 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'),
+    false
+  );
+
+  // Now test validateChoreography: keyframe crosses camera near-plane
+  const choreo: ChoreographyContract = {
+    projectId: 'test_project',
+    tracks: [
+      {
+        rigId: 'rig_foreground',
+        shotId: 'shot_1',
+        transform: {
+          keyframes: [
+            {
+              frame: 0,
+              position: [0, 0, 5],
+              rotationZDegrees: 0,
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: 25,
+              position: [0, 0, 15], // 15 >= 9.9!
+              rotationZDegrees: 0,
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            }
+          ]
+        },
+        morphKeyframes: {},
+        morphBindings: []
+      }
+    ]
+  };
+
+  const choreoReport = validateChoreography(choreo, storyboard, rigs);
+  assert.equal(choreoReport.isValid, false);
+  const choreoError = choreoReport.errors.find(
+    (e) => e.code === 'FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE'
+  );
+  assert.ok(choreoError, 'Expected FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE in choreography');
+});
+
+
 

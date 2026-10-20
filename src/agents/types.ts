@@ -15,6 +15,7 @@ export interface LlmOptions {
   readonly agentRole?: StudioAgentRole;
   readonly attempt?: number;
   readonly repairErrors?: readonly ValidationErrorItem[];
+  readonly previousDraft?: string;
   readonly context?: Record<string, unknown>;
 }
 
@@ -58,6 +59,7 @@ export interface DirectorAgentInput {
   readonly width?: number;
   readonly height?: number;
   readonly repairErrors?: readonly ValidationErrorItem[];
+  readonly previousDraft?: string;
   readonly attempt?: number;
 }
 
@@ -65,6 +67,7 @@ export interface RigAgentInput {
   readonly storyboard: DirectorStoryboardContract;
   readonly audioManifest: AudioAnalysisManifest;
   readonly repairErrors?: readonly ValidationErrorItem[];
+  readonly previousDraft?: string;
   readonly attempt?: number;
 }
 
@@ -73,6 +76,7 @@ export interface ChoreographerAgentInput {
   readonly rigs: Map<string, AssetRigContract>;
   readonly audioManifest: AudioAnalysisManifest;
   readonly repairErrors?: readonly ValidationErrorItem[];
+  readonly previousDraft?: string;
   readonly attempt?: number;
 }
 

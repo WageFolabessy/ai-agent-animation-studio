@@ -34,10 +34,12 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Compact binary columnar format (`.features.bin`, `columnLayoutVersion: 1`, `32 + 53 * N` bytes = `572 KB` for a 6-minute song @ 30fps) and $O(1)$ `ColumnarAudioFeatureReader` with SHA-256 verification and 4-byte `Buffer` alignment guard.
   - Deterministic `.lrc` parser (`src/engine/audio/lrc-parser.ts`) with metadata stripping, multi-timestamp chorus expansion, empty-timestamp instrumental cutoff truncation, and $O(\log L)$ binary search in `FrameStateBuilder`.
   - Direct FFmpeg audio-video muxing (`-map 0:v:0 -map 1:a:0 -c:a aac -shortest`) and dual-stream `ffprobe` validation (`npm run demo:phase3` verified at **19.30 FPS**, **329.61 MB** RSS, and **+1.39 MB** plateau growth).
-- **Phase 4: Completed**
+- **Phase 4 & 4.5: Completed**
   - Provider-agnostic `LlmProvider` (`OpenAiCompatibleProvider` + offline `DeterministicMockLlmProvider`) and `extractJsonFromLlmResponse` markdown/BOM sanitizer.
-  - `DirectorAgent` (`src/agents/director-agent.ts`), `RigAgent` (`src/agents/rig-agent.ts`), and `ChoreographerAgent` (`src/agents/choreographer-agent.ts`) with full background horizon continuity across close-up cuts, separated stationary vs. kinetic particle emitters (`rig-smoke-chimney` vs. `rig-runner-aura`), and anatomical anti-moonwalk knee flexion (`RIG_KNEE_BEND_INVERTED`) and facing-vs-motion invariants (`TRACK_FACING_DIRECTION_MISMATCH`).
-  - `StudioAgentOrchestrator` (`src/agents/orchestrator.ts`) with automated self-healing retry loops powered by `validateProjectContracts` and `validateChoreography`.
+  - Multi-agent orchestration: `DirectorAgent` (`src/agents/director-agent.ts`), `RigAgent` (`src/agents/rig-agent.ts`), `ChoreographerAgent` (`src/agents/choreographer-agent.ts`), and `StudioAgentOrchestrator` (`src/agents/orchestrator.ts`).
+  - Embedded Zod 4 `draft-07` JSON Schemas in all agent system prompts for zero-shot real LLM conformance.
+  - Stateless closed-loop self-healing retry pipeline with `[PREVIOUS FAILED JSON DRAFT]` retention and diagnostics feedback across schema (`LlmSchemaValidationError`) and invariant failures.
+  - Kinematic smoothing and visual polish: periodic Hermite spline tangent unwrapping, stride phase continuity across camera cuts, seamless neck (`neck_collar`) and waist (`abdomen_core`) connectors on close-ups, elimination of floating double-offsets on coat wings/ribbons (`PART_DETACHED_FROM_JOINT_PIVOT`), and near-plane clipping prevention for foreground gantries (`FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE`).
 
 For technical specifications, see:
 - [Phase 1 Architecture Foundation](docs/phase-1-architecture.md)
@@ -88,20 +90,36 @@ ai-agent-animation-studio/
 ├── package.json                   # NPM configuration, dependencies, and validation scripts
 ├── package-lock.json              # Exact pinned dependency lockfile
 ├── tsconfig.json                  # Strict TypeScript configuration (NodeNext, ES2022)
+├── assets/
+│   └── audio/
+│       ├── trashed-and-scattered.flac # Avenged Sevenfold reference audio (FLAC)
+│       └── trashed-and-scattered.lrc  # Aligned timestamped lyrics
 ├── docs/
-│   ├── phase-1-architecture.md    # Phase 1 specification and architectural notes
-│   └── phase-2-architecture.md    # Phase 2 cinema, kinematics, morphing & compositor specification
+│   ├── phase-1-architecture.md    # Phase 1 streaming renderer foundation
+│   ├── phase-2-architecture.md    # Phase 2 cinema, kinematics, morphing & compositor
+│   ├── phase-3-architecture.md    # Phase 3 audio intelligence, columnar binary & AAC muxing
+│   └── phase-4-architecture.md    # Phase 4 multi-agent LLM orchestration architecture
 ├── python/
 │   ├── README.md                  # Python offline ML audio analysis tooling guide
-│   └── __init__.py                # Package root
+│   ├── __init__.py                # Python package root
+│   ├── analyze_audio.py           # Offline STFT 7-band feature extraction & binary exporter
+│   └── requirements.txt           # Python dependencies (numpy, scipy, soundfile)
 ├── scripts/
 │   ├── conformance-render.ts      # Conformance test (Gate B: pixel, color, metadata validation)
 │   ├── benchmark-smoke.ts         # Smoke benchmark (Gate C: 3 runs @ 1080p, memory/speed gate)
-│   └── demo-phase2-cinema.ts      # Phase 2 multi-shot procedural cinema demo & plateau benchmark
+│   ├── demo-phase2-cinema.ts      # Phase 2 multi-shot procedural cinema demo & plateau benchmark
+│   ├── demo-phase3-audio.ts       # Phase 3 audio intelligence, LRC alignment & AAC muxing demo
+│   └── demo-phase4-orchestration.ts # Phase 4 multi-agent orchestration cinema demo & benchmark
 ├── src/
 │   ├── agents/
 │   │   ├── README.md              # AI agents overview
-│   │   └── index.ts               # Placeholder for Phase 4 LLM orchestrators
+│   │   ├── choreographer-agent.ts # Choreographer Agent: entity tracks, poses, and morph bindings
+│   │   ├── director-agent.ts      # Director Agent: acts, shots, camera moves, and JSON schema
+│   │   ├── index.ts               # Barrel export for agents and orchestration modules
+│   │   ├── llm-provider.ts        # OpenAiCompatibleProvider, DeterministicMockLlmProvider & draft retention
+│   │   ├── orchestrator.ts        # StudioAgentOrchestrator: closed-loop self-healing repair loop
+│   │   ├── rig-agent.ts           # Rig Agent: asset & character rigs, knee constraints, and connectors
+│   │   └── types.ts               # LlmProvider, LlmOptions, OrchestrationResult, and AgentInput interfaces
 │   ├── assets/
 │   │   └── fonts/
 │   │       ├── DejaVuSans.ttf     # Bundled deterministic font
@@ -125,6 +143,13 @@ ai-agent-animation-studio/
 │   │   ├── memory-sampler.ts      # Linux /proc/<pid>/statm RSS sampler
 │   │   └── timing.ts              # Per-frame and aggregate profiler
 │   ├── engine/
+│   │   ├── audio/
+│   │   │   ├── columnar-format.ts # Binary columnar encoder/decoder (32 + 53 * N bytes)
+│   │   │   ├── feature-reader.ts  # O(1) ColumnarAudioFeatureReader with 4-byte buffer alignment guard
+│   │   │   ├── index.ts           # Audio engine barrel export
+│   │   │   ├── lrc-parser.ts      # Deterministic LRC lyric parser & acoustic emphasis aligner
+│   │   │   ├── python-bridge.ts   # Subprocess bridge to python/analyze_audio.py
+│   │   │   └── wav-analyzer.ts    # Pure TypeScript offline 7-band STFT audio analyzer
 │   │   ├── camera/
 │   │   │   ├── camera-3d.ts       # 3D camera coordinate basis, view matrix, and transforms
 │   │   │   ├── clipping.ts        # Sutherland-Hodgman frustum & 1/z perspective viewport clipping
@@ -153,7 +178,7 @@ ai-agent-animation-studio/
 │   │       ├── kinematics.ts      # Planar Forward Kinematics (FK) solver with joint clamping & billboard projection
 │   │       └── morpher.ts         # Piecewise Cubic Bezier shape morpher & SVG path converter
 │   ├── renderer/
-│   │   ├── ffmpeg-streamer.ts     # ChildProcess streamer with backpressure and abort handling
+│   │   ├── ffmpeg-streamer.ts     # ChildProcess streamer with backpressure, abort handling & AAC muxing
 │   │   ├── pipeline.ts            # High-level SVG -> Resvg -> FFmpeg streaming pipeline
 │   │   └── rasterizer.ts          # Resvg native in-memory rasterizer
 │   └── schemas/
@@ -166,6 +191,9 @@ ai-agent-animation-studio/
 │       ├── rig.contract.ts        # Planar 2.5D asset rigs, skeletons, parts, and morph targets
 │       └── storyboard.contract.ts # Director storyboards, acts, and cinematic shots
 └── tests/
+    ├── agents-orchestrator.test.ts # Multi-agent orchestration, self-healing retries & visual invariants
+    ├── audio-columnar.test.ts     # .features.bin binary layout, alignment guard & O(1) reader tests
+    ├── audio-mux.test.ts          # Dual-stream FFmpeg video + AAC audio muxing & Python bridge tests
     ├── backpressure.test.ts       # Streamer backpressure, drain, and EPIPE recovery
     ├── benchmark-gates.test.ts    # Memory gate, plateau check, and artifact hygiene tests
     ├── clipping.test.ts           # Near/far frustum, 1/z depth, and canonical cube culling tests
@@ -174,6 +202,7 @@ ai-agent-animation-studio/
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
     ├── frame-state.test.ts        # Particle emitter, choreography, and FrameStateBuilder tests
     ├── invariants.test.ts         # Storyboard timeline, act, rig, and choreography invariants
+    ├── lrc-parser.test.ts         # Deterministic LRC parser, multi-timestamp expansion & emphasis tests
     ├── math.test.ts               # Easing, spring physics, noise, and color math tests
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
     ├── rigging.test.ts            # FK chain, joint clamping, Bezier morphing, and billboard tests
@@ -208,7 +237,7 @@ ai-agent-animation-studio/
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
 | `typecheck` | `tsc --noEmit` | Strict static typecheck without emitting JavaScript |
-| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (118 tests) |
+| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (124 tests across 19 suites) |
 | `test:schemas` | `tsx --test tests/schemas.test.ts` | Tests primitive schemas and Zod 4 contracts |
 | `test:invariants` | `tsx --test tests/invariants.test.ts` | Tests cross-contract timeline, skeleton, and choreography invariants |
 | `test:backpressure`| `tsx --test tests/backpressure.test.ts` | Tests FFmpeg streamer backpressure and lifecycle |
@@ -244,6 +273,32 @@ Executes a 30-frame warm-up followed by three 150-frame iterations (5.0s @ 1080p
 npm run test:benchmark:smoke
 ```
 
+### 5. Phase 2 Procedural Cinema Demo
+Executes the 4-shot procedural cinema sequence (`DOLLY`, `TRACKING`, `ORBIT`, `CLOSE_UP` with Dutch roll and trauma camera shake) with 540-frame plateau benchmark:
+```bash
+npm run demo:phase2
+```
+
+### 6. Phase 3 Audio Intelligence & AAC Muxing Demo
+Executes 7-band STFT audio analysis, columnar `.features.bin` encoding, deterministic `.lrc` alignment, and dual-stream H.264 + AAC audio-video muxing using either synthesized musical WAV or real song audio:
+```bash
+npm run demo:phase3
+```
+
+### 7. Phase 4 Multi-Agent LLM Orchestration Demo
+Executes the complete autonomous multi-agent pipeline (`DirectorAgent` $\to$ `RigAgent` $\to$ `ChoreographerAgent` $\to$ `StudioAgentOrchestrator`) with automated self-healing repair loops:
+```bash
+# Default deterministic mock mode (100% offline, reproducible):
+npm run demo:phase4
+
+# Real OpenAI / OpenAI-compatible endpoint (e.g. Gemini, Ollama, Groq):
+export LLM_API_KEY="your-api-key"
+npm run demo:phase4 -- --provider openai
+
+# Custom audio/lrc slice with custom duration and output name:
+npm run demo:phase4 -- --audio "assets/audio/trashed-and-scattered.flac" --lrc "assets/audio/trashed-and-scattered.lrc" --start 49.0 --duration 6.0 --out "my_cinema.mp4"
+```
+
 ---
 
 ## 9. Data Contract Overview
@@ -251,13 +306,13 @@ npm run test:benchmark:smoke
 The studio uses strongly typed Zod schemas to guarantee consistency between planned director decisions and the low-level rendering engine:
 
 1. **Audio Analysis Manifest (`audio.contract.ts`):**  
-   Defines frame-level audio metrics (`rms`, relative RMS, multi-band energy: subBass, bass, lowMid, mid, highMid, presence, brilliance, and onset events) alongside parsed time-stamped lyrics. Frame features can be queried via an O(1) `AudioFeatureReader`.
+   Defines frame-level audio metrics (`rms`, relative RMS, multi-band energy: `subBass`, `bass`, `lowMid`, `mid`, `highMid`, `presence`, `brilliance`, and onset events) alongside parsed time-stamped lyrics. Frame features are serialized into a binary columnar `.features.bin` file (`columnLayoutVersion: 1`, `32 + 53 * N` bytes) and queried in $O(1)$ time via `ColumnarAudioFeatureReader` with a 4-byte buffer alignment guard.
 2. **Director Storyboard (`storyboard.contract.ts`):**  
-   Encapsulates narrative structure into three contiguous acts (`acts`) and cinematic shots (`shots`). Each shot defines camera transitions, movement types, viewpoints, depth-of-field blur, color lighting palettes, and active asset rig references.
+   Encapsulates narrative structure into three contiguous acts (`acts`) and cinematic shots (`shots`). Each shot defines camera transitions, movement types (`DOLLY`, `TRACKING`, `ORBIT`, `STATIC`), viewpoints, depth-of-field blur, color lighting palettes, and active asset rig references.
 3. **Asset Rig (`rig.contract.ts`):**  
-   Specifies 2.5D visual assets (`character`, `prop`, `background_parallax`, `particle_emitter`), render modes (`billboard` or `world_plane`), single-source-of-truth 3D base transforms (`baseTransform.position[2]`), planar skeletal bone joints with angle constraints, procedural geometry parts (`rect`, `circle`, `ellipse`, `polygon`, `bezier_path`, `morphed_path` with $C^0$ continuous morph targets), secondary spring attachments, and stateless particle emitter specs.
+   Specifies 2.5D visual assets (`character`, `prop`, `parallax_background`, `parallax_midground`, `parallax_foreground`, `particle_emitter`), render modes (`billboard` or `planar`), single-source-of-truth 3D base transforms, planar skeletal bone joints with angle constraints, procedural geometry parts (`rect` with `rx`/`ry` rounded capsules, `circle`, `ellipse`, `polygon`, `path`, `morph` with $C^0$ continuous morph targets), secondary spring attachments, and stateless particle emitter specs.
 4. **Choreography (`choreography.contract.ts`):**  
-   Defines per-shot entity placement tracks (`transformTrack`), pose selectors (`poseId`), keyframe overrides, and audio-reactive/keyframed morph bindings (`morphBindings`).
+   Defines per-shot entity placement tracks (`transformTrack`), pose selectors, inter-shot stride phase handoff (`pose.startPoseFrame`), keyframe overrides, and audio-reactive/keyframed morph bindings (`morphBindings`).
 5. **Frame State (`frame.contract.ts`):**  
    The atomic state contract passed to the compositor at frame `f`, combining interpolated camera positions, lighting palettes, active lyric status, and articulated character entities (`jointAngles`, `jointOffsets`, `morphWeights`).
 6. **Contract Invariants (`invariants.ts`):**  
@@ -267,8 +322,13 @@ The studio uses strongly typed Zod schemas to guarantee consistency between plan
    - Act 1 must start at frame 0, acts must be contiguous, and Act 3 must end at `totalFrames`.
    - The first shot must start at frame 0 and the last shot must end at `totalFrames`.
    - `cameraStart.projectionMode` and `cameraEnd.projectionMode` must match within every shot.
-   - Skeletal joint trees must contain exactly 1 root and have zero dependency cycles; all parts, secondary motion chains, and pose tracks must reference valid joints with strictly increasing frame numbers.
-   - Piecewise Cubic Bezier morph bases and deltas must maintain strict $C^0$ continuity across segment boundaries.
+   - Skeletal joint trees must contain exactly 1 root and have zero dependency cycles.
+   - Knee joints on facing characters must bend backward (`RIG_KNEE_BEND_INVERTED`).
+   - Lateral translation must match character facing direction (`TRACK_FACING_DIRECTION_MISMATCH`).
+   - Secondary-motion parts must be anchored at the joint pivot (`PART_DETACHED_FROM_JOINT_PIVOT`).
+   - Foreground parallax rigs must remain strictly in front of the camera near-plane (`FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE`).
+   - Piecewise Cubic Bezier morph bases and targets must maintain strict $C^0$ continuity across segment boundaries.
+   - Lyrics must have sorted start frames, zero overlaps, and match their timestamps within 1 frame.
 
 ---
 
@@ -316,17 +376,17 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 - **Zero Process Leaks:**  
   No orphaned FFmpeg child processes may remain running after either successful render completion or caught pipeline exceptions.
 
-### Measured Phase 2 Demo Benchmark Numbers
+### Measured Quantitative Benchmark Numbers (Phase 1 – Phase 4)
 
-| Metric | Target / Gate Limit | Measured Value | Result |
-| :--- | :--- | :--- | :--- |
-| **Median Effective FPS** | $\ge 15.00\text{ FPS}$ | **21.39 FPS** | **PASS** |
-| **Median Peak Aggregate RSS** | $< 400\text{ MB}$ (Target) | **314.25 MB** (Node: 184 MB, FFmpeg: 130 MB) | **PASS (Green)** |
-| **Memory Plateau Growth** | $\le 32.00\text{ MB}$ | **$+12.02\text{ MB}$** ($180\text{f}: 314.25 \to 540\text{f}: 326.27\text{ MB}$) | **PASS** |
-| **Drawables per Frame** | $\le 220$ | **103 peak** | **PASS** |
-| **Gradient Shapes per Frame** | $\le 100$ | **22 peak** | **PASS** |
-| **Live Particles per Frame** | $\le 150$ | **35 peak** | **PASS** |
-| **Filters / Masks** | $0$ | **0** | **PASS** |
+| Stage / Demo | Median FPS | Peak Aggregate RSS | Plateau Growth (540f) | Max Drawables | Streams / Conformance | Result |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Phase 1 Smoke Benchmark** (`test:benchmark:smoke`) | **40.16 FPS** | **245.20 MB** | $+4.80\text{ MB}$ | 42 peak | BT.709 `tv` | **PASS (Green)** |
+| **Phase 2 Procedural Cinema** (`demo:phase2`) | **21.39 FPS** | **314.25 MB** | $+12.02\text{ MB}$ | 103 peak | BT.709 `tv` | **PASS (Green)** |
+| **Phase 3 Audio Mux** (`demo:phase3`) | **19.30 FPS** | **329.61 MB** | $+1.39\text{ MB}$ | 103 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
+| **Phase 4 Multi-Agent Cinema** (`demo:phase4`) | **19.87 FPS** | **322.71 MB** | $+10.19\text{ MB}$ | 104 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
+
+> [!NOTE]
+> All benchmarks were measured under WSL2 Ubuntu (2 CPU threads allocated to FFmpeg) with memory target $< 400\text{ MB}$, hard ceiling $\le 600\text{ MB}$, and throughput gate $\ge 15.0\text{ FPS}$. In Phase 4, max gradient definitions remain capped at **10** and active particles remain bounded at **50**.
 
 ---
 

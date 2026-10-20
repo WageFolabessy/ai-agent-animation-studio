@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { ZodError, type z } from 'zod';
 import type {
   ChoreographerAgentInput,
   DirectorAgentInput,
@@ -12,11 +12,40 @@ import { buildDeterministicChoreography } from './choreographer-agent.js';
 
 export class LlmJsonParseError extends Error {
   public readonly rawSnippet: string;
+  public readonly rawDraft: string;
 
   constructor(message: string, rawResponse: string) {
     super(message);
     this.name = 'LlmJsonParseError';
     this.rawSnippet = rawResponse.slice(0, 240);
+    this.rawDraft = rawResponse.slice(0, 12_000);
+  }
+}
+
+export class LlmSchemaValidationError extends ZodError {
+  public readonly rawDraft: string;
+
+  constructor(issues: z.ZodIssue[], rawDraft: string) {
+    super(issues);
+    this.name = 'LlmSchemaValidationError';
+    this.rawDraft = rawDraft.slice(0, 12_000);
+  }
+}
+
+function parseWithSchemaDraftRetention<T>(schema: z.ZodType<T>, extracted: unknown): T {
+  try {
+    return schema.parse(extracted);
+  } catch (err) {
+    if (err instanceof ZodError) {
+      let serialized = '';
+      try {
+        serialized = JSON.stringify(extracted, null, 2);
+      } catch {
+        serialized = String(extracted);
+      }
+      throw new LlmSchemaValidationError(err.issues, serialized);
+    }
+    throw err;
   }
 }
 
@@ -199,7 +228,7 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       }
 
       const extracted = extractJsonFromLlmResponse(rawContent);
-      return schema.parse(extracted);
+      return parseWithSchemaDraftRetention(schema, extracted);
     } finally {
       clearTimeout(timer);
     }
@@ -251,7 +280,7 @@ export class DeterministicMockLlmProvider implements LlmProvider {
         const rawText =
           typeof intercepted === 'string' ? intercepted : JSON.stringify(intercepted, null, 2);
         const extracted = extractJsonFromLlmResponse(rawText);
-        return schema.parse(extracted);
+        return parseWithSchemaDraftRetention(schema, extracted);
       }
     }
 
@@ -288,6 +317,6 @@ export class DeterministicMockLlmProvider implements LlmProvider {
       : serialized;
 
     const extracted = extractJsonFromLlmResponse(rawResponse);
-    return schema.parse(extracted);
+    return parseWithSchemaDraftRetention(schema, extracted);
   }
 }
