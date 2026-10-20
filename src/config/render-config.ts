@@ -15,6 +15,15 @@ export const X264_MEMORY_PARAMS = 'sliced-threads=1:rc-lookahead=0:ref=1:bframes
  */
 export const AUTO_FFMPEG_THREADS = 2;
 
+export const AudioMuxConfigSchema = z.object({
+  filePath: z.string().min(1),
+  startSeconds: z.number().finite().min(0).optional(),
+  durationSeconds: z.number().finite().positive().optional(),
+  bitrateKbps: z.union([z.literal(192), z.literal(256), z.literal(320)]).optional()
+}).strict();
+
+export type AudioMuxConfig = z.infer<typeof AudioMuxConfigSchema>;
+
 export const BaseRenderConfigSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -23,7 +32,8 @@ export const BaseRenderConfigSchema = z.object({
   totalFrames: z.number().int().positive(),
   crf: z.number().int().min(0).max(51).default(18),
   preset: z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow']).default('fast'),
-  threads: z.union([z.literal('auto'), z.number().int().min(1).max(32)]).default(AUTO_FFMPEG_THREADS)
+  threads: z.union([z.literal('auto'), z.number().int().min(1).max(32)]).default(AUTO_FFMPEG_THREADS),
+  audio: AudioMuxConfigSchema.optional()
 }).strict();
 
 export type BaseRenderConfigInput = z.input<typeof BaseRenderConfigSchema>;

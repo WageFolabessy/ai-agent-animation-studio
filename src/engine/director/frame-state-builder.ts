@@ -51,10 +51,21 @@ export class FrameStateBuilder {
   }
 
   private findActiveLyric(frameIndex: number): ActiveLyricState | null {
-    for (const lyric of this.audioManifest.lyrics) {
+    const lyrics = this.audioManifest.lyrics;
+    let low = 0;
+    let high = lyrics.length - 1;
+
+    while (low <= high) {
+      const mid = (low + high) >>> 1;
+      const lyric = lyrics[mid];
       const start = lyric.frameRange.startFrameInclusive;
       const end = lyric.frameRange.endFrameExclusive;
-      if (frameIndex >= start && frameIndex < end) {
+
+      if (frameIndex < start) {
+        high = mid - 1;
+      } else if (frameIndex >= end) {
+        low = mid + 1;
+      } else {
         const duration = end - start;
         const progress = duration > 0 ? (frameIndex - start) / duration : 0;
         return {

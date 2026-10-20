@@ -19,8 +19,8 @@ export const AudioFrameFeatureSchema = z.object({
   rmsRelativeGlobal: z.number().finite().min(0).max(1),
   rmsRelativeLocal: z.number().finite().min(0).max(1),
   localWindowFrames: z.number().int().positive(),
-  spectralFlux: FiniteNumberSchema.min(0),
-  onsetStrength: FiniteNumberSchema.min(0),
+  spectralFlux: z.number().finite().min(0).max(1),
+  onsetStrength: z.number().finite().min(0).max(1),
   isOnset: z.boolean(),
   pitchEstimatedHz: FiniteNumberSchema.positive().optional(),
   bands: AudioBandEnergySchema
@@ -46,6 +46,25 @@ export const BeatEventSchema = z.object({
 }).strict();
 export type BeatEvent = z.infer<typeof BeatEventSchema>;
 
+export const MemoryColumnarStorageReferenceSchema = z.object({
+  type: z.literal('memory_columnar'),
+  columnLayoutVersion: z.literal(1)
+}).strict();
+
+export const ExternalBinaryStorageReferenceSchema = z.object({
+  type: z.literal('external_binary'),
+  columnLayoutVersion: z.literal(1),
+  binaryFilePath: z.string().min(1),
+  byteLength: z.number().int().positive(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/)
+}).strict();
+
+export const AudioStorageReferenceSchema = z.discriminatedUnion('type', [
+  MemoryColumnarStorageReferenceSchema,
+  ExternalBinaryStorageReferenceSchema
+]);
+export type AudioStorageReference = z.infer<typeof AudioStorageReferenceSchema>;
+
 /**
  * SERIALIZABLE MANIFEST: Structure output produced by audio signal analysis.
  * Avoids keeping a large object graph on the V8 heap; frame-level features
@@ -67,10 +86,7 @@ export const AudioAnalysisManifestSchema = z.object({
   }).strict(),
   lyrics: z.array(LyricLineSchema),
   beatEvents: z.array(BeatEventSchema).default([]),
-  storageReference: z.object({
-    type: z.enum(['memory_columnar', 'external_binary']),
-    columnLayoutVersion: z.literal(1)
-  }).strict()
+  storageReference: AudioStorageReferenceSchema
 }).strict();
 export type AudioAnalysisManifest = z.infer<typeof AudioAnalysisManifestSchema>;
 

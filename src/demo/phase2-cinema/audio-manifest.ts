@@ -89,7 +89,7 @@ export class DemoAudioFeatureReader implements AudioFeatureReader {
       rmsRelativeGlobal: rms,
       rmsRelativeLocal: rms,
       localWindowFrames: 30,
-      spectralFlux: onsetStrength * 1.5,
+      spectralFlux: Math.min(1.0, onsetStrength),
       onsetStrength,
       isOnset,
       pitchEstimatedHz: 440,

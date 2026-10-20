@@ -501,3 +501,69 @@ test('Invariants: validateChoreography validates tracks, detects unknown shot/ri
   assert.ok(reportOOB.errors.some((e) => e.code === 'TRACK_KEYFRAME_OUT_OF_BOUNDS'));
 });
 
+test('Invariants: Enforces sorted, non-overlapping lyric timeline and time-frame alignment', () => {
+  const { audioManifest, storyboard, renderConfig, rigs } = getValidFixtures();
+
+  // 1. Unsorted lyrics
+  audioManifest.lyrics = [
+    {
+      id: 'lyric-b',
+      frameRange: { startFrameInclusive: 60, endFrameExclusive: 90 },
+      startTimeSeconds: 2.0,
+      endTimeSeconds: 3.0,
+      text: 'Second line',
+      emphasis: 0.8
+    },
+    {
+      id: 'lyric-a',
+      frameRange: { startFrameInclusive: 30, endFrameExclusive: 60 },
+      startTimeSeconds: 1.0,
+      endTimeSeconds: 2.0,
+      text: 'First line out of order',
+      emphasis: 0.7
+    }
+  ];
+  const reportUnsorted = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(reportUnsorted.isValid, false);
+  assert.ok(reportUnsorted.errors.some((e) => e.code === 'LYRIC_TIMELINE_UNSORTED'));
+
+  // 2. Overlapping lyrics
+  audioManifest.lyrics = [
+    {
+      id: 'lyric-1',
+      frameRange: { startFrameInclusive: 0, endFrameExclusive: 60 },
+      startTimeSeconds: 0.0,
+      endTimeSeconds: 2.0,
+      text: 'Line 1',
+      emphasis: 0.7
+    },
+    {
+      id: 'lyric-2',
+      frameRange: { startFrameInclusive: 45, endFrameExclusive: 90 },
+      startTimeSeconds: 1.5,
+      endTimeSeconds: 3.0,
+      text: 'Line 2 overlapping Line 1',
+      emphasis: 0.8
+    }
+  ];
+  const reportOverlap = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(reportOverlap.isValid, false);
+  assert.ok(reportOverlap.errors.some((e) => e.code === 'LYRIC_TIMELINE_OVERLAP'));
+
+  // 3. Time-frame mismatch (> 1 frame difference between startTimeSeconds * fps and startFrameInclusive)
+  audioManifest.lyrics = [
+    {
+      id: 'lyric-mismatch',
+      frameRange: { startFrameInclusive: 0, endFrameExclusive: 60 },
+      startTimeSeconds: 0.5, // 0.5 * 30 = frame 15 != 0
+      endTimeSeconds: 2.0,
+      text: 'Mismatched timestamp',
+      emphasis: 0.7
+    }
+  ];
+  const reportMismatch = validateProjectContracts(audioManifest, storyboard, renderConfig, rigs);
+  assert.equal(reportMismatch.isValid, false);
+  assert.ok(reportMismatch.errors.some((e) => e.code === 'LYRIC_TIME_FRAME_MISMATCH'));
+});
+
+

@@ -6,6 +6,7 @@ import {
   X264_MEMORY_PARAMS,
   type RenderConfig
 } from '../config/render-config.js';
+import { resolveCrossPlatformPath } from '../engine/audio/lrc-parser.js';
 
 export interface FfmpegStreamerOptions {
   config: RenderConfig;
@@ -23,9 +24,50 @@ const STDERR_SUMMARY_LINES = 10;
  * The arguments are passed to `spawn` as an array, so no shell is involved.
  */
 export function buildFfmpegArgs(config: RenderConfig, stagingPath: string): string[] {
+  if (!config.audio) {
+    return [
+      '-y',
+      // Input options (before -i).
+      '-f', 'rawvideo',
+      '-pixel_format', 'rgba',
+      '-video_size', `${config.width}x${config.height}`,
+      '-framerate', config.fps.toString(),
+      '-probesize', '32',
+      '-analyzeduration', '0',
+      '-i', 'pipe:0',
+      // Explicit RGB -> BT.709 limited-range YUV conversion.
+      '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p',
+      // Output options (after -i).
+      '-c:v', 'libx264',
+      '-preset', config.preset,
+      '-crf', config.crf.toString(),
+      '-colorspace', 'bt709',
+      '-color_primaries', 'bt709',
+      '-color_trc', 'bt709',
+      '-color_range', 'tv',
+      ...mapFfmpegThreads(config.threads),
+      '-x264-params', X264_MEMORY_PARAMS,
+      '-movflags', '+faststart',
+      '-f', 'mp4',
+      stagingPath
+    ];
+  }
+
+  const resolvedAudioPath = resolveCrossPlatformPath(config.audio.filePath);
+  const audioInputArgs: string[] = [];
+  if (config.audio.startSeconds !== undefined) {
+    audioInputArgs.push('-ss', config.audio.startSeconds.toString());
+  }
+  if (config.audio.durationSeconds !== undefined) {
+    audioInputArgs.push('-t', config.audio.durationSeconds.toString());
+  }
+  audioInputArgs.push('-i', resolvedAudioPath);
+
+  const bitrateKbps = config.audio.bitrateKbps ?? 192;
+
   return [
     '-y',
-    // Input options (before -i).
+    // Input 0: Raw RGBA video frames on stdin
     '-f', 'rawvideo',
     '-pixel_format', 'rgba',
     '-video_size', `${config.width}x${config.height}`,
@@ -33,9 +75,14 @@ export function buildFfmpegArgs(config: RenderConfig, stagingPath: string): stri
     '-probesize', '32',
     '-analyzeduration', '0',
     '-i', 'pipe:0',
+    // Input 1: External audio file
+    ...audioInputArgs,
+    // Map video from Input 0 and primary audio from Input 1 (ignores embedded cover art in FLAC/MP3)
+    '-map', '0:v:0',
+    '-map', '1:a:0',
     // Explicit RGB -> BT.709 limited-range YUV conversion.
     '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p',
-    // Output options (after -i).
+    // Video encoding options
     '-c:v', 'libx264',
     '-preset', config.preset,
     '-crf', config.crf.toString(),
@@ -45,6 +92,10 @@ export function buildFfmpegArgs(config: RenderConfig, stagingPath: string): stri
     '-color_range', 'tv',
     ...mapFfmpegThreads(config.threads),
     '-x264-params', X264_MEMORY_PARAMS,
+    // Audio encoding options
+    '-c:a', 'aac',
+    '-b:a', `${bitrateKbps}k`,
+    '-shortest',
     '-movflags', '+faststart',
     '-f', 'mp4',
     stagingPath

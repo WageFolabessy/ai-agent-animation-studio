@@ -300,9 +300,11 @@ export function validateProjectContracts(
     }
   }
 
-  // 4. Beat and Lyric Invariants: Valid frame ranges [0, totalFrames) & unique IDs
+  // 4. Beat and Lyric Invariants: Valid frame ranges [0, totalFrames), unique IDs, sorted & non-overlapping
   const lyricIds = new Set<string>();
-  for (const lyric of audioManifest.lyrics) {
+  const lyrics = audioManifest.lyrics;
+  for (let i = 0; i < lyrics.length; i++) {
+    const lyric = lyrics[i];
     if (lyricIds.has(lyric.id)) {
       errors.push({
         code: 'DUPLICATE_LYRIC_ID',
@@ -320,6 +322,43 @@ export function validateProjectContracts(
         severity: 'error',
         message: `Lyric frame range is out of video bounds [0, ${storyboard.totalFrames})`
       });
+    }
+
+    const expectedStartFrame = Math.round(lyric.startTimeSeconds * audioMeta.fps);
+    const expectedEndFrame = Math.round(lyric.endTimeSeconds * audioMeta.fps);
+    if (
+      Math.abs(expectedStartFrame - lyric.frameRange.startFrameInclusive) > 1 ||
+      Math.abs(expectedEndFrame - lyric.frameRange.endFrameExclusive) > 1
+    ) {
+      errors.push({
+        code: 'LYRIC_TIME_FRAME_MISMATCH',
+        path: `audioManifest.lyrics[${i}]`,
+        severity: 'error',
+        message: `Lyric "${lyric.id}" time range [${lyric.startTimeSeconds}, ${lyric.endTimeSeconds}]s at ${audioMeta.fps} fps (expected frames [${expectedStartFrame}, ${expectedEndFrame})) diverges from frameRange [${lyric.frameRange.startFrameInclusive}, ${lyric.frameRange.endFrameExclusive}) by > 1 frame`,
+        relatedIds: [lyric.id]
+      });
+    }
+
+    if (i > 0) {
+      const prev = lyrics[i - 1];
+      if (lyric.frameRange.startFrameInclusive <= prev.frameRange.startFrameInclusive) {
+        errors.push({
+          code: 'LYRIC_TIMELINE_UNSORTED',
+          path: `audioManifest.lyrics[${i}].frameRange.startFrameInclusive`,
+          severity: 'error',
+          message: `Lyric "${lyric.id}" startFrameInclusive (${lyric.frameRange.startFrameInclusive}) must be strictly greater than previous lyric "${prev.id}" startFrameInclusive (${prev.frameRange.startFrameInclusive})`,
+          relatedIds: [prev.id, lyric.id]
+        });
+      }
+      if (lyric.frameRange.startFrameInclusive < prev.frameRange.endFrameExclusive) {
+        errors.push({
+          code: 'LYRIC_TIMELINE_OVERLAP',
+          path: `audioManifest.lyrics[${i}].frameRange.startFrameInclusive`,
+          severity: 'error',
+          message: `Lyric "${lyric.id}" startFrameInclusive (${lyric.frameRange.startFrameInclusive}) overlaps previous lyric "${prev.id}" endFrameExclusive (${prev.frameRange.endFrameExclusive})`,
+          relatedIds: [prev.id, lyric.id]
+        });
+      }
     }
   }
 

@@ -6,6 +6,11 @@ output/
 *.part.mp4
 *.failed.mp4
 *.mp4
+*.features.bin
+*.manifest.json
+assets/audio/*.flac
+assets/audio/*.wav
+assets/audio/*.mp3
 
 # Temporary logs and dumps
 *.log

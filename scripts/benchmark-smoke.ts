@@ -507,6 +507,10 @@ async function runSmokeBenchmark(): Promise<void> {
       ffprobeDuration: duration
     });
 
+    if (iter < 3 && fs.existsSync(finalPath)) {
+      fs.unlinkSync(finalPath);
+    }
+
     console.log(`✓ Iteration ${iter} complete:`);
     console.log(`  - Wall time: ${(pipeResult.totalWallMs / 1000).toFixed(2)}s | FPS: ${pipeResult.effectiveFps.toFixed(2)}`);
     console.log(

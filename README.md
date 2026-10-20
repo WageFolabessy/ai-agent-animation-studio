@@ -29,13 +29,18 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Isolated boundary edge rendering eliminating polygon stroke priority clashes.
   - Continuous analytical impulse decay lighting pulses ($I(t) = I_{\text{peak}} \cdot e^{-\lambda \Delta t}$) and zero-filter radial gradient glows.
   - 4-shot Phase 2 cinema demo (`npm run demo:phase2`) verified at **21.39 FPS**, **314.25 MB** RSS, and bounded memory plateau.
-- **Phase 3 & 4: Planned Only**
-  - Offline audio signal analysis and stem separation (Phase 3).
+- **Phase 3: Completed**
+  - Offline multi-band STFT audio intelligence (7 acoustic frequency bands, global & 3.0s rolling local RMS, half-wave rectified spectral flux, onset detection, and beat event extraction) in both TypeScript (`src/engine/audio/wav-analyzer.ts`) and Python (`python/analyze_audio.py`).
+  - Compact binary columnar format (`.features.bin`, `columnLayoutVersion: 1`, `32 + 53 * N` bytes = `572 KB` for a 6-minute song @ 30fps) and $O(1)$ `ColumnarAudioFeatureReader` with SHA-256 verification and 4-byte `Buffer` alignment guard.
+  - Deterministic `.lrc` parser (`src/engine/audio/lrc-parser.ts`) with metadata stripping, multi-timestamp chorus expansion, empty-timestamp instrumental cutoff truncation, and $O(\log L)$ binary search in `FrameStateBuilder`.
+  - Direct FFmpeg audio-video muxing (`-map 0:v:0 -map 1:a:0 -c:a aac -shortest`) and dual-stream `ffprobe` validation (`npm run demo:phase3` verified at **19.30 FPS**, **329.61 MB** RSS, and **+1.39 MB** plateau growth).
+- **Phase 4: Planned Only**
   - Multi-agent director, rig, and compositor LLM orchestration (Phase 4).
 
 For technical specifications, see:
 - [Phase 1 Architecture Foundation](docs/phase-1-architecture.md)
 - [Phase 2 Cinema & Compositor Architecture](docs/phase-2-architecture.md)
+- [Phase 3 Audio Intelligence, LRC & Muxing Architecture](docs/phase-3-architecture.md)
 
 ---
 

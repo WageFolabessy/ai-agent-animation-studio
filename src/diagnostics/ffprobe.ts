@@ -3,6 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 export const VideoStreamInfoSchema = z.object({
+  codec_type: z.string().optional(),
   codec_name: z.string().optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
@@ -18,12 +19,22 @@ export const VideoStreamInfoSchema = z.object({
 
 export type VideoStreamInfo = z.infer<typeof VideoStreamInfoSchema>;
 
+export const AudioStreamInfoSchema = z.object({
+  codec_type: z.string().optional(),
+  codec_name: z.string().optional(),
+  sample_rate: z.string().optional(),
+  channels: z.number().int().positive().optional(),
+  bit_rate: z.string().optional()
+}).passthrough();
+
+export type AudioStreamInfo = z.infer<typeof AudioStreamInfoSchema>;
+
 export const FormatInfoSchema = z.object({
   duration: z.string().optional()
 }).passthrough();
 
 export const FfprobeOutputSchema = z.object({
-  streams: z.array(VideoStreamInfoSchema).default([]),
+  streams: z.array(z.record(z.string(), z.unknown())).default([]),
   format: FormatInfoSchema.optional()
 }).passthrough();
 
@@ -32,21 +43,21 @@ export type FfprobeOutput = z.infer<typeof FfprobeOutputSchema>;
 export interface VideoProbeResult {
   filePath: string;
   stream: VideoStreamInfo;
+  audioStream?: AudioStreamInfo;
   format?: z.infer<typeof FormatInfoSchema>;
   frameCount?: number;
 }
 
 /**
  * Runs ffprobe on a video file with argument arrays (no shell interpolation),
- * parses JSON output, and validates it against the schema.
+ * parses JSON output, and validates both primary video and optional audio streams.
  */
 export function probeVideo(filePath: string): VideoProbeResult {
   const resolved = path.resolve(filePath);
   const args = [
     '-v', 'error',
     '-count_frames',
-    '-select_streams', 'v:0',
-    '-show_entries', 'stream=codec_name,width,height,pix_fmt,r_frame_rate,avg_frame_rate,nb_read_frames,color_space,color_primaries,color_transfer,color_range',
+    '-show_entries', 'stream=codec_type,codec_name,width,height,pix_fmt,r_frame_rate,avg_frame_rate,nb_read_frames,color_space,color_primaries,color_transfer,color_range,sample_rate,channels,bit_rate',
     '-show_entries', 'format=duration',
     '-of', 'json',
     resolved
@@ -64,12 +75,19 @@ export function probeVideo(filePath: string): VideoProbeResult {
     throw new Error(`ffprobe found no video stream in "${resolved}"`);
   }
 
-  const stream = parsed.streams[0];
+  const rawVideoStream =
+    parsed.streams.find((s) => s.codec_type === 'video') ?? parsed.streams[0];
+  const stream = VideoStreamInfoSchema.parse(rawVideoStream);
+
+  const rawAudioStream = parsed.streams.find((s) => s.codec_type === 'audio');
+  const audioStream = rawAudioStream ? AudioStreamInfoSchema.parse(rawAudioStream) : undefined;
+
   const frameCount = stream.nb_read_frames ? Number.parseInt(stream.nb_read_frames, 10) : undefined;
 
   return {
     filePath: resolved,
     stream,
+    ...(audioStream ? { audioStream } : {}),
     format: parsed.format,
     frameCount: Number.isInteger(frameCount) ? frameCount : undefined
   };

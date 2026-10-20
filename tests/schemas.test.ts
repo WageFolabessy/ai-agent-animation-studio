@@ -135,6 +135,60 @@ test('Audio Manifest: Schema rejects invalid totalFrames or sampleRate', () => {
       metadata: { ...validManifest.metadata, sampleRate: 22050 }
     });
   });
+
+  // External binary storage reference requires binaryFilePath, byteLength, and 64-hex sha256
+  const validExternalManifest = {
+    ...validManifest,
+    storageReference: {
+      type: 'external_binary',
+      columnLayoutVersion: 1,
+      binaryFilePath: 'audio.features.bin',
+      byteLength: 32 + 53 * 150,
+      sha256: 'a'.repeat(64)
+    }
+  };
+  assert.doesNotThrow(() => {
+    AudioAnalysisManifestSchema.parse(validExternalManifest);
+  });
+
+  // Rejects external_binary missing sha256 or with invalid sha256
+  assert.throws(() => {
+    AudioAnalysisManifestSchema.parse({
+      ...validManifest,
+      storageReference: {
+        type: 'external_binary',
+        columnLayoutVersion: 1,
+        binaryFilePath: 'audio.features.bin',
+        byteLength: 32 + 53 * 150,
+        sha256: 'not-a-valid-sha256'
+      }
+    });
+  });
+
+  // AudioFrameFeatureSchema enforces [0, 1] upper bounds on spectralFlux and onsetStrength
+  const validFeature = {
+    frameIndex: 0,
+    timestamp: 0,
+    rms: 0.5,
+    rmsRelativeGlobal: 0.5,
+    rmsRelativeLocal: 0.5,
+    localWindowFrames: 30,
+    spectralFlux: 1.0,
+    onsetStrength: 1.0,
+    isOnset: true,
+    bands: {
+      subBass: 0.1,
+      bass: 0.2,
+      lowMid: 0.3,
+      mid: 0.4,
+      highMid: 0.5,
+      presence: 0.6,
+      brilliance: 0.7
+    }
+  };
+  assert.doesNotThrow(() => AudioFrameFeatureSchema.parse(validFeature));
+  assert.throws(() => AudioFrameFeatureSchema.parse({ ...validFeature, spectralFlux: 1.01 }));
+  assert.throws(() => AudioFrameFeatureSchema.parse({ ...validFeature, onsetStrength: 1.01 }));
 });
 
 test('RenderConfig & Thread Mapping: Configuration and safe mapping verification', async () => {
