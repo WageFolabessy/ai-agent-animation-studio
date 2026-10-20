@@ -13,7 +13,8 @@
     "test": "tsx --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
     "demo:phase2": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase2-cinema.ts",
-    "demo:phase3": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase3-audio.ts"
+    "demo:phase3": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase3-audio.ts",
+    "demo:phase4": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase4-orchestration.ts"
   },
   "dependencies": {
     "@resvg/resvg-js": "2.6.2",

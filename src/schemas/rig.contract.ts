@@ -179,11 +179,15 @@ export const SvgViewBoxSchema = z.string().trim().superRefine((val, ctx) => {
 });
 export type SvgViewBox = z.infer<typeof SvgViewBoxSchema>;
 
+export const RigFacingDirectionEnum = z.enum(['left', 'right', 'front']);
+export type RigFacingDirection = z.infer<typeof RigFacingDirectionEnum>;
+
 export const AssetRigContractSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   type: AssetRigTypeEnum,
   viewAngle: RigViewAngleEnum.optional(),
+  facingDirection: RigFacingDirectionEnum.optional(),
   renderMode: z.enum(['planar', 'billboard']).optional(),
   baseTransform: z.object({
     position: Vec3Schema,

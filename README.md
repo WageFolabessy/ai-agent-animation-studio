@@ -34,13 +34,16 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Compact binary columnar format (`.features.bin`, `columnLayoutVersion: 1`, `32 + 53 * N` bytes = `572 KB` for a 6-minute song @ 30fps) and $O(1)$ `ColumnarAudioFeatureReader` with SHA-256 verification and 4-byte `Buffer` alignment guard.
   - Deterministic `.lrc` parser (`src/engine/audio/lrc-parser.ts`) with metadata stripping, multi-timestamp chorus expansion, empty-timestamp instrumental cutoff truncation, and $O(\log L)$ binary search in `FrameStateBuilder`.
   - Direct FFmpeg audio-video muxing (`-map 0:v:0 -map 1:a:0 -c:a aac -shortest`) and dual-stream `ffprobe` validation (`npm run demo:phase3` verified at **19.30 FPS**, **329.61 MB** RSS, and **+1.39 MB** plateau growth).
-- **Phase 4: Planned Only**
-  - Multi-agent director, rig, and compositor LLM orchestration (Phase 4).
+- **Phase 4: Completed**
+  - Provider-agnostic `LlmProvider` (`OpenAiCompatibleProvider` + offline `DeterministicMockLlmProvider`) and `extractJsonFromLlmResponse` markdown/BOM sanitizer.
+  - `DirectorAgent` (`src/agents/director-agent.ts`), `RigAgent` (`src/agents/rig-agent.ts`), and `ChoreographerAgent` (`src/agents/choreographer-agent.ts`) with full background horizon continuity across close-up cuts, separated stationary vs. kinetic particle emitters (`rig-smoke-chimney` vs. `rig-runner-aura`), and anatomical anti-moonwalk knee flexion (`RIG_KNEE_BEND_INVERTED`) and facing-vs-motion invariants (`TRACK_FACING_DIRECTION_MISMATCH`).
+  - `StudioAgentOrchestrator` (`src/agents/orchestrator.ts`) with automated self-healing retry loops powered by `validateProjectContracts` and `validateChoreography`.
 
 For technical specifications, see:
 - [Phase 1 Architecture Foundation](docs/phase-1-architecture.md)
 - [Phase 2 Cinema & Compositor Architecture](docs/phase-2-architecture.md)
 - [Phase 3 Audio Intelligence, LRC & Muxing Architecture](docs/phase-3-architecture.md)
+- [Phase 4 Multi-Agent LLM Orchestration Architecture](docs/phase-4-architecture.md)
 
 ---
 
@@ -205,13 +208,15 @@ ai-agent-animation-studio/
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
 | `typecheck` | `tsc --noEmit` | Strict static typecheck without emitting JavaScript |
-| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (99 tests) |
+| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (118 tests) |
 | `test:schemas` | `tsx --test tests/schemas.test.ts` | Tests primitive schemas and Zod 4 contracts |
 | `test:invariants` | `tsx --test tests/invariants.test.ts` | Tests cross-contract timeline, skeleton, and choreography invariants |
 | `test:backpressure`| `tsx --test tests/backpressure.test.ts` | Tests FFmpeg streamer backpressure and lifecycle |
 | `test:conformance` | `tsx scripts/conformance-render.ts` | Executes conformance render Gate B verification |
 | `test:benchmark:smoke` | `NODE_OPTIONS="--expose-gc" tsx scripts/benchmark-smoke.ts` | Executes 3-run 1080p smoke benchmark Gate C |
 | `demo:phase2` | `NODE_OPTIONS="--expose-gc" tsx scripts/demo-phase2-cinema.ts` | Executes full 4-shot Phase 2 cinema demo & benchmark |
+| `demo:phase3` | `NODE_OPTIONS="--expose-gc" tsx scripts/demo-phase3-audio.ts` | Executes Phase 3 STFT audio intelligence, LRC alignment & AAC muxing demo |
+| `demo:phase4` | `NODE_OPTIONS="--expose-gc" tsx scripts/demo-phase4-orchestration.ts` | Executes Phase 4 Multi-Agent LLM Orchestration & self-healing cinema demo |
 
 ---
 
@@ -371,10 +376,10 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   Zero-browser streaming rendering pipeline, data contracts, camera clipping mathematics, deterministic typography, and memory/performance benchmark gates.
 - **Phase 2 (Completed):**  
   Procedural cinema director (`ShotSequencer`, DOLLY/TRACKING/ORBIT, trauma camera shake), 2.5D articulated character rigging (FK, joint limits, secondary spring motion), shape morphing with $C^0$ continuity, strict Painter's algorithm depth sorting, and audio-reactive scene compositor.
-- **Phase 3 (Planned):**  
-  Offline audio signal feature extraction (RMS envelopes, spectral flux, transient detection, beat tracking) and automated lyric alignment.
-- **Phase 4 (Planned):**  
-  Multi-agent LLM orchestration: Director Agent (screenplay and shot division), Rig Agent (character design), and Compositor Agent (audio-reactive effects).
+- **Phase 3 (Completed):**  
+  Offline audio signal feature extraction (7-band STFT, RMS envelopes, spectral flux, onset detection), `.features.bin` v1 $O(1)$ columnar reader, deterministic `.lrc` alignment, and FFmpeg AAC audio-video muxing.
+- **Phase 4 (Completed):**  
+  Multi-agent LLM orchestration: `DirectorAgent`, `RigAgent`, `ChoreographerAgent`, and `StudioAgentOrchestrator` with automated self-healing contract validation and repair loops.
 
 ---
 

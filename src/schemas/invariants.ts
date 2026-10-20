@@ -467,6 +467,30 @@ export function validateProjectContracts(
           }
           curr = parent.parentId;
         }
+
+        // Facing direction vs anatomical lower-leg (knee) bend check
+        if (
+          (rig.facingDirection === 'right' || rig.facingDirection === 'left') &&
+          joint.id.includes('leg') &&
+          joint.id.includes('lower') &&
+          joint.constraintsDeg
+        ) {
+          if (rig.facingDirection === 'right' && joint.constraintsDeg[1] > 5) {
+            errors.push({
+              code: 'RIG_KNEE_BEND_INVERTED',
+              path: `rigs[${mapKey}].skeleton.joints[${joint.id}].constraintsDeg`,
+              severity: 'error',
+              message: `Knee joint "${joint.id}" in right-facing rig "${rig.id}" allows forward knee flexion (${joint.constraintsDeg[1]}° > 0°), which causes a moonwalk illusion. Use negative constraints (e.g. [-140, 0]) for backward knee flexion when facing right (+X).`
+            });
+          } else if (rig.facingDirection === 'left' && joint.constraintsDeg[0] < -5) {
+            errors.push({
+              code: 'RIG_KNEE_BEND_INVERTED',
+              path: `rigs[${mapKey}].skeleton.joints[${joint.id}].constraintsDeg`,
+              severity: 'error',
+              message: `Knee joint "${joint.id}" in left-facing rig "${rig.id}" allows forward knee flexion (${joint.constraintsDeg[0]}° < 0°), which causes a moonwalk illusion. Use positive constraints (e.g. [0, 140]) for backward knee flexion when facing left (-X).`
+            });
+          }
+        }
       }
     }
 
@@ -784,6 +808,22 @@ export function validateChoreography(
             severity: 'error',
             message: `Keyframe frame ${kf.frame} is out of shot "${shot.id}" range [${shot.frameRange.startFrameInclusive}, ${shot.frameRange.endFrameExclusive}).`
           });
+        }
+
+        // Facing direction vs lateral translation check (Moonwalk guard)
+        if (k > 0 && (rig.facingDirection === 'right' || rig.facingDirection === 'left')) {
+          const prevKf = keyframes[k - 1];
+          const dx = kf.position[0] - prevKf.position[0];
+          const scaleX = kf.scale?.[0] ?? rig.baseTransform.scale[0];
+          const effectiveFacingSign = (rig.facingDirection === 'right' ? 1 : -1) * (scaleX >= 0 ? 1 : -1);
+          if (Math.abs(dx) > 1e-3 && dx * effectiveFacingSign < 0) {
+            errors.push({
+              code: 'TRACK_FACING_DIRECTION_MISMATCH',
+              path: `choreography.tracks[${t}].transform.keyframes[${k}].position`,
+              severity: 'error',
+              message: `Moonwalk detected on rig "${rig.id}" in shot "${shot.id}": rig faces "${rig.facingDirection}" (scaleX=${scaleX}), but translates horizontally by dx=${dx.toFixed(2)} between frames ${prevKf.frame} and ${kf.frame}.`
+            });
+          }
         }
       }
 
