@@ -28,7 +28,7 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Strict Painter's Algorithm depth-sorted scene compositor with camera-space pre-clip centroid depth keying ($z_c$), recursive large-primitive subdivision ($z = z_{\text{mean}}$), and outward CCW face winding.
   - Isolated boundary edge rendering eliminating polygon stroke priority clashes.
   - Continuous analytical impulse decay lighting pulses ($I(t) = I_{\text{peak}} \cdot e^{-\lambda \Delta t}$) and zero-filter radial gradient glows.
-  - 4-shot Phase 2 cinema demo (`npm run demo:phase2`) verified at **27.39 FPS**, **334.49 MB** RSS, and bounded memory plateau.
+  - 4-shot Phase 2 cinema demo (`npm run demo:phase2`) verified at **21.39 FPS**, **314.25 MB** RSS, and bounded memory plateau.
 - **Phase 3 & 4: Planned Only**
   - Offline audio signal analysis and stem separation (Phase 3).
   - Multi-agent director, rig, and compositor LLM orchestration (Phase 4).
@@ -104,7 +104,7 @@ ai-agent-animation-studio/
 │   │   └── render-config.ts       # Zod schemas, thread mapping, and x264 parameters
 │   ├── demo/
 │   │   └── phase2-cinema/
-│   │       ├── audio-fixture.ts   # Deterministic 180-frame 120 BPM audio & lyric fixture
+│   │       ├── audio-manifest.ts  # Deterministic 180-frame 120 BPM audio & lyric fixture
 │   │       ├── choreography.ts    # Multi-shot entity tracks, poses, and morph bindings
 │   │       ├── environment.ts     # 3D architectural prisms, ground floor, and isolated grid lines
 │   │       ├── index.ts           # Barrel export for Phase 2 demo modules
@@ -133,7 +133,7 @@ ai-agent-animation-studio/
 │   │   │   ├── frame-state-builder.ts # Deterministic FrameStateContract orchestrator
 │   │   │   └── shot-sequencer.ts  # O(log N) shot lookup, DOLLY/TRACKING, and circular ORBIT slerp
 │   │   ├── effects/
-│   │   │   └── particles.ts       # Stateless analytical particle emitter & burst evaluator
+│   │   │   └── particle-emitter.ts # Stateless analytical particle emitter & burst evaluator
 │   │   ├── math/
 │   │   │   ├── color.ts           # Deterministic RGB/Hex conversion, mixing, and shading
 │   │   │   ├── easing.ts          # Camera & pose easing functions and Hermite spline interpolation
@@ -141,9 +141,8 @@ ai-agent-animation-studio/
 │   │   │   ├── noise.ts           # Seeded 1D value noise and FNV-1a deterministic PRNG
 │   │   │   └── spring.ts          # Analytical damped harmonic oscillator & exponential decay solver
 │   │   └── rigging/
-│   │       ├── billboard.ts       # Billboard similarity transform & world-plane 3D projection
 │   │       ├── deformer.ts        # Pose track sampler, secondary spring solver & part deformer
-│   │       ├── kinematics.ts      # Planar Forward Kinematics (FK) solver with joint clamping
+│   │       ├── kinematics.ts      # Planar Forward Kinematics (FK) solver with joint clamping & billboard projection
 │   │       └── morpher.ts         # Piecewise Cubic Bezier shape morpher & SVG path converter
 │   ├── renderer/
 │   │   ├── ffmpeg-streamer.ts     # ChildProcess streamer with backpressure and abort handling
@@ -164,8 +163,8 @@ ai-agent-animation-studio/
     ├── clipping.test.ts           # Near/far frustum, 1/z depth, and canonical cube culling tests
     ├── demo-phase2.test.ts        # Phase 2 demo contracts, 180-frame budget, and determinism tests
     ├── depth-sort.test.ts         # Pre-clip depth keys, primitive splitting, and sort order tests
-    ├── effects-director.test.ts   # Particle emitter, choreography, and FrameStateBuilder tests
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
+    ├── frame-state.test.ts        # Particle emitter, choreography, and FrameStateBuilder tests
     ├── invariants.test.ts         # Storyboard timeline, act, rig, and choreography invariants
     ├── math.test.ts               # Easing, spring physics, noise, and color math tests
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
