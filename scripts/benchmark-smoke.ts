@@ -8,10 +8,19 @@ import { SvgBuilder } from '../src/engine/compositor/svg-builder.js';
 import type { CameraTransform, Vec3 } from '../src/schemas/primitives.schema.js';
 import { computeCameraBasis, worldToCameraSpace } from '../src/engine/camera/camera-3d.js';
 import {
-  projectToScreen,
-  clipAndProjectLine,
-  clipAndProjectPolygon
-} from '../src/engine/camera/projection.js';
+  projectCameraPointToScreen,
+  clipAndProjectCameraLine,
+  clipAndProjectCameraPolygon
+} from '../src/engine/camera/clipping.js';
+import {
+  computePointsDepthKey,
+  sortDrawables,
+  splitLargeLine,
+  type CameraSpaceLine,
+  type SortablePrimitive
+} from '../src/engine/compositor/depth-sort.js';
+import { exponentialDecay } from '../src/engine/math/spring.js';
+import { mixHexColors } from '../src/engine/math/color.js';
 import {
   evaluateSmokeBenchmarkGates,
   MEMORY_HARD_FAIL_MB,
@@ -53,18 +62,37 @@ const cubeVertices: Vec3[] = [
 ];
 
 // 6 cube faces with strictly CCW winding viewed from outside
-const cubeFaces: number[][] = [
-  [4, 5, 6, 7], // Front (+Z)
-  [1, 0, 3, 2], // Back (-Z)
-  [0, 4, 7, 3], // Left (-X)
-  [5, 1, 2, 6], // Right (+X)
-  [7, 6, 2, 3], // Top (+Y)
-  [0, 1, 5, 4]  // Bottom (-Y)
+const cubeFaces: ReadonlyArray< readonly [number, number, number, number]> = [
+  [4, 5, 6, 7], // 0: Front (+Z)
+  [1, 0, 3, 2], // 1: Back (-Z)
+  [0, 4, 7, 3], // 2: Left (-X)
+  [5, 1, 2, 6], // 3: Right (+X)
+  [7, 6, 2, 3], // 4: Top (+Y)
+  [0, 1, 5, 4]  // 5: Bottom (-Y)
 ];
+
+// 12 deduplicated undirected edges of the cube: [vertexA, vertexB, faceIndex1, faceIndex2]
+const CUBE_EDGES: ReadonlyArray<readonly [number, number, number, number]> = [
+  [4, 5, 0, 5], // Front - Bottom
+  [5, 6, 0, 3], // Front - Right
+  [6, 7, 0, 4], // Front - Top
+  [7, 4, 0, 2], // Front - Left
+  [1, 0, 1, 5], // Back - Bottom
+  [0, 3, 1, 2], // Back - Left
+  [3, 2, 1, 4], // Back - Top
+  [2, 1, 1, 3], // Back - Right
+  [0, 4, 2, 5], // Left - Bottom
+  [5, 1, 3, 5], // Right - Bottom
+  [6, 2, 3, 4], // Right - Top
+  [7, 3, 2, 4]  // Left - Top
+];
+
+const CUBE_FACE_COLORS = ['#00ffff', '#ff00ff', '#ffff00', '#00ff88', '#ff3366', '#3388ff'] as const;
 
 function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): string {
   const width = 1920;
   const height = 1080;
+  const fps = 30;
   const progress = frameIndex / totalFrames;
 
   // Smoothly rotate camera around target
@@ -88,53 +116,80 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
 
   const basis = computeCameraBasis(camera);
 
-  // Simulated audio pulse with continuous exponential decay (transients at frames 30, 60, 90, 120)
+  // Simulated audio pulse with continuous analytical exponential decay (transients at frames 30, 60, 90, 120)
   const ONSET_FRAMES = [30, 60, 90, 120];
-  const lastOnset = ONSET_FRAMES.filter((f) => f <= frameIndex).pop();
-  const pulse = lastOnset !== undefined ? Math.exp(-(frameIndex - lastOnset) / 6) : 0;
+  let pulseSum = 0;
+  for (const onsetFrame of ONSET_FRAMES) {
+    if (onsetFrame <= frameIndex) {
+      const dtSeconds = (frameIndex - onsetFrame) / fps;
+      pulseSum += exponentialDecay(dtSeconds, 5.0);
+    }
+  }
+  const pulse = Math.min(1, pulseSum);
 
-  // Background smoothly fades from #08081a (8, 8, 26) to #441133 (68, 17, 51)
-  const bgR = Math.round(8 + (68 - 8) * pulse);
-  const bgG = Math.round(8 + (17 - 8) * pulse);
-  const bgB = Math.round(26 + (51 - 26) * pulse);
-  const bgGlowColor = `#${bgR.toString(16).padStart(2, '0')}${bgG.toString(16).padStart(2, '0')}${bgB.toString(16).padStart(2, '0')}`;
+  // Background smoothly interpolates from #08081a to #441133 using Phase 2 color math
+  const bgGlowColor = mixHexColors('#08081a', '#441133', pulse);
 
   const builder = new SvgBuilder({ width, height, backgroundColor: bgGlowColor });
 
-  // 1. 3D Parallax Star Layer
+  // Unified Painter's Algorithm sortable primitive queue (Phase 2 depth-sort engine)
+  const sortables: SortablePrimitive[] = [];
+  let submitIndex = 0;
+
+  // 1. Tier 0: 3D Parallax Star Layer (depth-keyed in pre-clip camera space)
   for (const star of stars3D) {
-    const proj = projectToScreen(star, camera, basis, width, height);
-    if (proj.visible) {
-      const radius = Math.max(1, 4 - proj.zDepth / 150);
-      builder.addCircle(proj.x, proj.y, radius, '#ffffff', 0.8);
+    const camPt = worldToCameraSpace(star, camera, basis);
+    const zc = camPt[2];
+    if (zc >= camera.nearPlane && zc <= camera.farPlane) {
+      const proj = projectCameraPointToScreen(camPt, camera, width, height);
+      if (proj.x >= 0 && proj.x <= width && proj.y >= 0 && proj.y <= height) {
+        const radius = Math.max(1, 4 - zc / 150);
+        sortables.push({
+          kind: 'star',
+          depthKey: zc,
+          tier: 0,
+          index: submitIndex++,
+          x: proj.x,
+          y: proj.y,
+          radius
+        });
+      }
     }
   }
 
-  // 2. Perspective Ground Grid Layer with Primitive Clipping
+  // 2. Tier 1: Perspective Ground Grid Layer (split & depth-keyed in pre-clip camera space)
   const gridY = -80;
+  const rawGridSegments: Array<[Vec3, Vec3]> = [];
   for (let gx = -300; gx <= 300; gx += 100) {
-    const line = clipAndProjectLine([gx, gridY, -300], [gx, gridY, 300], camera, basis, width, height);
-    if (line) {
-      builder.addLine(line.p0.x, line.p0.y, line.p1.x, line.p1.y, '#224466', 1, 0.4);
-    }
+    rawGridSegments.push([[gx, gridY, -300], [gx, gridY, 300]]);
   }
   for (let gz = -300; gz <= 300; gz += 100) {
-    const line = clipAndProjectLine([-300, gridY, gz], [300, gridY, gz], camera, basis, width, height);
-    if (line) {
-      builder.addLine(line.p0.x, line.p0.y, line.p1.x, line.p1.y, '#224466', 1, 0.4);
+    rawGridSegments.push([[-300, gridY, gz], [300, gridY, gz]]);
+  }
+  for (const [p0World, p1World] of rawGridSegments) {
+    const lineItem: CameraSpaceLine = {
+      kind: 'grid_line',
+      p0: worldToCameraSpace(p0World, camera, basis),
+      p1: worldToCameraSpace(p1World, camera, basis),
+      depthKey: 0,
+      tier: 1,
+      index: submitIndex++
+    };
+    const pieces = splitLargeLine(lineItem, camera.nearPlane, camera.farPlane);
+    for (const piece of pieces) {
+      sortables.push(piece);
     }
   }
 
-  // 3. Rotating 3D Totem Cube with Outward Normals and Back-to-Front Depth Sorting
+  // 3. Tier 2 & Tier 3: Rotating 3D Totem Cube with Outward Normals, Pre-Clip Depth Sorting, and Isolated Wireframe Edges
   const rotY = frameIndex * 0.04;
   const rotX = frameIndex * 0.02;
-  const cosY = Math.cos(rotY),
-    sinY = Math.sin(rotY);
-  const cosX = Math.cos(rotX),
-    sinX = Math.sin(rotX);
+  const cosY = Math.cos(rotY);
+  const sinY = Math.sin(rotY);
+  const cosX = Math.cos(rotX);
+  const sinX = Math.sin(rotX);
 
   const rotatedVertices: Vec3[] = cubeVertices.map((v) => {
-    // Rotation X then Y
     const y1 = v[1] * cosX - v[2] * sinX;
     const z1 = v[1] * sinX + v[2] * cosX;
     const x2 = v[0] * cosY + z1 * sinY;
@@ -142,14 +197,10 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
     return [x2, y1, z2];
   });
 
-  const colors = ['#00ffff', '#ff00ff', '#ffff00', '#00ff88', '#ff3366', '#3388ff'];
-
-  interface VisibleFace {
-    polyPoints: Array<[number, number]>;
-    color: string;
-    centroidZ: number;
-  }
-  const visibleFaces: VisibleFace[] = [];
+  const camVertices: Vec3[] = rotatedVertices.map((v) => worldToCameraSpace(v, camera, basis));
+  const faceCosines: number[] = new Array(cubeFaces.length).fill(-1);
+  const FACE_VISIBILITY_EPSILON = 1e-6;
+  let minVisibleFaceDepth = Infinity;
 
   for (let i = 0; i < cubeFaces.length; i++) {
     const face = cubeFaces[i];
@@ -158,49 +209,141 @@ function generateProceduralFrameSvg(frameIndex: number, totalFrames: number): st
     const w2 = rotatedVertices[face[2]];
     const w3 = rotatedVertices[face[3]];
 
-    // 3D outward normal from CCW winding: edge1 x edge2
+    // 3D outward unit normal from CCW winding: edge1 x edge2
     const edge1: Vec3 = [w1[0] - w0[0], w1[1] - w0[1], w1[2] - w0[2]];
     const edge2: Vec3 = [w2[0] - w0[0], w2[1] - w0[1], w2[2] - w0[2]];
-    const normal: Vec3 = [
-      edge1[1] * edge2[2] - edge1[2] * edge2[1],
-      edge1[2] * edge2[0] - edge1[0] * edge2[2],
-      edge1[0] * edge2[1] - edge1[1] * edge2[0]
-    ];
-    // Vector from face to camera position
-    const toCam: Vec3 = [
-      camera.position[0] - w0[0],
-      camera.position[1] - w0[1],
-      camera.position[2] - w0[2]
-    ];
-    const dot = normal[0] * toCam[0] + normal[1] * toCam[1] + normal[2] * toCam[2];
+    const nx = edge1[1] * edge2[2] - edge1[2] * edge2[1];
+    const ny = edge1[2] * edge2[0] - edge1[0] * edge2[2];
+    const nz = edge1[0] * edge2[1] - edge1[1] * edge2[0];
+    const nLen = Math.hypot(nx, ny, nz) || 1;
 
-    if (dot > 0) {
-      // Facing camera
-      const faceVertices: Vec3[] = [w0, w1, w2, w3];
-      const clipped = clipAndProjectPolygon(faceVertices, camera, basis, width, height);
-      if (clipped && clipped.vertices.length >= 3) {
-        const polyPoints: Array<[number, number]> = clipped.vertices.map((v) => [v.x, v.y]);
-        const c0 = worldToCameraSpace(w0, camera, basis);
-        const c1 = worldToCameraSpace(w1, camera, basis);
-        const c2 = worldToCameraSpace(w2, camera, basis);
-        const c3 = worldToCameraSpace(w3, camera, basis);
-        const centroidZ = (c0[2] + c1[2] + c2[2] + c3[2]) / 4;
-        visibleFaces.push({ polyPoints, color: colors[i % colors.length], centroidZ });
+    // Face centroid to camera unit vector
+    const cx = 0.25 * (w0[0] + w1[0] + w2[0] + w3[0]);
+    const cy = 0.25 * (w0[1] + w1[1] + w2[1] + w3[1]);
+    const cz = 0.25 * (w0[2] + w1[2] + w2[2] + w3[2]);
+    const vx = camera.position[0] - cx;
+    const vy = camera.position[1] - cy;
+    const vz = camera.position[2] - cz;
+    const vLen = Math.hypot(vx, vy, vz) || 1;
+
+    const viewCos = (nx * vx + ny * vy + nz * vz) / (nLen * vLen);
+    faceCosines[i] = viewCos;
+
+    if (viewCos > FACE_VISIBILITY_EPSILON) {
+      const faceCamVerts: Vec3[] = [
+        camVertices[face[0]],
+        camVertices[face[1]],
+        camVertices[face[2]],
+        camVertices[face[3]]
+      ];
+      const { zMean } = computePointsDepthKey(faceCamVerts, camera.nearPlane, camera.farPlane);
+      if (zMean < minVisibleFaceDepth) {
+        minVisibleFaceDepth = zMean;
+      }
+      const baseColor = CUBE_FACE_COLORS[i % CUBE_FACE_COLORS.length];
+
+      sortables.push({
+        kind: 'cube_face',
+        depthKey: zMean,
+        tier: 2,
+        index: submitIndex++,
+        camVerts: faceCamVerts,
+        color: baseColor
+      });
+    }
+  }
+
+  // Deduplicated isolated wireframe edges sorted after all visible parent faces of the convex cube (Tier 3)
+  for (const [vA, vB, f1, f2] of CUBE_EDGES) {
+    const f1Visible = faceCosines[f1] > FACE_VISIBILITY_EPSILON;
+    const f2Visible = faceCosines[f2] > FACE_VISIBILITY_EPSILON;
+    if (f1Visible || f2Visible) {
+      const cA = camVertices[vA];
+      const cB = camVertices[vB];
+      const { zMean } = computePointsDepthKey([cA, cB], camera.nearPlane, camera.farPlane);
+      // Key by minVisibleFaceDepth so tilted parent faces never overwrite their own far boundary edges
+      const edgeDepthKey = Math.min(zMean, minVisibleFaceDepth);
+      sortables.push({
+        kind: 'cube_edge',
+        depthKey: edgeDepthKey,
+        tier: 3,
+        index: submitIndex++,
+        p0: cA,
+        p1: cB
+      });
+    }
+  }
+
+  // Execute strict back-to-front Painter's Algorithm sort
+  sortDrawables(sortables);
+
+  // Emit sorted primitives into SvgBuilder
+  for (const item of sortables) {
+    switch (item.kind) {
+      case 'star': {
+        builder.addCircle(item.x as number, item.y as number, item.radius as number, '#ffffff', 0.8);
+        break;
+      }
+      case 'grid_line': {
+        const clipped = clipAndProjectCameraLine(
+          item.p0 as Vec3,
+          item.p1 as Vec3,
+          camera,
+          width,
+          height
+        );
+        if (clipped) {
+          builder.addLine(clipped.p0.x, clipped.p0.y, clipped.p1.x, clipped.p1.y, '#224466', 1, 0.4);
+        }
+        break;
+      }
+      case 'cube_face': {
+        const clipped = clipAndProjectCameraPolygon(
+          item.camVerts as Vec3[],
+          camera,
+          width,
+          height
+        );
+        if (clipped && clipped.vertices.length >= 3) {
+          const polyPoints: Array<[number, number]> = clipped.vertices.map((v) => [v.x, v.y]);
+          const faceColor = item.color as string;
+          // Render opaque face fill with stroke="none" (shared edges are covered by isolated Tier 3 wireframe paths)
+          builder.addPolygon(polyPoints, faceColor, undefined, 0, 1.0);
+        }
+        break;
+      }
+      case 'cube_edge': {
+        const clipped = clipAndProjectCameraLine(
+          item.p0 as Vec3,
+          item.p1 as Vec3,
+          camera,
+          width,
+          height
+        );
+        if (clipped) {
+          builder.addPath(
+            [
+              { cmd: 'M', x: clipped.p0.x, y: clipped.p0.y },
+              { cmd: 'L', x: clipped.p1.x, y: clipped.p1.y }
+            ],
+            {
+              stroke: {
+                paint: '#ffffff',
+                width: 2.5,
+                lineCap: 'round',
+                lineJoin: 'round'
+              },
+              opacity: 1.0
+            }
+          );
+        }
+        break;
       }
     }
   }
 
-  // Strict back-to-front depth sorting (farthest first)
-  visibleFaces.sort((a, b) => b.centroidZ - a.centroidZ);
-  for (const f of visibleFaces) {
-    builder.addPolygon(f.polyPoints, f.color, '#ffffff', 2, 0.85);
-  }
-
   // 4. Audio-Reactive HUD / Visual Telemetry with Bundled DejaVu Sans Font
-  const hudR = Math.round(0 + 255 * pulse);
-  const hudG = Math.round(255 - 255 * pulse);
-  const hudB = Math.round(255 - (255 - 85) * pulse);
-  const hudColor = `#${hudR.toString(16).padStart(2, '0')}${hudG.toString(16).padStart(2, '0')}${hudB.toString(16).padStart(2, '0')}`;
+  const hudColor = mixHexColors('#00ffff', '#ff0055', pulse);
   const hudText = `FRAME: ${frameIndex.toString().padStart(3, '0')} / ${totalFrames} | RMS: ${(0.4 + Math.sin(frameIndex * 0.1) * 0.3).toFixed(2)}`;
   builder.addText(hudText, 1920 / 2, 80, 26, hudColor, 'DejaVu Sans');
 
@@ -260,6 +403,9 @@ async function runSmokeBenchmark(): Promise<void> {
   const warmupRes = await warmupPipeline.run();
   if (fs.existsSync(warmupRes.finalOutputPath)) {
     fs.unlinkSync(warmupRes.finalOutputPath);
+  }
+  if (global.gc) {
+    global.gc();
   }
   console.log('✓ Warm-up complete; warmup metrics discarded.');
 
@@ -363,6 +509,9 @@ async function runSmokeBenchmark(): Promise<void> {
 
     // Cooldown pause between iterations
     if (iter < 3) {
+      if (global.gc) {
+        global.gc();
+      }
       await new Promise((r) => setTimeout(r, 3000));
     }
   }

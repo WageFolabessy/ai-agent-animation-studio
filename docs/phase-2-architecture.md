@@ -46,13 +46,17 @@ where $\Delta t = (f - f_{\text{onset}}) / \text{fps}$ and $\lambda$ represents 
 $$x(t) = e^{-\zeta \omega_n t} \left( c_1 \cos(\omega_d t) + c_2 \sin(\omega_d t) \right)$$
 where $\omega_d = \omega_n \sqrt{1 - \zeta^2}$ for underdamped systems ($\zeta < 1.0$).
 
-### 2.3 Outward Normal Calculation & Backface Culling
+### 2.3 Outward Normal Calculation, Backface Culling & Isolated Wireframe Edges
 All 3D geometric meshes strictly enforce Counter-Clockwise (CCW) vertex winding viewed from the outside:
 $$\mathbf{e}_1 = \mathbf{w}_1 - \mathbf{w}_0, \quad \mathbf{e}_2 = \mathbf{w}_2 - \mathbf{w}_0$$
 $$\mathbf{n} = \mathbf{e}_1 \times \mathbf{e}_2$$
 In world space, a surface is front-facing if and only if the normal points toward the camera:
 $$\mathbf{n} \cdot (\mathbf{p}_{\text{camera}} - \mathbf{w}_0) > 0$$
 Back-facing surfaces ($\mathbf{n} \cdot \mathbf{v}_{\text{toCamera}} \le 0$) are culled prior to camera-space transformation, eliminating interior face artifacts.
+
+To prevent **color jitter** and **edge stroke clashing** on rotating 3D polyhedra (both in `scene-compositor.ts` and in the upgraded `scripts/benchmark-smoke.ts` totem cube):
+1. **Opaque Polygon Fills (`opacity = 1.0`, `stroke = "none"`)**: Visible faces are sorted back-to-front by pre-clip camera-space centroid depth ($z_c$) in Tier 2 and rendered as pure fills without shared boundary strokes, preventing background bleed-through and adjacent stroke priority fighting.
+2. **Deduplicated Isolated Wireframe Edges (`CUBE_EDGES`)**: The 12 undirected edges of the cube are evaluated once per frame, filtered by adjacent face visibility ($f_1 \lor f_2$), and rendered as isolated `<path>` primitives in Tier 3 after all visible cube faces, ensuring crisp, flicker-free edges across all rotation angles.
 
 ---
 

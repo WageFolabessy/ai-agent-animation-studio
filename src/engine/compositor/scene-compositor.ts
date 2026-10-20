@@ -402,9 +402,10 @@ export class SceneCompositor {
           if (clipped && clipped.vertices.length >= 3) {
             stats.drawablesCount++;
             const pts = clipped.vertices.map((v) => [v.x, v.y] as [number, number]);
-            // If the polygon was split to prevent depth sorting artifacts, add a 1px same-color stroke
-            const stroke = item.wasSplit ? (item.fill as string) : undefined;
-            const strokeWidth = item.wasSplit ? 1 : 0;
+            // Add a 1px same-color seam stroke on split or opaque 3D faces to eliminate subpixel anti-aliasing seams without shared-stroke clashing
+            const useSeamStroke = Boolean(item.wasSplit) || (item.opacity as number) >= 1;
+            const stroke = useSeamStroke ? (item.fill as string) : undefined;
+            const strokeWidth = useSeamStroke ? 1 : 0;
             builder.addPolygon(pts, item.fill as string, stroke, strokeWidth, item.opacity as number);
           }
           break;

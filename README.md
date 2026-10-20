@@ -230,7 +230,7 @@ npm run test:conformance
 ```
 
 ### 4. Smoke Benchmark (Gate C)
-Executes a 30-frame warm-up followed by three 150-frame iterations (5.0s @ 1080p 30fps) with procedural 3D camera rotation, parallax stars, clipped perspective grid, rotating shaded cube, and audio-reactive HUD:
+Executes a 30-frame warm-up followed by three 150-frame iterations (5.0s @ 1080p 30fps) and a 450-frame plateau run with procedural 3D camera rotation, depth-sorted parallax stars, recursively subdivided perspective grid (`splitLargeLine`), rotating 3D cube with outward CCW normal culling, opaque face fills (`opacity=1.0`, `stroke="none"`), isolated deduplicated wireframe edge paths (`CUBE_EDGES`), and continuous exponential-decay audio-reactive HUD:
 ```bash
 npm run test:benchmark:smoke
 ```
@@ -297,7 +297,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   - Hard Fail: Aggregate memory must strictly not exceed **600 MB** for any iteration.
   - Memory Plateau: Long-run memory growth (e.g. 540 frames vs 180 frames) must not exceed `max(32 MB, 10% of short run)`, preventing unbounded memory leaks.
 - **Rendering Throughput:**  
-  Median effective rendering speed must be at least **15 FPS** (measured **27.39 FPS** in Phase 2 demo, **25.99 FPS** in smoke benchmark).
+  Median effective rendering speed must be at least **15 FPS** (measured **27.39 FPS** in Phase 2 demo, **48.63 FPS** in smoke benchmark).
 - **Color Space Conformance:**  
   Encoded video must strictly carry standard BT.709 television metadata:
   - `color_space=bt709`
