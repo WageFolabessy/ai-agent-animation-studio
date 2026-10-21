@@ -6,17 +6,44 @@ import type { ChoreographyContract } from '../schemas/choreography.contract.js';
 import type { ValidationErrorItem, ValidationReport } from '../schemas/invariants.js';
 import type { SceneEnvironment } from '../engine/compositor/scene-compositor.js';
 
-export type StudioAgentRole = 'director' | 'rig' | 'choreographer';
+export type StudioAgentRole = 'story_spec' | 'director' | 'rig' | 'choreographer';
+
+export type LlmJsonMode = 'auto' | 'json_schema' | 'json_object' | 'plain';
+
+export interface TokenUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
+}
+
+export interface LlmCallMetadata {
+  readonly latencyMs: number;
+  readonly tokenUsage?: TokenUsage;
+  readonly finishReason?: string;
+  readonly networkRetryCount?: number;
+}
 
 export interface LlmOptions {
   readonly systemPrompt?: string;
   readonly temperature?: number;
   readonly maxTokens?: number;
+  readonly timeoutMs?: number;
+  readonly jsonMode?: LlmJsonMode;
+  readonly schemaName?: string;
   readonly agentRole?: StudioAgentRole;
   readonly attempt?: number;
   readonly repairErrors?: readonly ValidationErrorItem[];
   readonly previousDraft?: string;
   readonly context?: Record<string, unknown>;
+  readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
+}
+
+export interface LlmExecutionResult<T> {
+  readonly data: T;
+  readonly latencyMs: number;
+  readonly tokenUsage?: TokenUsage;
+  readonly finishReason?: string;
+  readonly networkRetryCount: number;
 }
 
 /**
@@ -29,14 +56,32 @@ export interface LlmProvider {
     schema: z.ZodType<T>,
     options?: LlmOptions
   ): Promise<T>;
+  generateStructuredJsonWithMeta?<T>(
+    prompt: string,
+    schema: z.ZodType<T>,
+    options?: LlmOptions
+  ): Promise<LlmExecutionResult<T>>;
 }
 
 export interface AcousticSummary {
   readonly durationSeconds: number;
   readonly fps: number;
   readonly totalFrames: number;
-  readonly estimatedBpm: number;
+  readonly estimatedBpm: number | 'unknown';
+  readonly tempoConfidence?: number;
   readonly beatCount: number;
+  readonly beatGridSummary?: {
+    readonly framesPerBeat: number;
+    readonly framesPerBar: number;
+    readonly totalBeats: number;
+  };
+  readonly sectionsSummary?: Array<{
+    readonly id: string;
+    readonly startFrame: number;
+    readonly endFrame: number;
+    readonly relativeEnergy: number;
+    readonly dominantBand: string;
+  }>;
   readonly peakOnsetFrames: readonly number[];
   readonly lyricCount: number;
   readonly meanRms: number;
@@ -61,6 +106,9 @@ export interface DirectorAgentInput {
   readonly repairErrors?: readonly ValidationErrorItem[];
   readonly previousDraft?: string;
   readonly attempt?: number;
+  readonly maxTokens?: number;
+  readonly timeoutMs?: number;
+  readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
 }
 
 export interface RigAgentInput {
@@ -69,6 +117,9 @@ export interface RigAgentInput {
   readonly repairErrors?: readonly ValidationErrorItem[];
   readonly previousDraft?: string;
   readonly attempt?: number;
+  readonly maxTokens?: number;
+  readonly timeoutMs?: number;
+  readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
 }
 
 export interface ChoreographerAgentInput {
@@ -78,6 +129,9 @@ export interface ChoreographerAgentInput {
   readonly repairErrors?: readonly ValidationErrorItem[];
   readonly previousDraft?: string;
   readonly attempt?: number;
+  readonly maxTokens?: number;
+  readonly timeoutMs?: number;
+  readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
 }
 
 export interface AgentAttemptLog {
@@ -85,6 +139,11 @@ export interface AgentAttemptLog {
   readonly attempt: number;
   readonly repairedErrorCodes: readonly string[];
   readonly durationMs: number;
+  readonly latencyMs?: number;
+  readonly tokenUsage?: TokenUsage;
+  readonly finishReason?: string;
+  readonly retryCount?: number;
+  readonly retryClass?: 'none' | 'transient_network' | 'schema_repair' | 'invariant_repair';
 }
 
 export interface OrchestrationOptions {
@@ -94,6 +153,8 @@ export interface OrchestrationOptions {
   readonly width?: number;
   readonly height?: number;
   readonly maxRetries?: number;
+  readonly useSpecPipeline?: boolean;
+  readonly storySpec?: any;
 }
 
 export interface OrchestrationResult {

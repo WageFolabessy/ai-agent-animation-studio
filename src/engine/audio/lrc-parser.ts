@@ -104,8 +104,18 @@ export function parseLrcContent(rawLrc: string, options: ParseLrcOptions): Parse
     throw new Error(`Invalid totalFrames: ${totalFrames}`);
   }
 
-  const rawCandidates: Array<{ timeSeconds: number; text: string; lineOrder: number }> = [];
-  const rawCutoffs: number[] = [];
+  // 1. Extract [offset: +/- ms] tag if present
+  let offsetSeconds = 0;
+  const offsetMatch = /\[offset:\s*([+-]?\d+)\s*\]/i.exec(rawLrc);
+  if (offsetMatch && offsetMatch[1] !== undefined) {
+    const offsetMs = Number.parseInt(offsetMatch[1], 10);
+    if (Number.isFinite(offsetMs)) {
+      offsetSeconds = offsetMs / 1000.0;
+    }
+  }
+
+  const rawCandidates: Array<{ absStartTime: number; text: string; lineOrder: number }> = [];
+  const rawAbsCutoffs: number[] = [];
 
   const lines = rawLrc.split(/\r?\n/);
   let lineOrder = 0;
@@ -123,9 +133,8 @@ export function parseLrcContent(rawLrc: string, options: ParseLrcOptions): Parse
       const minutes = Number.parseInt(match[1], 10);
       const seconds = Number.parseFloat(match[2]);
       if (Number.isFinite(minutes) && Number.isFinite(seconds)) {
-        const absSeconds = minutes * 60 + seconds;
-        const relSeconds = absSeconds - clipStartSeconds;
-        timestamps.push(relSeconds);
+        const absSeconds = minutes * 60 + seconds + offsetSeconds;
+        timestamps.push(absSeconds);
       }
     }
 
@@ -138,47 +147,106 @@ export function parseLrcContent(rawLrc: string, options: ParseLrcOptions): Parse
 
     if (text.length === 0) {
       for (const t of timestamps) {
-        if (t >= 0 && t <= songDurationSeconds) {
-          rawCutoffs.push(Number(t.toFixed(4)));
-        }
+        rawAbsCutoffs.push(Number(t.toFixed(4)));
       }
     } else {
       for (const t of timestamps) {
-        if (t >= 0 && t < songDurationSeconds) {
-          rawCandidates.push({
-            timeSeconds: t,
-            text,
-            lineOrder: lineOrder++
-          });
-        }
+        rawCandidates.push({
+          absStartTime: t,
+          text,
+          lineOrder: lineOrder++
+        });
       }
     }
   }
 
-  // Sort empty cutoffs ascending and deduplicate
-  rawCutoffs.sort((a, b) => a - b);
-  const emptyCutoffTimestamps: number[] = [];
-  for (const c of rawCutoffs) {
-    if (
-      emptyCutoffTimestamps.length === 0 ||
-      Math.abs(c - emptyCutoffTimestamps[emptyCutoffTimestamps.length - 1]) > 1e-4
-    ) {
-      emptyCutoffTimestamps.push(c);
-    }
-  }
-
-  // Sort candidate lyrics chronologically
+  // Sort candidate lyrics chronologically by absolute time
   rawCandidates.sort((a, b) => {
-    if (Math.abs(a.timeSeconds - b.timeSeconds) > 1e-6) {
-      return a.timeSeconds - b.timeSeconds;
+    if (Math.abs(a.absStartTime - b.absStartTime) > 1e-6) {
+      return a.absStartTime - b.absStartTime;
     }
     return a.lineOrder - b.lineOrder;
   });
 
+  // Sort empty cutoffs ascending and deduplicate
+  rawAbsCutoffs.sort((a, b) => a - b);
+  const deduplicatedCutoffs: number[] = [];
+  for (const c of rawAbsCutoffs) {
+    if (
+      deduplicatedCutoffs.length === 0 ||
+      Math.abs(c - deduplicatedCutoffs[deduplicatedCutoffs.length - 1]) > 1e-4
+    ) {
+      deduplicatedCutoffs.push(c);
+    }
+  }
+
+  const clipEndSeconds = clipStartSeconds + songDurationSeconds;
+  const minCutoffDelta = 1 / fps;
+
+  // Process candidates: determine absolute end times and filter/clip to clip window
+  interface PreprocessedLyric {
+    startTimeSeconds: number;
+    endTimeSeconds: number;
+    text: string;
+  }
+  const preprocessed: PreprocessedLyric[] = [];
+
+  for (let i = 0; i < rawCandidates.length; i++) {
+    const cand = rawCandidates[i];
+    const nextCandAbs =
+      i + 1 < rawCandidates.length ? rawCandidates[i + 1].absStartTime : Number.POSITIVE_INFINITY;
+
+    let nextCutoffAbs = Number.POSITIVE_INFINITY;
+    for (const c of deduplicatedCutoffs) {
+      if (c > cand.absStartTime + minCutoffDelta) {
+        nextCutoffAbs = c;
+        break;
+      }
+    }
+
+    const absEndTime = Math.min(
+      nextCandAbs,
+      nextCutoffAbs,
+      cand.absStartTime + maxLineDurationSeconds
+    );
+
+    // Filter against clip window:
+    if (absEndTime <= clipStartSeconds || cand.absStartTime >= clipEndSeconds) {
+      continue;
+    }
+
+    // Clip bounds if line started before clipStartSeconds or ends after clipEndSeconds
+    const effectiveStartAbs = Math.max(clipStartSeconds, cand.absStartTime);
+    const effectiveEndAbs = Math.min(clipEndSeconds, absEndTime);
+
+    if (effectiveEndAbs > effectiveStartAbs) {
+      preprocessed.push({
+        startTimeSeconds: Number((effectiveStartAbs - clipStartSeconds).toFixed(4)),
+        endTimeSeconds: Number((effectiveEndAbs - clipStartSeconds).toFixed(4)),
+        text: cand.text
+      });
+    }
+  }
+
+  // Relative empty cutoffs inside the clip window
+  const emptyCutoffTimestamps: number[] = [];
+  for (const c of deduplicatedCutoffs) {
+    const rel = c - clipStartSeconds;
+    if (rel >= 0 && rel <= songDurationSeconds) {
+      emptyCutoffTimestamps.push(Number(rel.toFixed(4)));
+    }
+  }
+
   // Deduplicate candidates that land on the exact same start frame (keep first)
-  const deduplicated: Array<{ startFrame: number; startTimeSeconds: number; text: string }> = [];
-  for (const cand of rawCandidates) {
-    const startFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(cand.timeSeconds * fps)));
+  const deduplicated: Array<{
+    startFrame: number;
+    startTimeSeconds: number;
+    endTimeSeconds: number;
+    text: string;
+  }> = [];
+
+  for (const item of preprocessed) {
+    const startFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(item.startTimeSeconds * fps)));
     if (
       deduplicated.length > 0 &&
       deduplicated[deduplicated.length - 1].startFrame >= startFrame
@@ -187,40 +255,22 @@ export function parseLrcContent(rawLrc: string, options: ParseLrcOptions): Parse
     }
     deduplicated.push({
       startFrame,
-      startTimeSeconds: cand.timeSeconds,
-      text: cand.text
+      startTimeSeconds: item.startTimeSeconds,
+      endTimeSeconds: item.endTimeSeconds,
+      text: item.text
     });
   }
 
   const getFeature = resolveFeatureGetter(featureSource);
-  const minCutoffDelta = 1 / fps;
   const lyrics: LyricLine[] = [];
 
   for (let i = 0; i < deduplicated.length; i++) {
     const current = deduplicated[i];
-    const nextStartTime =
-      i + 1 < deduplicated.length ? deduplicated[i + 1].startTimeSeconds : Number.POSITIVE_INFINITY;
     const nextStartFrame =
       i + 1 < deduplicated.length ? deduplicated[i + 1].startFrame : totalFrames;
 
-    // Find earliest empty-timestamp cutoff strictly after current.startTimeSeconds
-    let nextEmptyCutoff = Number.POSITIVE_INFINITY;
-    for (const cutoff of emptyCutoffTimestamps) {
-      if (cutoff > current.startTimeSeconds + minCutoffDelta) {
-        nextEmptyCutoff = cutoff;
-        break;
-      }
-    }
-
-    const rawEndTime = Math.min(
-      nextStartTime,
-      nextEmptyCutoff,
-      current.startTimeSeconds + maxLineDurationSeconds,
-      songDurationSeconds
-    );
-
     const startFrameInclusive = current.startFrame;
-    const unclampedEndFrame = Math.round(rawEndTime * fps);
+    const unclampedEndFrame = Math.round(current.endTimeSeconds * fps);
     const maxAllowedEndFrame = Math.min(totalFrames, nextStartFrame);
     const endFrameExclusive = Math.max(
       startFrameInclusive + 1,
@@ -239,9 +289,9 @@ export function parseLrcContent(rawLrc: string, options: ParseLrcOptions): Parse
         ? Number(current.startTimeSeconds.toFixed(4))
         : alignedStartSeconds;
     const candidateEndSeconds =
-      Math.abs(Math.round(rawEndTime * fps) - endFrameExclusive) <= 1 &&
-      rawEndTime > startTimeSeconds
-        ? Number(rawEndTime.toFixed(4))
+      Math.abs(Math.round(current.endTimeSeconds * fps) - endFrameExclusive) <= 1 &&
+      current.endTimeSeconds > startTimeSeconds
+        ? Number(current.endTimeSeconds.toFixed(4))
         : alignedEndSeconds;
     const endTimeSeconds =
       candidateEndSeconds > startTimeSeconds

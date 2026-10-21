@@ -41,6 +41,7 @@ export interface EnvironmentPolygon {
   fill: string;
   opacity?: number;
   tier?: DepthTier;
+  layerPass?: number;
   isTwoSided?: boolean;
 }
 
@@ -51,6 +52,7 @@ export interface EnvironmentLine {
   strokeWidth?: number;
   opacity?: number;
   tier?: DepthTier;
+  layerPass?: number;
 }
 
 export interface SceneEnvironment {
@@ -252,6 +254,11 @@ export class SceneCompositor {
     const sortables: SortablePrimitive[] = [];
     let submitIndex = 0;
 
+    const minEntityFeetY =
+      frameState.entities.length > 0
+        ? Math.min(...frameState.entities.map((e) => e.worldPosition[1]))
+        : 0;
+
     // 2a. Environment polygons (3D world meshes)
     if (environment.polygons) {
       for (const poly of environment.polygons) {
@@ -284,11 +291,38 @@ export class SceneCompositor {
         const camVerts = poly.vertices.map((v) => worldToCameraSpace(v, camera, basis));
         const polyTier = poly.tier ?? 2;
 
+        let polyLayerPass = poly.layerPass;
+        if (polyLayerPass === undefined) {
+          if (polyTier === 0) {
+            polyLayerPass = 0;
+          } else {
+            const w0 = poly.vertices[0];
+            const w1 = poly.vertices[1];
+            const w2 = poly.vertices[2];
+            const e1: Vec3 = [w1[0] - w0[0], w1[1] - w0[1], w1[2] - w0[2]];
+            const e2: Vec3 = [w2[0] - w0[0], w2[1] - w0[1], w2[2] - w0[2]];
+            const normY = e1[2] * e2[0] - e1[0] * e2[2];
+            const len = Math.hypot(
+              e1[1] * e2[2] - e1[2] * e2[1],
+              normY,
+              e1[0] * e2[1] - e1[1] * e2[0]
+            );
+            const ny = len > 1e-6 ? normY / len : 0;
+            const maxY = Math.max(...poly.vertices.map((v) => v[1]));
+            if (Math.abs(ny) > 0.9 && maxY <= minEntityFeetY + 5.0) {
+              polyLayerPass = 0;
+            } else {
+              polyLayerPass = 1;
+            }
+          }
+        }
+
         const polyItem: CameraSpacePolygon = {
           kind: 'env_polygon',
           vertices: camVerts,
           depthKey: polyTier === 0 ? camera.farPlane : 0,
           tier: polyTier,
+          layerPass: polyLayerPass,
           index: submitIndex++,
           fill: poly.fill,
           opacity: poly.opacity ?? 1,
@@ -313,12 +347,27 @@ export class SceneCompositor {
         const p0Cam = worldToCameraSpace(line.p0, camera, basis);
         const p1Cam = worldToCameraSpace(line.p1, camera, basis);
 
+        let lineLayerPass = line.layerPass;
+        if (lineLayerPass === undefined) {
+          if (
+            line.tier === 0 ||
+            (line.p0[1] <= minEntityFeetY + 5.0 &&
+              line.p1[1] <= minEntityFeetY + 5.0 &&
+              (line.tier ?? 2) <= 2)
+          ) {
+            lineLayerPass = 0;
+          } else {
+            lineLayerPass = 1;
+          }
+        }
+
         const lineItem: CameraSpaceLine = {
           kind: 'env_line',
           p0: p0Cam,
           p1: p1Cam,
           depthKey: 0,
           tier: line.tier ?? 2,
+          layerPass: lineLayerPass,
           index: submitIndex++,
           stroke: line.stroke,
           strokeWidth: line.strokeWidth ?? 1,
@@ -377,6 +426,7 @@ export class SceneCompositor {
             kind: 'particle',
             depthKey: camPt[2],
             tier: 5,
+            layerPass: 1,
             index: submitIndex++,
             screenCenter,
             radius: r,
@@ -417,6 +467,7 @@ export class SceneCompositor {
           kind: 'billboard_entity',
           depthKey: ctx.depthZ,
           tier,
+          layerPass: 1,
           index: submitIndex++,
           rig,
           entity,
@@ -432,6 +483,7 @@ export class SceneCompositor {
           kind: 'planar_entity',
           depthKey: camPoint[2],
           tier,
+          layerPass: 1,
           index: submitIndex++,
           rig,
           entity,
@@ -553,7 +605,7 @@ export class SceneCompositor {
 
     // 5. Screen-space overlays (Lyric Caption) — appended after all depth-sorted drawables
     if (
-      frameState.lyric !== null &&
+      frameState.lyric &&
       frameState.lyric.text.trim().length > 0 &&
       frameState.lyric.progress >= 0 &&
       frameState.lyric.progress < 1

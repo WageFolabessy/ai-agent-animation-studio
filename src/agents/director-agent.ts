@@ -51,21 +51,29 @@ export function summarizeAudioManifest(
 ): AcousticSummary {
   const { durationSeconds, fps, totalFrames } = manifest.metadata;
   const beats = manifest.beatEvents;
-  const intervals: number[] = [];
-  for (let i = 1; i < beats.length; i++) {
-    const dt = beats[i].timestamp - beats[i - 1].timestamp;
-    if (dt > 0.15 && dt < 2.0) {
-      intervals.push(dt);
-    }
-  }
-  const avgInterval =
-    intervals.length > 0
-      ? intervals.reduce((acc, v) => acc + v, 0) / intervals.length
-      : 0.5;
-  const estimatedBpm =
+
+  const estimatedBpm: number | 'unknown' =
     manifest.metadata.tempoBpm !== undefined
       ? Math.round(manifest.metadata.tempoBpm)
-      : Math.round(Math.max(60, Math.min(220, 60 / avgInterval)));
+      : 'unknown';
+
+  const beatGridSummary = manifest.beatGrid
+    ? {
+        framesPerBeat: manifest.beatGrid.framesPerBeat,
+        framesPerBar: manifest.beatGrid.framesPerBar,
+        totalBeats: manifest.beatGrid.beatFrameIndices.length
+      }
+    : undefined;
+
+  const sectionsSummary = manifest.sections
+    ? manifest.sections.map((s) => ({
+        id: s.id,
+        startFrame: s.startFrame,
+        endFrame: s.endFrame,
+        relativeEnergy: s.relativeEnergy,
+        dominantBand: s.dominantBand
+      }))
+    : undefined;
 
   const sortedBeats = [...beats].sort((a, b) => b.confidence - a.confidence);
   const peakOnsetFrames = sortedBeats
@@ -106,7 +114,12 @@ export function summarizeAudioManifest(
     fps,
     totalFrames,
     estimatedBpm,
+    ...(manifest.metadata.tempoConfidence !== undefined
+      ? { tempoConfidence: manifest.metadata.tempoConfidence }
+      : {}),
     beatCount: beats.length,
+    ...(beatGridSummary !== undefined ? { beatGridSummary } : {}),
+    ...(sectionsSummary !== undefined ? { sectionsSummary } : {}),
     peakOnsetFrames,
     lyricCount: manifest.lyrics.length,
     meanRms: Number((sumRms / denom).toFixed(4)),
@@ -123,37 +136,8 @@ export function summarizeAudioManifest(
   };
 }
 
-/**
- * Formats validation errors and previous failed drafts into a structured
- * self-healing repair prompt section.
- */
-export function formatRepairFeedbackPrompt(
-  errors: readonly ValidationErrorItem[],
-  previousDraft?: string
-): string {
-  if (errors.length === 0 && (!previousDraft || previousDraft.trim().length === 0)) return '';
-  const lines = errors.map(
-    (err, idx) =>
-      `  ${idx + 1}. [${err.severity.toUpperCase()}] ${err.code} at "${err.path}": ${err.message}`
-  );
-  const parts: string[] = [''];
-  if (previousDraft && previousDraft.trim().length > 0) {
-    const truncatedDraft =
-      previousDraft.length > 12_000
-        ? `${previousDraft.slice(0, 12_000)}\n... [truncated]`
-        : previousDraft;
-    parts.push('[PREVIOUS FAILED JSON DRAFT]', '```json', truncatedDraft, '```', '');
-  }
-  if (lines.length > 0) {
-    parts.push(
-      '[SELF-HEALING REPAIR DIAGNOSTICS]',
-      'Your previous JSON output failed contract invariant validation with the following errors:',
-      ...lines,
-      'Please fix all reported errors while preserving all valid fields and return ONLY valid JSON.'
-    );
-  }
-  return parts.join('\n');
-}
+export { formatRepairFeedbackPrompt } from './repair-helper.js';
+import { formatRepairFeedbackPrompt } from './repair-helper.js';
 
 /**
  * Synthesizes a deterministic, schema-compliant DirectorStoryboardContract
@@ -546,10 +530,14 @@ export class DirectorAgent {
     return this.provider.generateStructuredJson(prompt, DirectorStoryboardContractSchema, {
       systemPrompt: this.buildSystemPrompt(),
       temperature: 0.1,
+      maxTokens: input.maxTokens ?? 4096,
+      timeoutMs: input.timeoutMs,
+      schemaName: 'DirectorStoryboardContract',
       agentRole: 'director',
       attempt: input.attempt ?? 1,
       repairErrors: input.repairErrors ?? [],
       previousDraft: input.previousDraft,
+      onAttemptComplete: input.onAttemptComplete,
       context: {
         directorInput: input
       }

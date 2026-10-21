@@ -39,12 +39,45 @@ export const LyricLineSchema = z.object({
 });
 export type LyricLine = z.infer<typeof LyricLineSchema>;
 
+/**
+ * Transient onset event (attack / percussion peak).
+ * Note: These are acoustic onsets, not necessarily regular downbeats.
+ * For periodic musical measure/beat alignment, see BeatGridSchema.
+ */
 export const BeatEventSchema = z.object({
   frameIndex: z.number().int().min(0),
   timestamp: FiniteNumberSchema.min(0),
   confidence: z.number().finite().min(0).max(1)
 }).strict();
 export type BeatEvent = z.infer<typeof BeatEventSchema>;
+
+export const BeatGridSchema = z.object({
+  tempoBpm: FiniteNumberSchema.positive(),
+  tempoConfidence: z.number().finite().min(0).max(1),
+  framesPerBeat: FiniteNumberSchema.positive(),
+  framesPerBar: FiniteNumberSchema.positive(),
+  beatFrameIndices: z.array(z.number().int().min(0)),
+  downbeatIndices: z.array(z.number().int().min(0)).optional()
+}).strict();
+export type BeatGrid = z.infer<typeof BeatGridSchema>;
+
+export const AudioSectionSchema = z.object({
+  id: z.string().min(1),
+  startFrame: z.number().int().min(0),
+  endFrame: z.number().int().positive(),
+  relativeEnergy: z.number().finite().min(0).max(1),
+  hasVocals: z.boolean(),
+  dominantBand: z.enum([
+    'subBass',
+    'bass',
+    'lowMid',
+    'mid',
+    'highMid',
+    'presence',
+    'brilliance'
+  ])
+}).strict();
+export type AudioSection = z.infer<typeof AudioSectionSchema>;
 
 export const MemoryColumnarStorageReferenceSchema = z.object({
   type: z.literal('memory_columnar'),
@@ -86,6 +119,8 @@ export const AudioAnalysisManifestSchema = z.object({
   }).strict(),
   lyrics: z.array(LyricLineSchema),
   beatEvents: z.array(BeatEventSchema).default([]),
+  beatGrid: BeatGridSchema.optional(),
+  sections: z.array(AudioSectionSchema).optional(),
   storageReference: AudioStorageReferenceSchema
 }).strict();
 export type AudioAnalysisManifest = z.infer<typeof AudioAnalysisManifestSchema>;

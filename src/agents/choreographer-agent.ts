@@ -577,10 +577,14 @@ export class ChoreographerAgent {
     return this.provider.generateStructuredJson(prompt, ChoreographyContractSchema, {
       systemPrompt: this.buildSystemPrompt(),
       temperature: 0.1,
+      maxTokens: input.maxTokens ?? 4096,
+      timeoutMs: input.timeoutMs,
+      schemaName: 'ChoreographyContract',
       agentRole: 'choreographer',
       attempt: input.attempt ?? 1,
       repairErrors: input.repairErrors ?? [],
       previousDraft: input.previousDraft,
+      onAttemptComplete: input.onAttemptComplete,
       context: {
         choreographerInput: input
       }

@@ -790,8 +790,17 @@ export function validateProjectContracts(
         });
       } else {
         const burstCount = rig.emitter.audio?.onsetBurstCount ?? 0;
-        const estimatedMax =
-          Math.ceil(rig.emitter.ratePerSecond * (rig.emitter.lifetimeFrames / storyboard.fps)) + burstCount;
+        const fps = storyboard.fps;
+        const lifetimeFrames = rig.emitter.lifetimeFrames;
+        const maxBurstsOverLifetime = burstCount > 0
+          ? Math.max(1, Math.ceil(lifetimeFrames / Math.max(1, Math.floor(fps * 0.25))))
+          : 0;
+        const estimatedBurstParticles = maxBurstsOverLifetime * burstCount;
+        const estimatedContinuousParticles = Math.ceil(
+          rig.emitter.ratePerSecond * (lifetimeFrames / fps)
+        );
+        const estimatedMax = estimatedContinuousParticles + estimatedBurstParticles;
+
         if (estimatedMax > rig.emitter.maxParticles) {
           errors.push({
             code: 'EMITTER_CAPACITY',

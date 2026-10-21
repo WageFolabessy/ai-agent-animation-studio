@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { parseLrcContent, parseLrcFile } from '../src/engine/audio/lrc-parser.js';
 import { validateProjectContracts } from '../src/schemas/invariants.js';
@@ -169,8 +170,12 @@ test('LrcParser: Computes deterministic acoustic emphasis and passes all project
   assert.equal(report.isValid, true);
 });
 
-test('LrcParser: Parses real full-length assets/audio/trashed-and-scattered.lrc with zero overlap or sort errors', () => {
+test('LrcParser: Parses real full-length assets/audio/trashed-and-scattered.lrc with zero overlap or sort errors', (t) => {
   const lrcPath = path.resolve(process.cwd(), 'assets/audio/trashed-and-scattered.lrc');
+  if (!fs.existsSync(lrcPath)) {
+    t.skip('Skipping: assets/audio/trashed-and-scattered.lrc is absent on disk');
+    return;
+  }
   const songDurationSeconds = 353.2667;
   const fps = 30;
   const totalFrames = Math.round(songDurationSeconds * fps); // 10,598 frames
@@ -213,5 +218,52 @@ test('LrcParser: Parses real full-length assets/audio/trashed-and-scattered.lrc 
       `Overlapping lyric at index ${i}: ${prev.id} ends at ${prev.frameRange.endFrameExclusive} > ${curr.id} starts at ${curr.frameRange.startFrameInclusive}`
     );
   }
+});
+
+test('LrcParser: Applies [offset: +/- ms] header tag to shift lyric timestamps', () => {
+  const lrc = `
+[offset:+500]
+[00:10.00]Positive offset line
+[00:15.00]Next line
+`;
+  const result = parseLrcContent(lrc, {
+    songDurationSeconds: 30.0,
+    fps: 30,
+    totalFrames: 900
+  });
+
+  assert.equal(result.lyrics.length, 2);
+  // 10.00s + 0.50s = 10.50s
+  assert.equal(result.lyrics[0].startTimeSeconds, 10.5);
+  // 15.00s + 0.50s = 15.50s
+  assert.equal(result.lyrics[0].endTimeSeconds, 15.5);
+  assert.equal(result.lyrics[1].startTimeSeconds, 15.5);
+});
+
+test('LrcParser: Preserves lyric that started before clipStartSeconds but is still active at clip start', () => {
+  const lrc = `
+[00:08.00]Line starting before slice
+[00:14.00]Line after slice
+`;
+  // Slice starts at 10.0s, duration 10.0s (covers 10.0s to 20.0s)
+  const result = parseLrcContent(lrc, {
+    songDurationSeconds: 10.0,
+    fps: 30,
+    totalFrames: 300,
+    clipStartSeconds: 10.0
+  });
+
+  assert.equal(result.lyrics.length, 2);
+  // The first line started at 8.0s, ends at 14.0s.
+  // In the slice [10.0, 20.0], it starts at frame 0 (relSeconds 0.0) and ends at 4.0s (14 - 10)
+  assert.equal(result.lyrics[0].startTimeSeconds, 0);
+  assert.equal(result.lyrics[0].frameRange.startFrameInclusive, 0);
+  assert.equal(result.lyrics[0].endTimeSeconds, 4.0);
+  assert.equal(result.lyrics[0].frameRange.endFrameExclusive, 120);
+  assert.equal(result.lyrics[0].text, 'Line starting before slice');
+
+  // The second line starts at relSeconds 4.0 (14 - 10)
+  assert.equal(result.lyrics[1].startTimeSeconds, 4.0);
+  assert.equal(result.lyrics[1].frameRange.startFrameInclusive, 120);
 });
 

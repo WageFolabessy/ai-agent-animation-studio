@@ -14,6 +14,8 @@ export interface SortablePrimitive {
   depthKey: number;
   tier: DepthTier;
   index: number;
+  /** Primary layer pass: 0 for sky backdrop and horizontal ground floors, 1 for world geometry/entities/particles */
+  layerPass?: number;
   wasSplit?: boolean;
   [key: string]: unknown;
 }
@@ -159,11 +161,17 @@ export function splitLargePolygon<T extends CameraSpacePolygon>(
 
 /**
  * Strict Painter's Algorithm comparator:
- * 1. Primary: depthKey DESC (farthest first)
- * 2. Secondary: tier ASC (lower tier first to break exact ties)
- * 3. Tertiary: index ASC (stable original submission order)
+ * 1. Primary: layerPass ASC (layer 0 ground/backdrop under layer 1 characters/props/fg)
+ * 2. Secondary: depthKey DESC (farthest first within same layer pass)
+ * 3. Tertiary: tier ASC (lower tier first to break exact ties)
+ * 4. Quaternary: index ASC (stable original submission order)
  */
 export function compareDrawables(a: SortablePrimitive, b: SortablePrimitive): number {
+  const layerA = a.layerPass ?? 1;
+  const layerB = b.layerPass ?? 1;
+  if (layerA !== layerB) {
+    return layerA - layerB;
+  }
   if (b.depthKey !== a.depthKey) {
     return b.depthKey - a.depthKey;
   }

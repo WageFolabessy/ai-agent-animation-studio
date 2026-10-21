@@ -128,6 +128,92 @@ def normalize_column(arr: np.ndarray) -> np.ndarray:
     return np.clip(arr / denom, 0.0, 1.0).astype(np.float32)
 
 
+def estimate_tempo(y: np.ndarray, sr: int) -> tuple[float | None, float | None]:
+    hop = 512
+    fo = sr / hop
+    num_hops = len(y) // hop
+    if num_hops < 30:
+        return None, None
+
+    envelope = np.zeros(num_hops, dtype=np.float32)
+    prev_low = 0.0
+    prev_high = 0.0
+
+    for m in range(num_hops):
+        start = m * hop
+        chunk = y[start : min(len(y), start + hop)]
+        if len(chunk) < 2:
+            continue
+        s0 = chunk[:-1]
+        s1 = chunk[1:]
+        low_energy = float(np.sum((s0 + s1) ** 2))
+        high_energy = float(np.sum((s0 - s1) ** 2))
+        d_low = max(0.0, low_energy - prev_low)
+        d_high = max(0.0, high_energy - prev_high)
+        envelope[m] = d_low + 1.5 * d_high
+        prev_low = low_energy
+        prev_high = high_energy
+
+    env_mean = float(np.mean(envelope))
+    centered = envelope - env_mean
+    env_var = float(np.sum(centered ** 2))
+    if env_var < 1e-8:
+        return None, None
+
+    tau_min = int(round((60.0 / 200.0) * fo))
+    tau_max = int(round((60.0 / 60.0) * fo))
+    tau_0 = (60.0 / 120.0) * fo
+    sigma_tau = 0.40
+
+    lags = np.zeros(tau_max + 3, dtype=np.float32)
+    raw_lags = np.zeros(tau_max + 3, dtype=np.float32)
+    peak_tau = tau_min
+    peak_val = -float("inf")
+
+    for tau in range(tau_min - 1, tau_max + 2):
+        limit = num_hops - tau
+        x1 = centered[:limit]
+        x2 = centered[tau : tau + limit]
+        denom = math.sqrt(float(np.sum(x1 ** 2)) * float(np.sum(x2 ** 2)))
+        norm_r = float(np.sum(x1 * x2)) / denom if denom > 1e-8 else 0.0
+        raw_lags[tau] = norm_r
+        prior = math.exp(-0.5 * ((math.log(tau / tau_0) / sigma_tau) ** 2))
+        weighted = norm_r * prior
+        lags[tau] = weighted
+        if tau_min <= tau <= tau_max and weighted > peak_val:
+            peak_val = weighted
+            peak_tau = tau
+
+    half_tau = int(round(peak_tau / 2.0))
+    if half_tau >= tau_min and lags[half_tau] >= 0.45 * lags[peak_tau]:
+        if lags[half_tau] >= lags[half_tau - 1] and lags[half_tau] >= lags[half_tau + 1]:
+            peak_tau = half_tau
+
+    alpha = float(lags[peak_tau - 1])
+    beta = float(lags[peak_tau])
+    gamma = float(lags[peak_tau + 1])
+    denom_parabola = alpha - 2.0 * beta + gamma
+    delta = 0.0
+    if abs(denom_parabola) > 1e-8:
+        delta = 0.5 * ((alpha - gamma) / denom_parabola)
+        delta = max(-0.5, min(0.5, delta))
+
+    refined_tau = peak_tau + delta
+    bpm = (60.0 * fo) / refined_tau
+
+    sub_lags = lags[tau_min : tau_max + 1]
+    mean_r = float(np.mean(sub_lags))
+    std_r = float(np.std(sub_lags))
+    raw_beta = float(raw_lags[peak_tau])
+    prominence = (beta - mean_r) / max(1e-5, std_r)
+    confidence = max(0.0, min(1.0, (prominence / 2.5) * max(0.0, min(1.0, raw_beta))))
+
+    if confidence < 0.40:
+        return None, None
+
+    return round(bpm, 2), round(confidence, 4)
+
+
 def parse_lrc(
     raw_lrc: str,
     song_duration_sec: float,
@@ -139,8 +225,11 @@ def parse_lrc(
     presence_band: np.ndarray,
     max_line_duration_sec: float = 8.0,
 ) -> list[dict[str, Any]]:
-    candidates: list[tuple[float, int, str]] = []
-    cutoffs: list[float] = []
+    offset_match = re.search(r"\[offset:\s*([+-]?\d+)\s*\]", raw_lrc, re.IGNORECASE)
+    offset_sec = float(offset_match.group(1)) / 1000.0 if offset_match else 0.0
+
+    raw_candidates: list[tuple[float, int, str]] = []
+    raw_cutoffs: list[float] = []
     order = 0
 
     for raw_line in raw_lrc.splitlines():
@@ -150,42 +239,52 @@ def parse_lrc(
         matches = TIMESTAMP_RE.findall(trimmed)
         if not matches:
             continue
-        timestamps = [int(m) * 60.0 + float(s) - clip_start_sec for m, s in matches]
+        timestamps = [int(m) * 60.0 + float(s) + offset_sec for m, s in matches]
         text = TIMESTAMP_RE.sub("", trimmed).strip()
         if not text:
             for t in timestamps:
-                if 0.0 <= t <= song_duration_sec:
-                    cutoffs.append(round(t, 4))
+                raw_cutoffs.append(round(t, 4))
         else:
             for t in timestamps:
-                if 0.0 <= t < song_duration_sec:
-                    candidates.append((t, order, text))
-                    order += 1
+                raw_candidates.append((t, order, text))
+                order += 1
 
-    cutoffs = sorted(set(cutoffs))
-    candidates.sort(key=lambda item: (round(item[0], 6), item[1]))
+    raw_cutoffs = sorted(set(raw_cutoffs))
+    raw_candidates.sort(key=lambda item: (round(item[0], 6), item[1]))
 
-    dedup: list[tuple[int, float, str]] = []
-    for t_sec, _, text in candidates:
-        start_f = max(0, min(total_frames - 1, int(round(t_sec * fps))))
-        if dedup and dedup[-1][0] >= start_f:
-            continue
-        dedup.append((start_f, t_sec, text))
-
-    lyrics: list[dict[str, Any]] = []
+    clip_end_sec = clip_start_sec + song_duration_sec
     min_delta = 1.0 / fps
 
-    for i, (start_f, start_t, text) in enumerate(dedup):
-        next_t = dedup[i + 1][1] if i + 1 < len(dedup) else float("inf")
-        next_f = dedup[i + 1][0] if i + 1 < len(dedup) else total_frames
-        next_cutoff = float("inf")
-        for c in cutoffs:
-            if c > start_t + min_delta:
-                next_cutoff = c
+    preprocessed: list[tuple[float, float, str]] = []
+    for i, (start_abs, _, text) in enumerate(raw_candidates):
+        next_cand_abs = raw_candidates[i + 1][0] if i + 1 < len(raw_candidates) else float("inf")
+        next_cutoff_abs = float("inf")
+        for c in raw_cutoffs:
+            if c > start_abs + min_delta:
+                next_cutoff_abs = c
                 break
 
-        raw_end_t = min(next_t, next_cutoff, start_t + max_line_duration_sec, song_duration_sec)
-        unclamped_end_f = int(round(raw_end_t * fps))
+        abs_end_t = min(next_cand_abs, next_cutoff_abs, start_abs + max_line_duration_sec)
+        if abs_end_t <= clip_start_sec or start_abs >= clip_end_sec:
+            continue
+
+        eff_start = max(clip_start_sec, start_abs)
+        eff_end = min(clip_end_sec, abs_end_t)
+        if eff_end > eff_start:
+            preprocessed.append((round(eff_start - clip_start_sec, 4), round(eff_end - clip_start_sec, 4), text))
+
+    dedup: list[tuple[int, float, float, str]] = []
+    for t_start, t_end, text in preprocessed:
+        start_f = max(0, min(total_frames - 1, int(round(t_start * fps))))
+        if dedup and dedup[-1][0] >= start_f:
+            continue
+        dedup.append((start_f, t_start, t_end, text))
+
+    lyrics: list[dict[str, Any]] = []
+
+    for i, (start_f, start_t, pre_end_t, text) in enumerate(dedup):
+        next_f = dedup[i + 1][0] if i + 1 < len(dedup) else total_frames
+        unclamped_end_f = int(round(pre_end_t * fps))
         end_f = max(start_f + 1, min(min(total_frames, next_f), unclamped_end_f))
         if end_f <= start_f or start_f >= total_frames:
             continue
@@ -194,8 +293,8 @@ def parse_lrc(
         aligned_end_t = round(end_f / fps, 4)
         final_start_t = round(start_t, 4) if abs(round(start_t * fps) - start_f) <= 1 else aligned_start_t
         cand_end_t = (
-            round(raw_end_t, 4)
-            if abs(round(raw_end_t * fps) - end_f) <= 1 and raw_end_t > final_start_t
+            round(pre_end_t, 4)
+            if abs(round(pre_end_t * fps) - end_f) <= 1 and pre_end_t > final_start_t
             else aligned_end_t
         )
         final_end_t = cand_end_t if cand_end_t > final_start_t else round(final_start_t + 1.0 / fps, 4)
@@ -306,7 +405,9 @@ def main() -> None:
             best_idx = vocal_indices[int(np.argmax(mag[vocal_indices]))]
             pitch_hz[f] = float(freqs[best_idx])
 
-    global_rms_max = max(1e-6, float(np.max(rms_raw)))
+    valid_rms = rms_raw[rms_raw > 1e-6]
+    p98_rms = float(np.percentile(valid_rms, 98)) if valid_rms.size > 0 else 1.0
+    global_rms_max = p98_rms if p98_rms > 1e-6 else 1.0
     rms_clamped = np.clip(rms_raw, 0.0, 1.0).astype(np.float32)
     rms_rel_global = np.clip(rms_raw / global_rms_max, 0.0, 1.0).astype(np.float32)
 
@@ -318,13 +419,18 @@ def main() -> None:
         loc_max = max(1e-6, float(np.max(rms_raw[w0:w1])))
         rms_rel_local[f] = min(1.0, max(0.0, float(rms_raw[f]) / loc_max))
 
-    sub_bass = normalize_column(sub_bass)
-    bass = normalize_column(bass)
-    low_mid = normalize_column(low_mid)
-    mid = normalize_column(mid)
-    high_mid = normalize_column(high_mid)
-    presence = normalize_column(presence)
-    brilliance = normalize_column(brilliance)
+    tot_band_energy = sub_bass + bass + low_mid + mid + high_mid + presence + brilliance
+    valid_band = tot_band_energy[tot_band_energy > 1e-6]
+    p98_band = float(np.percentile(valid_band, 98)) if valid_band.size > 0 else 1.0
+    denom_band = p98_band if p98_band > 1e-6 else 1.0
+
+    sub_bass = np.clip(sub_bass / denom_band, 0.0, 1.0).astype(np.float32)
+    bass = np.clip(bass / denom_band, 0.0, 1.0).astype(np.float32)
+    low_mid = np.clip(low_mid / denom_band, 0.0, 1.0).astype(np.float32)
+    mid = np.clip(mid / denom_band, 0.0, 1.0).astype(np.float32)
+    high_mid = np.clip(high_mid / denom_band, 0.0, 1.0).astype(np.float32)
+    presence = np.clip(presence / denom_band, 0.0, 1.0).astype(np.float32)
+    brilliance = np.clip(brilliance / denom_band, 0.0, 1.0).astype(np.float32)
 
     flux_half_win = max(2, int(0.5 * fps))
     onset_strength = np.zeros(total_frames, dtype=np.float32)
@@ -338,16 +444,23 @@ def main() -> None:
 
     is_onset = np.zeros(total_frames, dtype=np.uint8)
     min_gap = max(3, int(round(0.12 * fps)))
+    onset_half_win = max(2, int(round(0.5 * fps)))
     last_onset = -min_gap
     beat_events: list[dict[str, Any]] = []
 
     for f in range(total_frames):
         strength = float(onset_strength[f])
-        if strength < 0.22 or (f - last_onset) < min_gap:
+        w0 = max(0, f - onset_half_win)
+        w1 = min(total_frames, f + onset_half_win + 1)
+        mean_s = float(np.mean(onset_strength[w0:w1]))
+        std_s = float(np.std(onset_strength[w0:w1]))
+        adaptive_thresh = mean_s + 1.4 * std_s + 0.04
+
+        if strength < adaptive_thresh or (f - last_onset) < min_gap:
             continue
-        w0 = max(0, f - 2)
-        w1 = min(total_frames, f + 3)
-        if strength >= float(np.max(onset_strength[w0:w1])):
+        w0_peak = max(0, f - 2)
+        w1_peak = min(total_frames, f + 3)
+        if strength >= float(np.max(onset_strength[w0_peak:w1_peak])):
             is_onset[f] = 1
             last_onset = f
             beat_events.append(
@@ -410,17 +523,46 @@ def main() -> None:
             presence,
         )
 
+    tempo_bpm, tempo_conf = estimate_tempo(samples, sr)
+    meta: dict[str, Any] = {
+        "audioFilePath": str(args.audio),
+        "sampleRate": sr,
+        "durationSeconds": round(duration_sec, 4),
+        "fps": fps,
+        "totalFrames": total_frames,
+    }
+    if tempo_bpm is not None and tempo_conf is not None:
+        meta["tempoBpm"] = tempo_bpm
+        meta["tempoConfidence"] = tempo_conf
+
+    beat_grid: dict[str, Any] | None = None
+    if tempo_bpm is not None and tempo_conf is not None and tempo_conf >= 0.4:
+        frames_per_beat = (60.0 / tempo_bpm) * fps
+        frames_per_bar = 4.0 * frames_per_beat
+        best_phase = 0
+        best_energy = -1.0
+        max_phase = max(1, int(round(frames_per_beat)))
+        for phase in range(max_phase):
+            energy = float(np.sum(onset_strength[phase::max_phase]))
+            if energy > best_energy:
+                best_energy = energy
+                best_phase = phase
+
+        beat_frame_indices = list(range(best_phase, total_frames, max_phase))
+        bar_step = max(1, int(round(frames_per_bar)))
+        downbeat_indices = list(range(best_phase, total_frames, bar_step))
+        beat_grid = {
+            "tempoBpm": tempo_bpm,
+            "tempoConfidence": tempo_conf,
+            "framesPerBeat": round(frames_per_beat, 4),
+            "framesPerBar": round(frames_per_bar, 4),
+            "beatFrameIndices": beat_frame_indices,
+            "downbeatIndices": downbeat_indices,
+        }
+
     rel_bin_path = os.path.relpath(out_bin_path, out_manifest_path.parent)
-    manifest = {
-        "metadata": {
-            "audioFilePath": str(args.audio),
-            "sampleRate": sr,
-            "durationSeconds": round(duration_sec, 4),
-            "fps": fps,
-            "totalFrames": total_frames,
-            "tempoBpm": 120.0,
-            "tempoConfidence": 0.9,
-        },
+    manifest: dict[str, Any] = {
+        "metadata": meta,
         "normalization": {
             "globalRmsMax": round(float(global_rms_max), 6),
             "localWindowFrames": local_window_frames,
@@ -435,6 +577,8 @@ def main() -> None:
             "sha256": sha256_hex,
         },
     }
+    if beat_grid is not None:
+        manifest["beatGrid"] = beat_grid
 
     out_manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 

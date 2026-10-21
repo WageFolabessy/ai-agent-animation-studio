@@ -201,14 +201,19 @@ ai-agent-animation-studio/
     ├── agents-orchestrator.test.ts # Multi-agent orchestration, self-healing retries & visual invariants
     ├── audio-columnar.test.ts     # .features.bin binary layout, alignment guard & O(1) reader tests
     ├── audio-mux.test.ts          # Dual-stream FFmpeg video + AAC audio muxing & Python bridge tests
+    ├── audio-parity.test.ts       # Sub-frame parabolic tempo estimation and TS vs Python parity tests
     ├── backpressure.test.ts       # Streamer backpressure, drain, and EPIPE recovery
     ├── benchmark-gates.test.ts    # Memory gate, plateau check, and artifact hygiene tests
     ├── clipping.test.ts           # Near/far frustum, 1/z depth, and canonical cube culling tests
-    ├── demo-phase2.test.ts        # Phase 2 demo contracts, 180-frame budget, and determinism tests
+    ├── demo-phase2.test.ts        # Cinema demo contracts, 180-frame budget, and determinism tests
+    ├── depth-order.test.ts        # LayerPass priority and ground vs character depth ordering tests
     ├── depth-sort.test.ts         # Pre-clip depth keys, primitive splitting, and sort order tests
+    ├── emitter-saturation.test.ts # FIFO ring-buffer particle emitter saturation and audio burst retention
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
     ├── frame-state.test.ts        # Particle emitter, choreography, and FrameStateBuilder tests
     ├── invariants.test.ts         # Storyboard timeline, act, rig, and choreography invariants
+    ├── library-kits.test.ts       # Modular archetype factory and environment kit generation tests
+    ├── llm-resilience.test.ts     # Error taxonomy, exponential backoff, truncation detection & repair tests
     ├── lrc-parser.test.ts         # Deterministic LRC parser, multi-timestamp expansion & emphasis tests
     ├── math.test.ts               # Easing, spring physics, noise, and color math tests
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
@@ -216,6 +221,7 @@ ai-agent-animation-studio/
     ├── scene-compositor.test.ts   # Painter's algorithm, cube culling, pulse decay, and lyric fade
     ├── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
     ├── shot-sequencer.test.ts     # Shot lookup, ORBIT slerp, and trauma camera shake tests
+    ├── story-spec.test.ts         # Spec-Then-Compile story synthesis, beat snapping & solver tests
     └── svg-builder.test.ts        # Path commands, gradients, group nesting, and XML escaping tests
 ```
 
@@ -244,7 +250,7 @@ ai-agent-animation-studio/
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
 | `typecheck` | `tsc --noEmit` | Strict static typecheck without emitting JavaScript |
-| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (124 tests across 19 suites) |
+| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (174 tests across 25 suites) |
 | `test:schemas` | `tsx --test tests/schemas.test.ts` | Tests primitive schemas and Zod 4 contracts |
 | `test:invariants` | `tsx --test tests/invariants.test.ts` | Tests cross-contract timeline, skeleton, and choreography invariants |
 | `test:backpressure`| `tsx --test tests/backpressure.test.ts` | Tests FFmpeg streamer backpressure and lifecycle |
@@ -253,6 +259,8 @@ ai-agent-animation-studio/
 | `demo:phase2` | `NODE_OPTIONS="--expose-gc" tsx scripts/demo-phase2-cinema.ts` | Executes full 4-shot Phase 2 cinema demo & benchmark |
 | `demo:phase3` | `NODE_OPTIONS="--expose-gc" tsx scripts/demo-phase3-audio.ts` | Executes Phase 3 STFT audio intelligence, LRC alignment & AAC muxing demo |
 | `demo:phase4` | `NODE_OPTIONS="--expose-gc" tsx scripts/demo-phase4-orchestration.ts` | Executes Phase 4 Multi-Agent LLM Orchestration & self-healing cinema demo |
+| `produce:video` | `NODE_OPTIONS="--expose-gc" tsx scripts/produce-music-video.ts` | Executes production full-length music video pipeline |
+| `studio` | `NODE_OPTIONS="--expose-gc" tsx scripts/studio.ts` | Unified autonomous music video studio CLI (Spec-Then-Compile, persistence & resume) |
 
 ---
 
@@ -317,6 +325,26 @@ npm run produce:video -- --chunk-frames 1500 --resume
 
 # Quick multi-chunk test run (e.g. 2 chunks of 60 frames):
 npm run produce:video -- --chunk-frames 60 --max-chunks 2 --out test_slice.mp4
+```
+
+### 9. Unified Studio Production CLI (`npm run studio`)
+The unified studio production CLI provides a single command line interface for song-driven video generation. It supports custom songs (`.flac`, `.wav`, `.mp3`), LRC lyric alignment, Spec-Then-Compile narrative orchestration, artifact persistence, and instant resume:
+```bash
+# Display CLI help and options:
+npm run studio -- --help
+
+# Run with custom audio and synchronized lyrics:
+npm run studio -- --audio path/to/song.flac --lrc path/to/song.lrc --out output/final_render.mp4
+
+# Run with real OpenAI LLM provider:
+export LLM_API_KEY="sk-..."
+npm run studio -- --audio path/to/song.flac --lrc path/to/song.lrc --provider openai
+
+# Render from previously persisted artifacts (skipping LLM orchestration):
+npm run studio -- --from-artifacts output/artifacts/<hash> --out output/rerender.mp4
+
+# Quick short preview:
+npm run studio -- --chunk-frames 60 --max-chunks 1 --out output/preview.mp4
 ```
 
 ---
@@ -396,18 +424,22 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 - **Zero Process Leaks:**  
   No orphaned FFmpeg child processes may remain running after either successful render completion or caught pipeline exceptions.
 
-### Measured Quantitative Benchmark Numbers (Phase 1 – Phase 5)
+### Measured Quantitative Benchmark Numbers
 
-| Stage / Demo | Median FPS | Peak Aggregate RSS | Plateau Growth (540f) | Max Drawables | Streams / Conformance | Result |
+| Pipeline Stage / Target | Median FPS | Peak Aggregate RSS | Plateau Growth | Max Drawables | Streams / Conformance | Result |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Phase 1 Smoke Benchmark** (`test:benchmark:smoke`) | **40.16 FPS** | **245.20 MB** | $+4.80\text{ MB}$ | 42 peak | BT.709 `tv` | **PASS (Green)** |
-| **Phase 2 Procedural Cinema** (`demo:phase2`) | **21.39 FPS** | **314.25 MB** | $+12.02\text{ MB}$ | 103 peak | BT.709 `tv` | **PASS (Green)** |
-| **Phase 3 Audio Mux** (`demo:phase3`) | **19.30 FPS** | **329.61 MB** | $+1.39\text{ MB}$ | 103 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
-| **Phase 4 Multi-Agent Cinema** (`demo:phase4`) | **19.87 FPS** | **322.71 MB** | $+10.19\text{ MB}$ | 104 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
-| **Phase 5 Production Video** (`produce:video`) | **18.30 FPS** | **189.30 MB** | $+0.00\text{ MB}$ (recycled) | 104 peak | BT.709 `tv` + AAC 256k | **PASS (Green)** |
+| **Smoke Benchmark** (`test:benchmark:smoke`) | **46.31 FPS** | **312.80 MB** | $-5.14\text{ MB}$ | 42 peak | BT.709 `tv` | **PASS (Green)** |
+| **Procedural Cinema** (`demo:phase2`) | **21.39 FPS** | **314.25 MB** | $+12.02\text{ MB}$ | 103 peak | BT.709 `tv` | **PASS (Green)** |
+| **Audio Mux** (`demo:phase3`) | **19.30 FPS** | **329.61 MB** | $+1.39\text{ MB}$ | 103 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
+| **Multi-Agent Cinema** (`demo:phase4`) | **19.87 FPS** | **322.71 MB** | $+10.19\text{ MB}$ | 104 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
+| **Production Video** (`produce:video`) | **18.30 FPS** | **189.30 MB** | $+0.00\text{ MB}$ (recycled) | 104 peak | BT.709 `tv` + AAC 256k | **PASS (Green)** |
+| **Studio Full Song Renderer** (`studio`) | **24.17 FPS** | **185.10 MB** | $+0.00\text{ MB}$ (recycled) | 65 peak | BT.709 `tv` + AAC 256k | **PASS (Green)** |
 
 > [!NOTE]
-> All benchmarks were measured under WSL2 Ubuntu (2 CPU threads allocated to FFmpeg) with memory target $< 400\text{ MB}$, hard ceiling $\le 600\text{ MB}$, and throughput gate $\ge 15.0\text{ FPS}$. In Phase 4, max gradient definitions remain capped at **10** and active particles remain bounded at **50**.
+> All benchmarks were measured under WSL2 Ubuntu (2 CPU threads allocated to FFmpeg) with memory target $< 400\text{ MB}$, hard ceiling $\le 600\text{ MB}$, and throughput gate $\ge 15.0\text{ FPS}$.
+>
+> **A/B Memory Profiling (`--expose-gc`):**
+> On Node.js 24, V8's default garbage collection schedule delays reclaiming unreferenced external rasterization buffers, allowing memory to accumulate (+92 MB) and reach 404.66 MB aggregate RSS (triggering a memory target warning). Running with `NODE_OPTIONS="--expose-gc"` and triggering manual GC between chunks/iterations immediately sweeps unreferenced external buffers, stabilizing peak aggregate RSS at 312.80 MB (well below the 400 MB target) while rendering at 46.31 FPS.
 
 ---
 

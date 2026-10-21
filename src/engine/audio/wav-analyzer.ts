@@ -5,7 +5,9 @@ import path from 'node:path';
 import {
   AudioAnalysisManifestSchema,
   type AudioAnalysisManifest,
-  type BeatEvent
+  type BeatEvent,
+  type BeatGrid,
+  type AudioSection
 } from '../../schemas/audio.contract.js';
 import {
   encodeColumnarAudioFeatures,
@@ -373,12 +375,25 @@ export interface AnalyzedPcmColumnsResult {
   readonly globalRmsMax: number;
   readonly columns: ColumnarAudioColumns;
   readonly beatEvents: BeatEvent[];
-  readonly tempoBpm: number;
-  readonly tempoConfidence: number;
+  readonly tempoBpm?: number;
+  readonly tempoConfidence?: number;
+  readonly beatGrid?: BeatGrid;
+  readonly sections?: AudioSection[];
 }
 
 function clamp01(v: number): number {
   return v <= 0 ? 0 : v >= 1 ? 1 : v;
+}
+
+export function computePercentile(arr: Float32Array, p: number): number {
+  const nonZero: number[] = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] > 1e-6) nonZero.push(arr[i]);
+  }
+  if (nonZero.length === 0) return 1.0;
+  nonZero.sort((a, b) => a - b);
+  const idx = Math.min(nonZero.length - 1, Math.floor((p / 100) * nonZero.length));
+  return nonZero[idx] > 1e-6 ? nonZero[idx] : 1.0;
 }
 
 function normalizeArrayInPlace(arr: Float32Array): number {
@@ -391,6 +406,148 @@ function normalizeArrayInPlace(arr: Float32Array): number {
     arr[i] = clamp01(arr[i] / denom);
   }
   return maxVal;
+}
+
+/**
+ * Estimates musical tempo (BPM) and confidence via sub-frame lag autocorrelation
+ * over a fine hop-size spectral difference envelope.
+ */
+export function estimateTempoFromPcm(
+  samples: Float32Array,
+  sampleRate: 44100 | 48000
+): { tempoBpm?: number; tempoConfidence?: number } {
+  const hop = 512;
+  const fo = sampleRate / hop; // ~86.13 Hz at 44.1k
+  const numHops = Math.floor(samples.length / hop);
+  if (numHops < 30) return {};
+
+  // Compute onset strength envelope over hops using 2-tap low/high band difference
+  const envelope = new Float32Array(numHops);
+  let prevLow = 0;
+  let prevHigh = 0;
+
+  for (let m = 0; m < numHops; m++) {
+    const start = m * hop;
+    let lowEnergy = 0;
+    let highEnergy = 0;
+    const end = Math.min(samples.length - 1, start + hop);
+    for (let j = start; j < end; j++) {
+      const s0 = samples[j];
+      const s1 = samples[j + 1];
+      const lowVal = s0 + s1;
+      const highVal = s0 - s1;
+      lowEnergy += lowVal * lowVal;
+      highEnergy += highVal * highVal;
+    }
+    const dLow = Math.max(0, lowEnergy - prevLow);
+    const dHigh = Math.max(0, highEnergy - prevHigh);
+    envelope[m] = dLow + 1.5 * dHigh;
+    prevLow = lowEnergy;
+    prevHigh = highEnergy;
+  }
+
+  // Mean-center envelope
+  let envMean = 0;
+  for (let m = 0; m < numHops; m++) envMean += envelope[m];
+  envMean /= numHops;
+  const centered = new Float32Array(numHops);
+  let envVar = 0;
+  for (let m = 0; m < numHops; m++) {
+    centered[m] = envelope[m] - envMean;
+    envVar += centered[m] * centered[m];
+  }
+  if (envVar < 1e-8) return {}; // Silence or flat signal
+
+  // Autocorrelation over 60..200 BPM lag range
+  const tauMin = Math.round((60 / 200) * fo); // ~26 hops
+  const tauMax = Math.round((60 / 60) * fo);  // ~86 hops
+  const tau0 = (60 / 120) * fo; // ~43 hops
+  const sigmaTau = 0.40;
+
+  const lags = new Float32Array(tauMax + 3);
+  const rawLags = new Float32Array(tauMax + 3);
+  let peakTau = tauMin;
+  let peakVal = -Infinity;
+
+  for (let tau = tauMin - 1; tau <= tauMax + 1; tau++) {
+    let sum = 0;
+    let sumSq1 = 0;
+    let sumSq2 = 0;
+    const limit = numHops - tau;
+    for (let n = 0; n < limit; n++) {
+      const x1 = centered[n];
+      const x2 = centered[n + tau];
+      sum += x1 * x2;
+      sumSq1 += x1 * x1;
+      sumSq2 += x2 * x2;
+    }
+    const denom = Math.sqrt(sumSq1 * sumSq2);
+    const normR = denom > 1e-8 ? sum / denom : 0;
+    rawLags[tau] = normR;
+
+    // Log-normal prior centered at 120 BPM
+    const prior = Math.exp(-0.5 * Math.pow(Math.log(tau / tau0) / sigmaTau, 2));
+    const weighted = normR * prior;
+    lags[tau] = weighted;
+
+    if (tau >= tauMin && tau <= tauMax && weighted > peakVal) {
+      peakVal = weighted;
+      peakTau = tau;
+    }
+  }
+
+  // Check for octave halving (e.g. 174 BPM pattern with strong 2-beat kick/snare harmonic)
+  const halfTau = Math.round(peakTau / 2);
+  if (halfTau >= tauMin && lags[halfTau] >= 0.45 * lags[peakTau]) {
+    const isLocalHalfPeak =
+      lags[halfTau] >= lags[halfTau - 1] && lags[halfTau] >= lags[halfTau + 1];
+    if (isLocalHalfPeak) {
+      peakTau = halfTau;
+    }
+  }
+
+  // Parabolic 3-point peak interpolation
+  const alpha = lags[peakTau - 1];
+  const beta = lags[peakTau];
+  const gamma = lags[peakTau + 1];
+  const denomParabola = alpha - 2 * beta + gamma;
+  let delta = 0;
+  if (Math.abs(denomParabola) > 1e-8) {
+    delta = 0.5 * ((alpha - gamma) / denomParabola);
+    delta = Math.max(-0.5, Math.min(0.5, delta));
+  }
+  const refinedTau = peakTau + delta;
+  const bpm = (60 * fo) / refinedTau;
+
+  // Prominence & confidence metric
+  let sumR = 0;
+  let countR = 0;
+  for (let tau = tauMin; tau <= tauMax; tau++) {
+    sumR += lags[tau];
+    countR++;
+  }
+  const meanR = sumR / countR;
+  let varR = 0;
+  for (let tau = tauMin; tau <= tauMax; tau++) {
+    const diff = lags[tau] - meanR;
+    varR += diff * diff;
+  }
+  const stdR = Math.sqrt(varR / countR);
+  const rawBeta = rawLags[peakTau];
+  const prominence = (beta - meanR) / Math.max(1e-5, stdR);
+  const confidence = Math.max(
+    0,
+    Math.min(1, (prominence / 2.5) * Math.max(0, Math.min(1, rawBeta)))
+  );
+
+  if (confidence < 0.40) {
+    return {};
+  }
+
+  return {
+    tempoBpm: Number(bpm.toFixed(2)),
+    tempoConfidence: Number(confidence.toFixed(4))
+  };
 }
 
 /**
@@ -511,12 +668,9 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
     pitchEstimatedHz[f] = rmsRaw[f] > 0.03 && maxVocalBinIdx > 0 ? maxVocalBinIdx * binHz : 0;
   }
 
-  // Global RMS normalization
-  let maxRms = 1e-6;
-  for (let f = 0; f < totalFrames; f++) {
-    if (rmsRaw[f] > maxRms) maxRms = rmsRaw[f];
-  }
-  const globalRmsMax = maxRms;
+  // Global RMS normalization via robust 98th-percentile scaling
+  const p98Rms = computePercentile(rmsRaw, 98);
+  const globalRmsMax = p98Rms > 1e-6 ? p98Rms : 1.0;
   for (let f = 0; f < totalFrames; f++) {
     rmsRelativeGlobal[f] = clamp01(rmsRaw[f] / globalRmsMax);
   }
@@ -533,14 +687,23 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
     rmsRelativeLocal[f] = clamp01(rmsRaw[f] / localMax);
   }
 
-  // Normalize 7 frequency bands to [0, 1]
-  normalizeArrayInPlace(subBass);
-  normalizeArrayInPlace(bass);
-  normalizeArrayInPlace(lowMid);
-  normalizeArrayInPlace(mid);
-  normalizeArrayInPlace(highMid);
-  normalizeArrayInPlace(presence);
-  normalizeArrayInPlace(brilliance);
+  // Unified cross-band spectral energy scaling preserving physical spectral balance
+  const totBandEnergy = new Float32Array(totalFrames);
+  for (let f = 0; f < totalFrames; f++) {
+    totBandEnergy[f] =
+      subBass[f] + bass[f] + lowMid[f] + mid[f] + highMid[f] + presence[f] + brilliance[f];
+  }
+  const bandScale = computePercentile(totBandEnergy, 98);
+  const denomBand = bandScale > 1e-6 ? bandScale : 1.0;
+  for (let f = 0; f < totalFrames; f++) {
+    subBass[f] = clamp01(subBass[f] / denomBand);
+    bass[f] = clamp01(bass[f] / denomBand);
+    lowMid[f] = clamp01(lowMid[f] / denomBand);
+    mid[f] = clamp01(mid[f] / denomBand);
+    highMid[f] = clamp01(highMid[f] / denomBand);
+    presence[f] = clamp01(presence[f] / denomBand);
+    brilliance[f] = clamp01(brilliance[f] / denomBand);
+  }
 
   // Novelty / onset strength (half-wave rectified spectral flux minus local moving average)
   const fluxHalfWin = Math.max(2, Math.floor(0.5 * fps));
@@ -558,15 +721,29 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
   normalizeArrayInPlace(spectralFlux);
   normalizeArrayInPlace(onsetStrength);
 
-  // Peak-picking for isOnset and beatEvents
+  // Peak-picking with adaptive local threshold (mean + 1.4 * std + 0.04)
   const minOnsetGap = Math.max(3, Math.round(0.12 * fps));
-  const onsetThreshold = 0.22;
+  const onsetHalfWin = Math.max(2, Math.round(0.5 * fps));
   let lastOnsetFrame = -minOnsetGap;
   const beatEvents: BeatEvent[] = [];
 
   for (let f = 0; f < totalFrames; f++) {
     const strength = onsetStrength[f];
-    if (strength < onsetThreshold || f - lastOnsetFrame < minOnsetGap) {
+    const wStart = Math.max(0, f - onsetHalfWin);
+    const wEnd = Math.min(totalFrames - 1, f + onsetHalfWin);
+    let meanS = 0;
+    for (let k = wStart; k <= wEnd; k++) meanS += onsetStrength[k];
+    meanS /= wEnd - wStart + 1;
+
+    let varS = 0;
+    for (let k = wStart; k <= wEnd; k++) {
+      const diff = onsetStrength[k] - meanS;
+      varS += diff * diff;
+    }
+    const stdS = Math.sqrt(varS / (wEnd - wStart + 1));
+    const adaptiveThreshold = meanS + 1.4 * stdS + 0.04;
+
+    if (strength < adaptiveThreshold || f - lastOnsetFrame < minOnsetGap) {
       continue;
     }
     let isLocalPeak = true;
@@ -587,25 +764,73 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
     }
   }
 
-  // Estimate tempo BPM from median inter-onset interval
-  let tempoBpm = 120;
-  let tempoConfidence = 0.85;
-  if (beatEvents.length >= 3) {
-    const intervals: number[] = [];
-    for (let i = 1; i < beatEvents.length; i++) {
-      const dt = (beatEvents[i].frameIndex - beatEvents[i - 1].frameIndex) / fps;
-      if (dt >= 0.25 && dt <= 1.5) {
-        intervals.push(dt);
+  // Estimate musical tempo with sub-frame lag resolution
+  const tempoResult = estimateTempoFromPcm(samples, sampleRate);
+  const tempoBpm = tempoResult.tempoBpm;
+  const tempoConfidence = tempoResult.tempoConfidence;
+
+  // Synthesize musical beat grid if confident tempo is detected
+  let beatGrid: BeatGrid | undefined;
+  if (tempoBpm !== undefined && tempoConfidence !== undefined && tempoConfidence >= 0.4) {
+    const framesPerBeat = (60 / tempoBpm) * fps;
+    const framesPerBar = 4 * framesPerBeat;
+
+    // Find phase maximizing onset energy
+    let bestPhase = 0;
+    let bestEnergy = -1;
+    const maxPhase = Math.max(1, Math.round(framesPerBeat));
+    for (let phase = 0; phase < maxPhase; phase++) {
+      let phaseEnergy = 0;
+      for (let f = phase; f < totalFrames; f += Math.round(framesPerBeat)) {
+        phaseEnergy += onsetStrength[f];
+      }
+      if (phaseEnergy > bestEnergy) {
+        bestEnergy = phaseEnergy;
+        bestPhase = phase;
       }
     }
-    if (intervals.length > 0) {
-      intervals.sort((a, b) => a - b);
-      const medianDt = intervals[intervals.length >>> 1];
-      let rawBpm = 60 / medianDt;
-      while (rawBpm < 70) rawBpm *= 2;
-      while (rawBpm > 180) rawBpm *= 0.5;
-      tempoBpm = Number(rawBpm.toFixed(2));
+
+    const beatFrameIndices: number[] = [];
+    for (let f = bestPhase; f < totalFrames; f += Math.round(framesPerBeat)) {
+      beatFrameIndices.push(f);
     }
+    const downbeatIndices: number[] = [];
+    for (let f = bestPhase; f < totalFrames; f += Math.round(framesPerBar)) {
+      downbeatIndices.push(f);
+    }
+
+    beatGrid = {
+      tempoBpm,
+      tempoConfidence,
+      framesPerBeat: Number(framesPerBeat.toFixed(4)),
+      framesPerBar: Number(framesPerBar.toFixed(4)),
+      beatFrameIndices,
+      downbeatIndices
+    };
+  }
+
+  // Decompose into macro acoustic sections
+  const sectionSpanFrames = Math.max(300, Math.round(30 * fps)); // ~30.0s nominal section
+  const sections: AudioSection[] = [];
+  const numSections = Math.max(1, Math.ceil(totalFrames / sectionSpanFrames));
+  for (let s = 0; s < numSections; s++) {
+    const startFrame = s * sectionSpanFrames;
+    const endFrame = Math.min(totalFrames, (s + 1) * sectionSpanFrames);
+    let secRms = 0;
+    let cnt = 0;
+    for (let f = startFrame; f < endFrame; f++) {
+      secRms += rmsRelativeGlobal[f];
+      cnt++;
+    }
+    const relativeEnergy = cnt > 0 ? Number((secRms / cnt).toFixed(4)) : 0.5;
+    sections.push({
+      id: `sec-${s + 1}`,
+      startFrame,
+      endFrame,
+      relativeEnergy,
+      hasVocals: false,
+      dominantBand: 'mid'
+    });
   }
 
   return {
@@ -632,8 +857,10 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
       isOnset
     },
     beatEvents,
-    tempoBpm,
-    tempoConfidence
+    ...(tempoBpm !== undefined ? { tempoBpm } : {}),
+    ...(tempoConfidence !== undefined ? { tempoConfidence } : {}),
+    ...(beatGrid !== undefined ? { beatGrid } : {}),
+    ...(sections !== undefined ? { sections } : {})
   };
 }
 
@@ -721,8 +948,10 @@ export function analyzeWavFileToArtifacts(options: AnalyzeWavToArtifactsOptions)
       durationSeconds: Number(analyzed.durationSeconds.toFixed(4)),
       fps: analyzed.fps,
       totalFrames: analyzed.totalFrames,
-      tempoBpm: analyzed.tempoBpm,
-      tempoConfidence: analyzed.tempoConfidence
+      ...(analyzed.tempoBpm !== undefined ? { tempoBpm: analyzed.tempoBpm } : {}),
+      ...(analyzed.tempoConfidence !== undefined
+        ? { tempoConfidence: analyzed.tempoConfidence }
+        : {})
     },
     normalization: {
       globalRmsMax: Number(analyzed.globalRmsMax.toFixed(6)),
@@ -730,6 +959,8 @@ export function analyzeWavFileToArtifacts(options: AnalyzeWavToArtifactsOptions)
     },
     lyrics: parsedLrc.lyrics,
     beatEvents: analyzed.beatEvents,
+    ...(analyzed.beatGrid !== undefined ? { beatGrid: analyzed.beatGrid } : {}),
+    ...(analyzed.sections !== undefined ? { sections: analyzed.sections } : {}),
     storageReference: {
       type: 'external_binary',
       columnLayoutVersion: 1,

@@ -11,6 +11,7 @@ output/
 assets/audio/*.flac
 assets/audio/*.wav
 assets/audio/*.mp3
+assets/audio/*.lrc
 
 # Temporary logs and dumps
 *.log

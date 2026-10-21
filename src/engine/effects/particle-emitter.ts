@@ -28,7 +28,10 @@ export function evaluateParticleEmitter(
   fps: number,
   onsetFrames: readonly number[] = []
 ): ActiveParticle[] {
-  const particles: ActiveParticle[] = [];
+  interface CandidateParticle extends ActiveParticle {
+    ageFrames: number;
+  }
+  const candidates: CandidateParticle[] = [];
   const lifetime = emitter.lifetimeFrames;
   const rate = emitter.ratePerSecond;
 
@@ -38,8 +41,6 @@ export function evaluateParticleEmitter(
     const maxIndex = Math.floor((frameIndex * rate) / fps);
 
     for (let i = minIndex; i <= maxIndex; i++) {
-      if (particles.length >= emitter.maxParticles) break;
-
       const spawnFrame = Math.floor((i * fps) / rate);
       const ageFrames = frameIndex - spawnFrame;
       if (ageFrames < 0 || ageFrames >= lifetime) continue;
@@ -85,12 +86,13 @@ export function evaluateParticleEmitter(
       // Smooth bell fade-in and fade-out
       const opacity = emitter.baseOpacity * Math.sin(Math.PI * ageFrac);
 
-      particles.push({
+      candidates.push({
         id: i,
         position: [px, py],
         radius,
         opacity,
-        ageFraction: ageFrac
+        ageFraction: ageFrac,
+        ageFrames
       });
     }
   }
@@ -99,7 +101,6 @@ export function evaluateParticleEmitter(
   const burstCount = emitter.audio?.onsetBurstCount ?? 0;
   if (burstCount > 0 && onsetFrames.length > 0) {
     for (const onsetFrame of onsetFrames) {
-      if (particles.length >= emitter.maxParticles) break;
       const ageFrames = frameIndex - onsetFrame;
       if (ageFrames < 0 || ageFrames >= lifetime) continue;
 
@@ -107,8 +108,6 @@ export function evaluateParticleEmitter(
       const ageFrac = ageFrames / lifetime;
 
       for (let j = 0; j < burstCount; j++) {
-        if (particles.length >= emitter.maxParticles) break;
-
         const burstKey = onsetFrame * 1000 + j;
 
         let p0x = 0;
@@ -144,16 +143,31 @@ export function evaluateParticleEmitter(
         );
         const opacity = emitter.baseOpacity * Math.sin(Math.PI * ageFrac);
 
-        particles.push({
+        candidates.push({
           id: 1_000_000 + burstKey,
           position: [px, py],
           radius,
           opacity,
-          ageFraction: ageFrac
+          ageFraction: ageFrac,
+          ageFrames
         });
       }
     }
   }
 
-  return particles;
+  if (candidates.length <= emitter.maxParticles) {
+    return candidates;
+  }
+
+  // Under saturation, drop oldest particles (largest ageFrames) so newest audio-synced bursts are kept
+  candidates.sort((a, b) => {
+    if (a.ageFrames !== b.ageFrames) {
+      return a.ageFrames - b.ageFrames;
+    }
+    return b.id - a.id;
+  });
+
+  const kept = candidates.slice(0, emitter.maxParticles);
+  kept.sort((a, b) => a.id - b.id);
+  return kept;
 }

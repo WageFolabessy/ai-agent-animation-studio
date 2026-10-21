@@ -1350,10 +1350,14 @@ export class RigAgent {
     const catalog = await this.provider.generateStructuredJson(prompt, RigCatalogContractSchema, {
       systemPrompt: this.buildSystemPrompt(),
       temperature: 0.1,
+      maxTokens: input.maxTokens ?? 4096,
+      timeoutMs: input.timeoutMs,
+      schemaName: 'RigCatalogContract',
       agentRole: 'rig',
       attempt: input.attempt ?? 1,
       repairErrors: input.repairErrors ?? [],
       previousDraft: input.previousDraft,
+      onAttemptComplete: input.onAttemptComplete,
       context: {
         rigInput: input
       }
