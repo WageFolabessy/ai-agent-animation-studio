@@ -29,7 +29,7 @@ import {
 import { DirectorStoryboardContractSchema } from '../src/schemas/storyboard.contract.js';
 import { AssetRigContractSchema } from '../src/schemas/rig.contract.js';
 import { ChoreographyContractSchema } from '../src/schemas/choreography.contract.js';
-import { StorySpecContractSchema } from '../src/schemas/story-spec.contract.js';
+import { StorySpecContractSchema, type SectionStagingSpec } from '../src/schemas/story-spec.contract.js';
 import { EnvironmentKit } from '../src/engine/library/environment-kit.js';
 import { getOrchestratedEnvironment } from '../src/agents/director-agent.js';
 import { z } from 'zod';
@@ -277,13 +277,10 @@ async function main(): Promise<void> {
         ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
         : 0;
       if (storySpec) {
-        const secDuration = totalFrames / storySpec.sections.length;
         const startFrame = shot?.frameRange.startFrameInclusive ?? 0;
-        const secIdx = Math.min(
-          storySpec.sections.length - 1,
-          Math.floor(startFrame / secDuration)
-        );
-        const sec = storySpec.sections[secIdx];
+        const sec = storySpec.sections.find(
+          (s: SectionStagingSpec) => startFrame >= s.startFrame && startFrame < s.endFrame
+        ) ?? storySpec.sections[storySpec.sections.length - 1];
         const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
         const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
         return EnvironmentKit.build({ section: sec, shotId, centerX, framing: shot?.framing, xMin, xMax });

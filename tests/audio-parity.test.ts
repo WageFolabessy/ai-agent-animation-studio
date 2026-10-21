@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { AudioSectionSchema } from '../src/schemas/audio.contract.js';
 import {
   decodeWavBufferPcm,
   estimateTempoFromPcm,
@@ -129,6 +130,27 @@ test('AudioParity: TypeScript and Python analyzers achieve numerical parity acro
     // Verify binary layout version
     assert.equal(pyManifest.storageReference.columnLayoutVersion, 1);
     assert.equal(tsManifest.storageReference.columnLayoutVersion, 1);
+
+    // Verify sections parity
+    assert.ok(Array.isArray(tsManifest.sections), 'tsManifest.sections must be an array');
+    assert.ok(Array.isArray(pyManifest.sections), 'pyManifest.sections must be an array');
+    assert.ok(tsManifest.sections.length >= 3, `tsManifest must have >= 3 sections (got ${tsManifest.sections.length})`);
+    assert.ok(pyManifest.sections.length >= 3, `pyManifest must have >= 3 sections (got ${pyManifest.sections.length})`);
+    assert.equal(tsManifest.sections.length, pyManifest.sections.length, 'Section counts must match');
+
+    for (let s = 0; s < tsManifest.sections.length; s++) {
+      const tsSec = AudioSectionSchema.parse(tsManifest.sections[s]);
+      const pySec = AudioSectionSchema.parse(pyManifest.sections[s]);
+      assert.equal(tsSec.id, pySec.id);
+      assert.equal(tsSec.startFrame, pySec.startFrame);
+      assert.equal(tsSec.endFrame, pySec.endFrame);
+      assert.equal(tsSec.hasVocals, pySec.hasVocals);
+      assert.equal(tsSec.dominantBand, pySec.dominantBand);
+      assert.ok(
+        Math.abs(tsSec.relativeEnergy - pySec.relativeEnergy) <= 0.05,
+        `Relative energy difference for ${tsSec.id} exceeds 0.05`
+      );
+    }
 
     // Read Python binary into buffer
     const pyBytes = fs.readFileSync(pyBinPath);

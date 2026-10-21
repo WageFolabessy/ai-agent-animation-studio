@@ -36,9 +36,9 @@ export function buildDeterministicStorySpec(
   manifest: AudioAnalysisManifest,
   projectId = 'autonomous-cinema'
 ): StorySpecContract {
-  const { durationSeconds } = manifest.metadata;
+  const { durationSeconds, totalFrames } = manifest.metadata;
   const tempo = manifest.metadata.tempoBpm ?? manifest.beatGrid?.tempoBpm ?? 120;
-  const sections = manifest.sections ?? [];
+  const rawSections = manifest.sections ?? [];
   const lyricCount = manifest.lyrics.length;
 
   // Classify song acoustic profile
@@ -55,6 +55,13 @@ export function buildDeterministicStorySpec(
         scale: 1.0,
         paletteOverrides: { primary: '#ff7700', accent: '#ffe600' },
         accessories: ['hazard_coat']
+      },
+      {
+        instanceId: 'cyber_beast',
+        archetypeId: 'quadruped_beast',
+        scale: 1.0,
+        paletteOverrides: { primary: '#00f0ff', accent: '#ff0055' },
+        accessories: ['sensor_crest']
       },
       {
         instanceId: 'enforcer_drone',
@@ -93,20 +100,106 @@ export function buildDeterministicStorySpec(
     ];
   }
 
-  // 2. Determine Section Staging
-  const numSections = sections.length >= 3 ? sections.length : 4;
+  // 2. Synthesize or partition >= 3 contiguous section spans (Safeguard 1)
+  interface CleanSectionSpan {
+    id: string;
+    startFrame: number;
+    endFrame: number;
+    relativeEnergy: number;
+    hasVocals: boolean;
+    dominantBand: string;
+  }
+
+  const sections: CleanSectionSpan[] = [];
+  if (rawSections.length >= 3) {
+    for (const s of rawSections) {
+      sections.push({
+        id: s.id,
+        startFrame: s.startFrame,
+        endFrame: s.endFrame,
+        relativeEnergy: s.relativeEnergy,
+        hasVocals: s.hasVocals,
+        dominantBand: s.dominantBand
+      });
+    }
+  } else {
+    // Partition totalFrames into 3 contiguous spans
+    const b1 = Math.max(1, Math.floor(totalFrames * 0.25));
+    const b2 = Math.max(b1 + 1, Math.floor(totalFrames * 0.75));
+    sections.push(
+      {
+        id: 'sec-1',
+        startFrame: 0,
+        endFrame: b1,
+        relativeEnergy: 0.35,
+        hasVocals: false,
+        dominantBand: 'lowMid'
+      },
+      {
+        id: 'sec-2',
+        startFrame: b1,
+        endFrame: b2,
+        relativeEnergy: isHighEnergy ? 0.88 : 0.65,
+        hasVocals: lyricCount > 0,
+        dominantBand: 'presence'
+      },
+      {
+        id: 'sec-3',
+        startFrame: b2,
+        endFrame: totalFrames,
+        relativeEnergy: 0.45,
+        hasVocals: false,
+        dominantBand: 'bass'
+      }
+    );
+  }
+
+  // 3. Staging and Dynamic Acting
   const sectionSpecs: SectionStagingSpec[] = [];
+  const numSections = sections.length;
 
   for (let i = 0; i < numSections; i++) {
     const sec = sections[i];
-    const energy = sec?.relativeEnergy ?? (i === 1 || i === 2 ? 0.85 : 0.4);
+    const energy = sec.relativeEnergy;
+    const isFirst = i === 0;
+    const isLast = i === numSections - 1;
+    const isSoloClimax = !isFirst && !isLast && (energy >= 0.75 && !sec.hasVocals || i === Math.floor(numSections * 0.65));
+    const isChorus = !isFirst && !isLast && !isSoloClimax && (sec.hasVocals || energy >= 0.68);
 
+    // Dynamic Biped Motion Preset
+    let bipedPreset:
+      | 'stalk_crouch'
+      | 'sprint_frenzy'
+      | 'evade_leap'
+      | 'defiant_scream'
+      | 'combat_clash'
+      | 'exhausted_walk';
+    let narrativeIntent: string;
+
+    if (isFirst) {
+      bipedPreset = 'stalk_crouch';
+      narrativeIntent = `Act I: Suspenseful Infiltration & Awakening (${energy > 0.5 ? 'Alert' : 'Stealth'})`;
+    } else if (isLast) {
+      bipedPreset = 'exhausted_walk';
+      narrativeIntent = `Act III: Deceleration & Exhausted Resolution (${sec.id})`;
+    } else if (isSoloClimax) {
+      bipedPreset = 'combat_clash';
+      narrativeIntent = `Virtuosic Climax & Combat Clash (${sec.dominantBand} Peak)`;
+    } else if (isChorus) {
+      bipedPreset = i % 2 === 0 ? 'defiant_scream' : 'evade_leap';
+      narrativeIntent = `Chorus Hook (${bipedPreset === 'defiant_scream' ? 'Defiant Scream' : 'Acrobatic Leap'})`;
+    } else {
+      bipedPreset = 'sprint_frenzy';
+      narrativeIntent = `Driving Progression & Kinetic Sprint (${sec.id})`;
+    }
+
+    // Dynamic Biome & Color
     let kitId: 'industrial_city' | 'orbital_station' | 'neon_chasm' | 'synth_grid';
     let colorTheme: 'CYBERPUNK_CYAN' | 'VOLTAGE_ORANGE' | 'SUNSET_GOLD' | 'CRIMSON_FURY' | 'MIDNIGHT_VOID';
 
     if (isHighEnergy) {
-      kitId = i % 2 === 0 ? 'industrial_city' : 'neon_chasm';
-      colorTheme = energy > 0.7 ? 'CRIMSON_FURY' : 'VOLTAGE_ORANGE';
+      kitId = isSoloClimax ? 'neon_chasm' : isChorus ? 'orbital_station' : 'industrial_city';
+      colorTheme = isSoloClimax ? 'CRIMSON_FURY' : isChorus ? 'VOLTAGE_ORANGE' : isFirst ? 'CYBERPUNK_CYAN' : 'MIDNIGHT_VOID';
     } else if (isElectronic) {
       kitId = i % 2 === 0 ? 'synth_grid' : 'orbital_station';
       colorTheme = energy > 0.7 ? 'SUNSET_GOLD' : 'CYBERPUNK_CYAN';
@@ -126,37 +219,63 @@ export function buildDeterministicStorySpec(
       kitParams = { gridSpacing: 40, horizonSun: true, wireframeMountains: true };
     }
 
+    // Directives with C0 continuity across boundaries (Safeguard 2)
+    const castDirectives = cast.map((c, cIdx) => {
+      let motionPreset: any = bipedPreset;
+      if (c.archetypeId === 'aerial_drone') {
+        motionPreset = isSoloClimax ? 'dive' : 'hover';
+      } else if (c.archetypeId === 'quadruped_beast') {
+        motionPreset = isFirst ? 'stalk' : isSoloClashOrLeap(bipedPreset) ? 'pounce' : 'gallop';
+      }
+
+      // Continuous lateral stage offset
+      const stageOffsetX = cIdx === 0 ? 0 : cIdx === 1 ? -0.3 : 0.3;
+      const stageOffsetY = c.archetypeId === 'aerial_drone' ? 0.6 : 0;
+
+      return {
+        instanceId: c.instanceId,
+        motionPreset,
+        waypoints: [
+          {
+            frameProgress: 0,
+            stagePosNorm: [stageOffsetX, stageOffsetY, 0] as [number, number, number]
+          },
+          {
+            frameProgress: 1,
+            stagePosNorm: [stageOffsetX, stageOffsetY, 0] as [number, number, number]
+          }
+        ]
+      };
+    });
+
     sectionSpecs.push({
-      sectionId: sec?.id ?? `sec_${i + 1}`,
-      narrativeIntent: `Musical section ${i + 1} (${energy > 0.7 ? 'Peak Intensity' : 'Building Momentum'})`,
+      sectionId: sec.id,
+      startFrame: sec.startFrame,
+      endFrame: sec.endFrame,
+      narrativeIntent,
       environmentKitId: kitId,
       kitParams,
       colorThemeId: colorTheme,
       cameraIntensity: Number(energy.toFixed(2)),
-      castDirectives: cast.map((c, cIdx) => ({
-        instanceId: c.instanceId,
-        motionPreset: c.archetypeId === 'aerial_drone' ? 'hover' : 'sprint',
-        waypoints: [
-          {
-            frameProgress: 0,
-            stagePosNorm: [-0.6 + cIdx * 0.4, 0, 0]
-          },
-          {
-            frameProgress: 1,
-            stagePosNorm: [0.6 + cIdx * 0.4, 0, 0]
-          }
-        ]
-      }))
+      castDirectives
     });
   }
 
   return {
     projectId,
     title: `Autonomous Song Film (${durationSeconds.toFixed(1)}s, ${tempo} BPM)`,
-    overallMood: isHighEnergy ? 'High-Octane Kinetic Action' : isElectronic ? 'Futuristic Cybernetic Odyssey' : 'Atmospheric Meditative Nocturne',
+    overallMood: isHighEnergy
+      ? 'High-Octane Kinetic Action'
+      : isElectronic
+        ? 'Futuristic Cybernetic Odyssey'
+        : 'Atmospheric Meditative Nocturne',
     cast,
     sections: sectionSpecs
   };
+}
+
+function isSoloClashOrLeap(preset: string): boolean {
+  return preset === 'combat_clash' || preset === 'evade_leap';
 }
 
 export class StorySpecAgent {

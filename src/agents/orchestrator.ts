@@ -18,6 +18,7 @@ import {
 import { RigAgent } from './rig-agent.js';
 import { ChoreographerAgent } from './choreographer-agent.js';
 import { StorySpecAgent } from './story-spec-agent.js';
+import type { StorySpecContract, SectionStagingSpec } from '../schemas/story-spec.contract.js';
 import { compileStorySpecToStoryboard } from '../engine/director/shot-planner.js';
 import { solveChoreography } from '../engine/director/choreography-solver.js';
 import { ArchetypeFactory } from '../engine/library/archetype-factory.js';
@@ -421,68 +422,17 @@ export class StudioAgentOrchestrator {
 
   /**
    * High-Efficiency "Spec-Then-Compile" Pipeline:
-   * 1. Synthesize compact declarative StorySpecContract (LLM ~1,100 output tokens)
+   * 1. Synthesize compact declarative StorySpecContract with self-healing retry loop (LLM ~1,100 output tokens)
    * 2. Compile Storyboard, Rigs, Choreography, and Environments deterministically (Zero LLM tokens)
+   * 3. Strictly enforce all project and choreography contract invariants before rendering
    */
   public async orchestrateWithSpec(options: OrchestrationOptions): Promise<OrchestrationResult> {
     const width = (options.width ?? 1920) as 1920;
     const height = (options.height ?? 1080) as 1080;
+    const maxRetries = options.maxRetries ?? 3;
+    const maxAttempts = maxRetries + 1;
     const attempts: AgentAttemptLog[] = [];
-    const t0 = performance.now();
 
-    // 1. Obtain StorySpecContract
-    let storySpec = options.storySpec;
-    if (!storySpec) {
-      storySpec = await this.storySpecAgent.generateStorySpec({
-        projectId: options.projectId,
-        audioManifest: options.audioManifest
-      });
-    }
-
-    attempts.push({
-      agentRole: 'story_spec',
-      attempt: 1,
-      repairedErrorCodes: [],
-      durationMs: Number((performance.now() - t0).toFixed(2)),
-      retryClass: 'none'
-    });
-
-    // 2. Deterministic Compilation
-    const storyboard = compileStorySpecToStoryboard(storySpec, options.audioManifest);
-
-    const rigs = new Map<string, AssetRigContract>();
-    for (const castItem of storySpec.cast) {
-      const rig = ArchetypeFactory.build({
-        instanceId: castItem.instanceId,
-        spec: castItem,
-        fps: options.audioManifest.metadata.fps === 60 ? 60 : 30
-      });
-      rigs.set(rig.id, rig);
-    }
-
-    const choreography = solveChoreography(storySpec, storyboard, rigs);
-
-    // 3. Environment Resolver
-    const shotMap = new Map(storyboard.shots.map((s) => [s.id, s]));
-    const sectionDuration = options.audioManifest.metadata.totalFrames / storySpec.sections.length;
-
-    const getEnvironmentForShot = (shotId: string): SceneEnvironment => {
-      const shot = shotMap.get(shotId);
-      const centerX = shot
-        ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
-        : 0;
-      const startFrame = shot?.frameRange.startFrameInclusive ?? 0;
-      const secIdx = Math.min(
-        storySpec.sections.length - 1,
-        Math.floor(startFrame / sectionDuration)
-      );
-      const section = storySpec.sections[secIdx];
-      const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
-      const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
-      return EnvironmentKit.build({ section, shotId, centerX, framing: shot?.framing, xMin, xMax });
-    };
-
-    // 4. Invariant Validations
     const renderConfig = createRenderConfig({
       width,
       height,
@@ -491,22 +441,151 @@ export class StudioAgentOrchestrator {
       totalFrames: options.audioManifest.metadata.totalFrames
     });
 
-    const projectValidation = validateProjectContracts(
-      options.audioManifest,
-      storyboard,
-      renderConfig,
-      rigs
-    );
-    const choreographyValidation = validateChoreography(choreography, storyboard, rigs);
+    let compiledStoryboard: DirectorStoryboardContract | undefined;
+    let compiledRigs: Map<string, AssetRigContract> | undefined;
+    let compiledChoreography: ChoreographyContract | undefined;
+    let projectValidationReport: ValidationReport | undefined;
+    let choreographyValidationReport: ValidationReport | undefined;
+
+    // 1. Obtain StorySpecContract via self-healing runStage
+    let storySpec = options.storySpec;
+    if (!storySpec) {
+      storySpec = await this.runStage<StorySpecContract>(
+        {
+          role: 'story_spec',
+          maxAttempts,
+          execute: (attempt, errors, draft, onComplete) =>
+            this.storySpecAgent.generateStorySpec({
+              projectId: options.projectId,
+              audioManifest: options.audioManifest,
+              attempt,
+              repairErrors: errors,
+              previousDraft: draft,
+              onAttemptComplete: onComplete
+            }),
+          validate: (candidateSpec) => {
+            try {
+              const sb = compileStorySpecToStoryboard(candidateSpec, options.audioManifest);
+              const rMap = new Map<string, AssetRigContract>();
+              for (const castItem of candidateSpec.cast) {
+                const rig = ArchetypeFactory.build({
+                  instanceId: castItem.instanceId,
+                  spec: castItem,
+                  fps: options.audioManifest.metadata.fps === 60 ? 60 : 30
+                });
+                rMap.set(rig.id, rig);
+              }
+              const choreo = solveChoreography(candidateSpec, sb, rMap);
+
+              const projRep = validateProjectContracts(
+                options.audioManifest,
+                sb,
+                renderConfig,
+                rMap
+              );
+              const choreoRep = validateChoreography(choreo, sb, rMap);
+
+              compiledStoryboard = sb;
+              compiledRigs = rMap;
+              compiledChoreography = choreo;
+              projectValidationReport = projRep;
+              choreographyValidationReport = choreoRep;
+
+              const fatalErrors = [
+                ...projRep.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error'),
+                ...choreoRep.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error')
+              ];
+              return fatalErrors;
+            } catch (err: unknown) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              return [
+                {
+                  path: 'spec',
+                  code: 'COMPILATION_ERROR',
+                  message: `StorySpec compilation failed: ${errMsg}`,
+                  severity: 'fatal'
+                }
+              ];
+            }
+          },
+          serializeDraft: (spec) => JSON.stringify(spec, null, 2)
+        },
+        attempts
+      );
+    }
+
+    // 2. Fallback compilation if spec was provided directly in options
+    if (!compiledStoryboard || !compiledRigs || !compiledChoreography) {
+      compiledStoryboard = compileStorySpecToStoryboard(storySpec, options.audioManifest);
+      compiledRigs = new Map<string, AssetRigContract>();
+      for (const castItem of storySpec.cast) {
+        const rig = ArchetypeFactory.build({
+          instanceId: castItem.instanceId,
+          spec: castItem,
+          fps: options.audioManifest.metadata.fps === 60 ? 60 : 30
+        });
+        compiledRigs.set(rig.id, rig);
+      }
+      compiledChoreography = solveChoreography(storySpec, compiledStoryboard, compiledRigs);
+      projectValidationReport = validateProjectContracts(
+        options.audioManifest,
+        compiledStoryboard,
+        renderConfig,
+        compiledRigs
+      );
+      choreographyValidationReport = validateChoreography(
+        compiledChoreography,
+        compiledStoryboard,
+        compiledRigs
+      );
+      attempts.push({
+        agentRole: 'story_spec',
+        attempt: 1,
+        repairedErrorCodes: [],
+        durationMs: 0,
+        retryClass: 'none'
+      });
+    }
+
+    // 3. Strict Invariant Enforcement
+    if (
+      !projectValidationReport ||
+      !choreographyValidationReport ||
+      !projectValidationReport.isValid ||
+      !choreographyValidationReport.isValid
+    ) {
+      const allErrors = [
+        ...(projectValidationReport?.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error') ?? []),
+        ...(choreographyValidationReport?.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error') ?? [])
+      ];
+      throw new OrchestrationValidationError('story_spec', allErrors, attempts);
+    }
+
+    // 4. Exact Section-Aligned Environment Resolver (Finding 1 fixed)
+    const shotMap = new Map(compiledStoryboard.shots.map((s) => [s.id, s]));
+
+    const getEnvironmentForShot = (shotId: string): SceneEnvironment => {
+      const shot = shotMap.get(shotId);
+      const centerX = shot
+        ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
+        : 0;
+      const startFrame = shot?.frameRange.startFrameInclusive ?? 0;
+      const section = storySpec.sections.find(
+        (s: SectionStagingSpec) => startFrame >= s.startFrame && startFrame < s.endFrame
+      ) ?? storySpec.sections[storySpec.sections.length - 1];
+      const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
+      const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
+      return EnvironmentKit.build({ section, shotId, centerX, framing: shot?.framing, xMin, xMax });
+    };
 
     return {
-      storyboard,
-      rigs,
-      choreography,
+      storyboard: compiledStoryboard,
+      rigs: compiledRigs,
+      choreography: compiledChoreography,
       storySpec,
       getEnvironmentForShot,
-      projectValidation,
-      choreographyValidation,
+      projectValidation: projectValidationReport,
+      choreographyValidation: choreographyValidationReport,
       attempts
     };
   }

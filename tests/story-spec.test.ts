@@ -38,6 +38,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
       sections: [
         {
           sectionId: 'sec_01',
+          startFrame: 0,
+          endFrame: 100,
           narrativeIntent: 'High-speed urban traversal',
           environmentKitId: 'industrial_city',
           kitParams: { rooftopDensity: 0.6 },
@@ -46,7 +48,7 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
           castDirectives: [
             {
               instanceId: 'hero',
-              motionPreset: 'sprint',
+              motionPreset: 'sprint_frenzy',
               waypoints: [
                 { frameProgress: 0, stagePosNorm: [-0.5, 0, 0] },
                 { frameProgress: 1, stagePosNorm: [0.5, 0, 0] }
@@ -56,6 +58,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
         },
         {
           sectionId: 'sec_02',
+          startFrame: 100,
+          endFrame: 200,
           narrativeIntent: 'Abyss crossing encounter',
           environmentKitId: 'neon_chasm',
           kitParams: { abyssDepth: 600 },
@@ -64,7 +68,7 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
           castDirectives: [
             {
               instanceId: 'hero',
-              motionPreset: 'sprint',
+              motionPreset: 'defiant_scream',
               waypoints: [
                 { frameProgress: 0, stagePosNorm: [-0.5, 0, 0] },
                 { frameProgress: 1, stagePosNorm: [0.5, 0, 0] }
@@ -74,6 +78,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
         },
         {
           sectionId: 'sec_03',
+          startFrame: 200,
+          endFrame: 300,
           narrativeIntent: 'Grid horizon sprint',
           environmentKitId: 'synth_grid',
           kitParams: { gridSpacing: 40 },
@@ -82,7 +88,7 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
           castDirectives: [
             {
               instanceId: 'hero',
-              motionPreset: 'stride',
+              motionPreset: 'stalk_crouch',
               waypoints: [
                 { frameProgress: 0, stagePosNorm: [-0.4, 0, 0] },
                 { frameProgress: 1, stagePosNorm: [0.4, 0, 0] }
@@ -101,6 +107,17 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
     assert.throws(() => StorySpecContractSchema.parse({ ...validSpec, cast: [] }));
     // Rejects less than 3 sections
     assert.throws(() => StorySpecContractSchema.parse({ ...validSpec, sections: [validSpec.sections[0]] }));
+    // Rejects endFrame <= startFrame
+    assert.throws(() =>
+      StorySpecContractSchema.parse({
+        ...validSpec,
+        sections: [
+          { ...validSpec.sections[0], startFrame: 100, endFrame: 50 },
+          validSpec.sections[1],
+          validSpec.sections[2]
+        ]
+      })
+    );
   });
 
   await t.test('buildDeterministicStorySpec is song-conditioned (different songs yield different specs)', () => {
@@ -251,5 +268,100 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
     // Verify environment resolver for shots
     const env0 = result.getEnvironmentForShot(result.storyboard.shots[0].id);
     assert.ok(env0.polygons && env0.polygons.length > 0);
+  });
+
+  await t.test('Full-song compilation exercises at least 5 distinct clipIds (zero dead-code presets)', () => {
+    // High-energy manifest with 6 sections
+    const multiSectionManifest: AudioAnalysisManifest = {
+      ...demoAudioManifest,
+      metadata: {
+        ...demoAudioManifest.metadata,
+        tempoBpm: 174,
+        tempoConfidence: 0.95
+      },
+      sections: [
+        { id: 'sec-1', startFrame: 0, endFrame: 300, relativeEnergy: 0.3, hasVocals: false, dominantBand: 'mid' },
+        { id: 'sec-2', startFrame: 300, endFrame: 600, relativeEnergy: 0.6, hasVocals: false, dominantBand: 'bass' },
+        { id: 'sec-3', startFrame: 600, endFrame: 1000, relativeEnergy: 0.85, hasVocals: true, dominantBand: 'presence' },
+        { id: 'sec-4', startFrame: 1000, endFrame: 1400, relativeEnergy: 0.92, hasVocals: false, dominantBand: 'brilliance' },
+        { id: 'sec-5', startFrame: 1400, endFrame: 1800, relativeEnergy: 0.88, hasVocals: true, dominantBand: 'presence' },
+        { id: 'sec-6', startFrame: 1800, endFrame: 2100, relativeEnergy: 0.25, hasVocals: false, dominantBand: 'mid' }
+      ]
+    };
+
+    const spec = buildDeterministicStorySpec(multiSectionManifest, 'preset-verification');
+    const storyboard = compileStorySpecToStoryboard(spec, multiSectionManifest);
+    const rigs = new Map();
+    for (const castItem of spec.cast) {
+      const rig = ArchetypeFactory.build({ instanceId: castItem.instanceId, spec: castItem });
+      rigs.set(rig.id, rig);
+    }
+    const choreo = solveChoreography(spec, storyboard, rigs);
+
+    const bipedTracks = choreo.tracks.filter((tr) => tr.rigId === 'lead_runner');
+    const clipIds = new Set(bipedTracks.map((tr) => tr.pose?.clipId).filter(Boolean));
+
+    assert.ok(
+      clipIds.size >= 5,
+      `Expected at least 5 distinct clipIds across song, got ${clipIds.size}: [${Array.from(clipIds).join(', ')}]`
+    );
+  });
+
+  await t.test('StudioAgentOrchestrator self-heals StorySpec failures across retry attempts', async () => {
+    let callCount = 0;
+    const interceptor = (_prompt: string, _options: any) => {
+      callCount++;
+      if (callCount === 1) {
+        // Return an invalid spec (fewer than 3 sections)
+        return {
+          projectId: 'invalid-spec',
+          title: 'Invalid',
+          overallMood: 'Bad',
+          cast: [
+            {
+              instanceId: 'hero',
+              archetypeId: 'biped_runner',
+              scale: 1.0,
+              accessories: []
+            }
+          ],
+          sections: [
+            {
+              sectionId: 'sec-1',
+              startFrame: 0,
+              endFrame: 100,
+              narrativeIntent: 'Single section',
+              environmentKitId: 'industrial_city',
+              kitParams: {},
+              colorThemeId: 'CYBERPUNK_CYAN',
+              cameraIntensity: 0.5,
+              castDirectives: [
+                {
+                  instanceId: 'hero',
+                  motionPreset: 'stalk_crouch',
+                  waypoints: [{ frameProgress: 0, stagePosNorm: [0, 0, 0] }]
+                }
+              ]
+            }
+          ]
+        };
+      }
+      // On attempt 2, let mock provider generate valid spec
+      return undefined;
+    };
+
+    const mockProvider = new DeterministicMockLlmProvider({ interceptor });
+    const orchestrator = new StudioAgentOrchestrator(mockProvider);
+
+    const result = await orchestrator.orchestrateWithSpec({
+      projectId: 'self-healing-spec-test',
+      audioManifest: demoAudioManifest
+    });
+
+    assert.equal(result.projectValidation.isValid, true);
+    assert.equal(result.choreographyValidation.isValid, true);
+    assert.equal(result.attempts.length, 2, 'Must log 2 attempts');
+    assert.equal(result.attempts[0].retryClass, 'schema_repair');
+    assert.equal(result.attempts[1].attempt, 2);
   });
 });

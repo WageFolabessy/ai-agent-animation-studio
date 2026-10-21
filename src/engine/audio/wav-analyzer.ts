@@ -7,7 +7,8 @@ import {
   type AudioAnalysisManifest,
   type BeatEvent,
   type BeatGrid,
-  type AudioSection
+  type AudioSection,
+  type LyricLine
 } from '../../schemas/audio.contract.js';
 import {
   encodeColumnarAudioFeatures,
@@ -364,6 +365,7 @@ export interface AnalyzePcmOptions {
   readonly sampleRate: 44100 | 48000;
   readonly fps: 30 | 60;
   readonly totalFrames?: number;
+  readonly lyrics?: readonly LyricLine[];
 }
 
 export interface AnalyzedPcmColumnsResult {
@@ -548,6 +550,233 @@ export function estimateTempoFromPcm(
     tempoBpm: Number(bpm.toFixed(2)),
     tempoConfidence: Number(confidence.toFixed(4))
   };
+}
+
+export interface SegmentAudioSectionsOptions {
+  readonly columns: ColumnarAudioColumns;
+  readonly totalFrames: number;
+  readonly fps: 30 | 60;
+  readonly beatGrid?: BeatGrid;
+  readonly lyrics?: readonly LyricLine[];
+}
+
+/**
+ * Autonomous dynamic section segmentation.
+ * Decomposes an audio timeline into contiguous, bar-snapped macro acoustic sections
+ * using smoothed composite energy novelty, lyric stanza gaps (>= 3.0s), and spectral profiling.
+ * Enforces [8.0s, 55.0s] bounds and >= 3 sections for timelines >= 180 frames.
+ */
+export function segmentAudioSections(options: SegmentAudioSectionsOptions): AudioSection[] {
+  const { columns, totalFrames, fps, beatGrid, lyrics } = options;
+  if (totalFrames <= 0) return [];
+
+  const minSectionSeconds = 8.0;
+  const maxSectionSeconds = 55.0;
+
+  // Bar step: framesPerBar from beatGrid or 4/4 measure at 120 BPM
+  const framesPerBar = beatGrid?.framesPerBar
+    ? Math.max(1, Math.round(beatGrid.framesPerBar))
+    : Math.max(1, 4 * Math.round((60 / 120) * fps));
+
+  const minSectionFrames = totalFrames >= 180
+    ? Math.min(Math.round(minSectionSeconds * fps), Math.max(1, Math.floor(totalFrames / 3)))
+    : Math.max(1, Math.round(minSectionSeconds * fps));
+  const maxSectionFrames = Math.max(minSectionFrames + 1, Math.round(maxSectionSeconds * fps));
+
+  // 1. Compute smoothed composite energy & first-derivative novelty
+  const halfWin = Math.max(1, Math.round(fps * 0.5));
+  const smoothE = new Float32Array(totalFrames);
+  for (let f = 0; f < totalFrames; f++) {
+    const wStart = Math.max(0, f - halfWin);
+    const wEnd = Math.min(totalFrames - 1, f + halfWin);
+    let sum = 0;
+    for (let k = wStart; k <= wEnd; k++) {
+      sum += columns.rmsRelativeGlobal[k] + 0.4 * columns.spectralFlux[k];
+    }
+    smoothE[f] = sum / (wEnd - wStart + 1);
+  }
+
+  const novelty = new Float32Array(totalFrames);
+  for (let f = 0; f < totalFrames; f++) {
+    const fPrev = Math.max(0, f - halfWin);
+    const fNext = Math.min(totalFrames - 1, f + halfWin);
+    novelty[f] = Math.abs(smoothE[fNext] - smoothE[fPrev]);
+  }
+
+  // Find candidate novelty peaks
+  interface Candidate {
+    frame: number;
+    score: number;
+  }
+  const candidates: Candidate[] = [];
+
+  // Local maxima in novelty above 60th percentile
+  const sortedNov = Array.from(novelty).filter((v) => v > 1e-4).sort((a, b) => a - b);
+  const novThreshold = sortedNov.length > 0 ? sortedNov[Math.floor(sortedNov.length * 0.6)] : 0.05;
+
+  for (let f = halfWin; f < totalFrames - halfWin; f++) {
+    if (novelty[f] >= novThreshold && novelty[f] >= novelty[f - 1] && novelty[f] >= novelty[f + 1]) {
+      candidates.push({ frame: f, score: novelty[f] });
+    }
+  }
+
+  // 2. Lyric stanza gaps (>= 3.0s)
+  if (lyrics && lyrics.length > 1) {
+    for (let i = 1; i < lyrics.length; i++) {
+      const gapSec = lyrics[i].startTimeSeconds - lyrics[i - 1].endTimeSeconds;
+      if (gapSec >= 3.0) {
+        const midSec = (lyrics[i - 1].endTimeSeconds + lyrics[i].startTimeSeconds) / 2;
+        const gapFrame = Math.round(midSec * fps);
+        if (gapFrame > 0 && gapFrame < totalFrames) {
+          candidates.push({ frame: gapFrame, score: 10.0 + gapSec });
+        }
+      }
+    }
+  }
+
+  // Snap candidates to bar grid
+  const snapToBar = (frame: number): number => {
+    if (beatGrid?.downbeatIndices && beatGrid.downbeatIndices.length > 0) {
+      let closest = beatGrid.downbeatIndices[0];
+      let minDist = Math.abs(closest - frame);
+      for (let i = 1; i < beatGrid.downbeatIndices.length; i++) {
+        const d = beatGrid.downbeatIndices[i];
+        const dist = Math.abs(d - frame);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = d;
+        }
+      }
+      return closest;
+    }
+    const offset = beatGrid?.beatFrameIndices?.[0] ?? 0;
+    const barNum = Math.round((frame - offset) / framesPerBar);
+    return Math.max(0, Math.min(totalFrames, offset + barNum * framesPerBar));
+  };
+
+  // 3. Greedy boundary selection
+  const boundaries: number[] = [0];
+  let curr = 0;
+
+  while (curr < totalFrames) {
+    const earliest = curr + minSectionFrames;
+    const latest = curr + maxSectionFrames;
+
+    if (totalFrames - curr <= maxSectionFrames && totalFrames - earliest < minSectionFrames) {
+      break;
+    }
+
+    const inWindow = candidates
+      .filter((c) => c.frame >= earliest && c.frame <= latest)
+      .map((c) => ({ frame: snapToBar(c.frame), score: c.score }))
+      .filter((c) => c.frame >= earliest && c.frame <= latest && c.frame < totalFrames);
+
+    let nextBoundary: number;
+    if (inWindow.length > 0) {
+      inWindow.sort((a, b) => b.score - a.score);
+      nextBoundary = inWindow[0].frame;
+    } else {
+      const nominal = curr + Math.min(maxSectionFrames, Math.max(minSectionFrames, Math.round(35.0 * fps)));
+      nextBoundary = Math.min(latest, Math.max(earliest, snapToBar(nominal)));
+    }
+
+    if (nextBoundary <= curr) {
+      nextBoundary = Math.min(totalFrames, curr + minSectionFrames);
+    }
+
+    boundaries.push(nextBoundary);
+    curr = nextBoundary;
+  }
+
+  if (boundaries[boundaries.length - 1] !== totalFrames) {
+    boundaries.push(totalFrames);
+  }
+
+  // Ensure minimum 3 sections for timelines >= 180 frames (StorySpecContractSchema.min(3))
+  if (totalFrames >= 180 && boundaries.length - 1 < 3) {
+    const b1 = Math.max(1, snapToBar(Math.round(totalFrames / 3)));
+    const b2 = Math.max(b1 + 1, snapToBar(Math.round((2 * totalFrames) / 3)));
+    const cleanB1 = b1 < totalFrames - 2 ? b1 : Math.floor(totalFrames / 3);
+    const cleanB2 = b2 > cleanB1 && b2 < totalFrames ? b2 : Math.floor((2 * totalFrames) / 3);
+    boundaries.length = 0;
+    boundaries.push(0, cleanB1, cleanB2, totalFrames);
+  }
+
+  // 4. Construct AudioSection[]
+  const bandNames = [
+    'subBass',
+    'bass',
+    'lowMid',
+    'mid',
+    'highMid',
+    'presence',
+    'brilliance'
+  ] as const;
+
+  const sections: AudioSection[] = [];
+  for (let i = 0; i < boundaries.length - 1; i++) {
+    const startFrame = boundaries[i];
+    const endFrame = boundaries[i + 1];
+    const count = Math.max(1, endFrame - startFrame);
+
+    let sumRms = 0;
+    const bandSums: Record<(typeof bandNames)[number], number> = {
+      subBass: 0,
+      bass: 0,
+      lowMid: 0,
+      mid: 0,
+      highMid: 0,
+      presence: 0,
+      brilliance: 0
+    };
+    let voicedPitchCount = 0;
+
+    for (let f = startFrame; f < endFrame; f++) {
+      sumRms += columns.rmsRelativeGlobal[f];
+      for (const b of bandNames) {
+        bandSums[b] += columns[b][f];
+      }
+      if (columns.pitchEstimatedHz[f] > 0) {
+        voicedPitchCount++;
+      }
+    }
+
+    const relativeEnergy = Number(Math.max(0, Math.min(1, sumRms / count)).toFixed(4));
+
+    // Dominant band
+    let dominantBand: (typeof bandNames)[number] = 'mid';
+    let maxBandMean = -1;
+    for (const b of bandNames) {
+      const mean = bandSums[b] / count;
+      if (mean > maxBandMean) {
+        maxBandMean = mean;
+        dominantBand = b;
+      }
+    }
+
+    // Has vocals
+    let hasVocals = false;
+    if (lyrics && lyrics.length > 0) {
+      hasVocals = lyrics.some(
+        (l) => l.frameRange.startFrameInclusive < endFrame && l.frameRange.endFrameExclusive > startFrame
+      );
+    } else {
+      const vocalEnergy = (bandSums.mid + bandSums.presence) / count;
+      const voicedRatio = voicedPitchCount / count;
+      hasVocals = vocalEnergy >= 0.16 && voicedRatio >= 0.25;
+    }
+
+    sections.push({
+      id: `sec-${i + 1}`,
+      startFrame,
+      endFrame,
+      relativeEnergy,
+      hasVocals,
+      dominantBand
+    });
+  }
+
+  return sections;
 }
 
 /**
@@ -809,29 +1038,30 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
     };
   }
 
-  // Decompose into macro acoustic sections
-  const sectionSpanFrames = Math.max(300, Math.round(30 * fps)); // ~30.0s nominal section
-  const sections: AudioSection[] = [];
-  const numSections = Math.max(1, Math.ceil(totalFrames / sectionSpanFrames));
-  for (let s = 0; s < numSections; s++) {
-    const startFrame = s * sectionSpanFrames;
-    const endFrame = Math.min(totalFrames, (s + 1) * sectionSpanFrames);
-    let secRms = 0;
-    let cnt = 0;
-    for (let f = startFrame; f < endFrame; f++) {
-      secRms += rmsRelativeGlobal[f];
-      cnt++;
-    }
-    const relativeEnergy = cnt > 0 ? Number((secRms / cnt).toFixed(4)) : 0.5;
-    sections.push({
-      id: `sec-${s + 1}`,
-      startFrame,
-      endFrame,
-      relativeEnergy,
-      hasVocals: false,
-      dominantBand: 'mid'
-    });
-  }
+  const columns: ColumnarAudioColumns = {
+    rms,
+    rmsRelativeGlobal,
+    rmsRelativeLocal,
+    spectralFlux,
+    onsetStrength,
+    pitchEstimatedHz,
+    subBass,
+    bass,
+    lowMid,
+    mid,
+    highMid,
+    presence,
+    brilliance,
+    isOnset
+  };
+
+  const sections = segmentAudioSections({
+    columns,
+    totalFrames,
+    fps,
+    beatGrid,
+    lyrics: options.lyrics
+  });
 
   return {
     fps,
@@ -840,22 +1070,7 @@ export function analyzePcmAudioToColumns(options: AnalyzePcmOptions): AnalyzedPc
     durationSeconds,
     localWindowFrames,
     globalRmsMax,
-    columns: {
-      rms,
-      rmsRelativeGlobal,
-      rmsRelativeLocal,
-      spectralFlux,
-      onsetStrength,
-      pitchEstimatedHz,
-      subBass,
-      bass,
-      lowMid,
-      mid,
-      highMid,
-      presence,
-      brilliance,
-      isOnset
-    },
+    columns,
     beatEvents,
     ...(tempoBpm !== undefined ? { tempoBpm } : {}),
     ...(tempoConfidence !== undefined ? { tempoConfidence } : {}),
@@ -939,6 +1154,14 @@ export function analyzeWavFileToArtifacts(options: AnalyzeWavToArtifactsOptions)
       ? parseLrcContent(options.rawLrcContent, lrcOptions)
       : { lyrics: [], emptyCutoffTimestamps: [] };
 
+  const finalSections = segmentAudioSections({
+    columns: analyzed.columns,
+    totalFrames: analyzed.totalFrames,
+    fps: analyzed.fps,
+    beatGrid: analyzed.beatGrid,
+    lyrics: parsedLrc.lyrics
+  });
+
   const relativeBinPath = path.relative(path.dirname(resolvedManifest), resolvedBin);
 
   const manifest: AudioAnalysisManifest = AudioAnalysisManifestSchema.parse({
@@ -960,7 +1183,7 @@ export function analyzeWavFileToArtifacts(options: AnalyzeWavToArtifactsOptions)
     lyrics: parsedLrc.lyrics,
     beatEvents: analyzed.beatEvents,
     ...(analyzed.beatGrid !== undefined ? { beatGrid: analyzed.beatGrid } : {}),
-    ...(analyzed.sections !== undefined ? { sections: analyzed.sections } : {}),
+    ...(finalSections.length > 0 ? { sections: finalSections } : {}),
     storageReference: {
       type: 'external_binary',
       columnLayoutVersion: 1,

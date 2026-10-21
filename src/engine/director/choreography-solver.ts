@@ -8,6 +8,7 @@ import type {
   MorphKeyframeItem
 } from '../../schemas/choreography.contract.js';
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
+import { computeLeadCharacterWorldPos } from './shot-planner.js';
 
 function resolveClipIdForSection(
   sectionType?: string,
@@ -46,12 +47,10 @@ export function solveChoreography(
     const lastFrame = Math.max(startFrame, endFrame - 1);
     const duration = Math.max(1, endFrame - startFrame);
 
-    // Find section corresponding to shot
-    const sectionIndex = Math.min(
-      spec.sections.length - 1,
-      Math.floor((startFrame / storyboard.totalFrames) * spec.sections.length)
-    );
-    const sectionSpec = spec.sections[sectionIndex];
+    // Find section corresponding to shot via exact boundary lookup
+    const sectionSpec = spec.sections.find(
+      (s) => startFrame >= s.startFrame && startFrame < s.endFrame
+    ) ?? spec.sections[spec.sections.length - 1];
 
     for (const rigId of shot.activeRigIds) {
       const rig = rigs.get(rigId);
@@ -143,30 +142,16 @@ export function solveChoreography(
         const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);
         const facing = rig.facingDirection ?? 'right';
 
-        // Calculate positions from waypoints or progressive tracking
-        const defaultStartX = startFrame * 0.45;
-        const defaultEndX = endFrame * 0.45;
+        // Calculate positions using shared pure trajectory solver for lockstep camera tracking
+        const startPos = computeLeadCharacterWorldPos(startFrame, sectionSpec, rigId);
+        const endPos = computeLeadCharacterWorldPos(lastFrame, sectionSpec, rigId);
 
-        // Ensure anti-moonwalk alignment: +X movement for right-facing, -X for left-facing
-        let startX = defaultStartX;
-        let endX = defaultEndX;
+        let startX = startPos[0];
+        let endX = endPos[0];
 
-        if (directive && directive.waypoints.length >= 2) {
-          const wp0 = directive.waypoints[0];
-          const wp1 = directive.waypoints[directive.waypoints.length - 1];
-          const rawDelta = wp1.stagePosNorm[0] - wp0.stagePosNorm[0];
-          if (facing === 'right' && rawDelta < 0) {
-            // Flip to prevent moonwalking
-            startX = defaultStartX;
-            endX = defaultEndX;
-          } else {
-            startX = defaultStartX + wp0.stagePosNorm[0] * 120;
-            endX = defaultStartX + wp1.stagePosNorm[0] * 120 + (endFrame - startFrame) * 0.45;
-          }
-        }
-
-        if (facing === 'right' && endX < startX) {
-          endX = startX + 10;
+        // Ensure anti-moonwalk alignment: +X movement for right-facing
+        if (facing === 'right' && endX <= startX) {
+          endX = startX + 0.45 * Math.max(1, lastFrame - startFrame);
         }
 
         const deltaX = endX - startX;
@@ -178,7 +163,7 @@ export function solveChoreography(
         const keyframes: EntityTrackKeyframe[] = [
           {
             frame: startFrame,
-            position: [Number(startX.toFixed(2)), 75, 0],
+            position: [Number(startX.toFixed(2)), startPos[1], startPos[2]],
             rotationZDegrees: 0,
             scale: [1, 1],
             opacity: 1,
@@ -186,7 +171,7 @@ export function solveChoreography(
           },
           {
             frame: lastFrame,
-            position: [Number(endX.toFixed(2)), 75, 0],
+            position: [Number(endX.toFixed(2)), endPos[1], endPos[2]],
             rotationZDegrees: 0,
             scale: [1, 1],
             opacity: 1,
@@ -234,11 +219,41 @@ export function solveChoreography(
           }
         }
 
-        const clipId = resolveClipIdForSection(
-          shot.actNumber === 1 ? 'INTRO' : shot.actNumber === 3 ? 'SOLO' : 'VERSE',
-          undefined,
-          sectionSpec?.narrativeIntent
-        );
+        // Resolve active motion preset from directive, falling back to section and shot nuance
+        const canonicalBipedPresets = new Set([
+          'stalk_crouch',
+          'sprint_frenzy',
+          'evade_leap',
+          'defiant_scream',
+          'combat_clash',
+          'exhausted_walk'
+        ]);
+
+        let clipId: string;
+        const rawPreset = directive?.motionPreset;
+
+        if (rawPreset && canonicalBipedPresets.has(rawPreset)) {
+          clipId = rawPreset;
+        } else if (rawPreset === 'sprint' || rawPreset === 'stride') {
+          clipId = 'sprint_frenzy';
+        } else if (rawPreset === 'stalk' || rawPreset === 'idle') {
+          clipId = 'stalk_crouch';
+        } else if (rawPreset === 'evade') {
+          clipId = 'evade_leap';
+        } else {
+          clipId = resolveClipIdForSection(
+            shot.actNumber === 1 ? 'INTRO' : shot.actNumber === 3 ? 'SOLO' : 'VERSE',
+            undefined,
+            sectionSpec?.narrativeIntent
+          );
+        }
+
+        // Shot-framing nuance: On CLOSE_UP shots during vocal or peak sections, trigger 'defiant_scream'
+        if (shot.framing === 'CLOSE_UP' && (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') || sectionSpec?.narrativeIntent?.toLowerCase().includes('scream') || shot.actNumber >= 2)) {
+          clipId = 'defiant_scream';
+        } else if (shot.framing === 'WIDE' && clipId === 'defiant_scream') {
+          clipId = 'evade_leap';
+        }
 
         tracks.push({
           shotId: shot.id,

@@ -326,6 +326,170 @@ def parse_lrc(
     return lyrics
 
 
+def segment_audio_sections(
+    rms_rel_global: np.ndarray,
+    spectral_flux: np.ndarray,
+    pitch_hz: np.ndarray,
+    bands: dict[str, np.ndarray],
+    total_frames: int,
+    fps: int,
+    beat_grid: dict[str, Any] | None = None,
+    lyrics: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if total_frames <= 0:
+        return []
+
+    min_sec = 8.0
+    max_sec = 55.0
+
+    if beat_grid and "framesPerBar" in beat_grid:
+        frames_per_bar = max(1, int(round(beat_grid["framesPerBar"])))
+    else:
+        frames_per_bar = max(1, int(round(4 * round((60 / 120) * fps))))
+
+    if total_frames >= 180:
+        min_section_frames = min(int(round(min_sec * fps)), max(1, total_frames // 3))
+    else:
+        min_section_frames = max(1, int(round(min_sec * fps)))
+    max_section_frames = max(min_section_frames + 1, int(round(max_sec * fps)))
+
+    # 1. Smoothed composite energy & novelty
+    half_win = max(1, int(round(fps * 0.5)))
+    comp_e = rms_rel_global + 0.4 * spectral_flux
+    smooth_e = np.zeros(total_frames, dtype=np.float32)
+    cs = np.pad(np.cumsum(comp_e), (1, 0))
+    for f in range(total_frames):
+        w_start = max(0, f - half_win)
+        w_end = min(total_frames - 1, f + half_win)
+        smooth_e[f] = (cs[w_end + 1] - cs[w_start]) / (w_end - w_start + 1)
+
+    novelty = np.zeros(total_frames, dtype=np.float32)
+    for f in range(total_frames):
+        f_prev = max(0, f - half_win)
+        f_next = min(total_frames - 1, f + half_win)
+        novelty[f] = abs(smooth_e[f_next] - smooth_e[f_prev])
+
+    candidates: list[tuple[int, float]] = []
+    pos_nov = novelty[novelty > 1e-4]
+    nov_thresh = float(np.percentile(pos_nov, 60)) if len(pos_nov) > 0 else 0.05
+
+    for f in range(half_win, total_frames - half_win):
+        if novelty[f] >= nov_thresh and novelty[f] >= novelty[f - 1] and novelty[f] >= novelty[f + 1]:
+            candidates.append((f, float(novelty[f])))
+
+    # 2. Lyric stanza gaps (>= 3.0s)
+    if lyrics and len(lyrics) > 1:
+        for i in range(1, len(lyrics)):
+            gap_sec = lyrics[i]["startTimeSeconds"] - lyrics[i - 1]["endTimeSeconds"]
+            if gap_sec >= 3.0:
+                mid_sec = (lyrics[i - 1]["endTimeSeconds"] + lyrics[i]["startTimeSeconds"]) / 2.0
+                gap_frame = int(round(mid_sec * fps))
+                if 0 < gap_frame < total_frames:
+                    candidates.append((gap_frame, 10.0 + gap_sec))
+
+    downbeats = beat_grid.get("downbeatIndices") if beat_grid else None
+    beat_indices = beat_grid.get("beatFrameIndices") if beat_grid else None
+    offset = beat_indices[0] if beat_indices and len(beat_indices) > 0 else 0
+
+    def snap_to_bar(f: int) -> int:
+        if downbeats and len(downbeats) > 0:
+            idx = int(np.argmin(np.abs(np.array(downbeats) - f)))
+            return int(downbeats[idx])
+        bar_num = int(round((f - offset) / frames_per_bar))
+        return max(0, min(total_frames, offset + bar_num * frames_per_bar))
+
+    boundaries: list[int] = [0]
+    curr = 0
+
+    while curr < total_frames:
+        earliest = curr + min_section_frames
+        latest = curr + max_section_frames
+
+        if (total_frames - curr <= max_section_frames) and (total_frames - earliest < min_section_frames):
+            break
+
+        in_win = [
+            (snap_to_bar(cf), score)
+            for cf, score in candidates
+            if earliest <= cf <= latest
+        ]
+        in_win = [
+            (sf, score)
+            for sf, score in in_win
+            if earliest <= sf <= latest and sf < total_frames
+        ]
+
+        if in_win:
+            in_win.sort(key=lambda x: x[1], reverse=True)
+            next_b = in_win[0][0]
+        else:
+            nominal = curr + min(max_section_frames, max(min_section_frames, int(round(35.0 * fps))))
+            next_b = min(latest, max(earliest, snap_to_bar(nominal)))
+
+        if next_b <= curr:
+            next_b = min(total_frames, curr + min_section_frames)
+
+        boundaries.append(next_b)
+        curr = next_b
+
+    if boundaries[-1] != total_frames:
+        boundaries.append(total_frames)
+
+    if total_frames >= 180 and len(boundaries) - 1 < 3:
+        b1 = max(1, snap_to_bar(int(round(total_frames / 3))))
+        b2 = max(b1 + 1, snap_to_bar(int(round(2 * total_frames / 3))))
+        clean_b1 = b1 if b1 < total_frames - 2 else total_frames // 3
+        clean_b2 = b2 if clean_b1 < b2 < total_frames else (2 * total_frames) // 3
+        boundaries = [0, clean_b1, clean_b2, total_frames]
+
+    band_names = [
+        "subBass",
+        "bass",
+        "lowMid",
+        "mid",
+        "highMid",
+        "presence",
+        "brilliance",
+    ]
+
+    sections: list[dict[str, Any]] = []
+    for i in range(len(boundaries) - 1):
+        s_start = boundaries[i]
+        s_end = boundaries[i + 1]
+        cnt = max(1, s_end - s_start)
+
+        rel_energy = float(round(float(np.mean(rms_rel_global[s_start:s_end])), 4))
+        rel_energy = max(0.0, min(1.0, rel_energy))
+
+        band_means = {b: float(np.mean(bands[b][s_start:s_end])) for b in band_names}
+        dominant_band = max(band_names, key=lambda b: band_means[b])
+
+        has_vocals = False
+        if lyrics and len(lyrics) > 0:
+            for lyr in lyrics:
+                fr = lyr.get("frameRange", {})
+                start_f = fr.get("startFrameInclusive", int(round(lyr.get("startTimeSeconds", 0) * fps)))
+                end_f = fr.get("endFrameExclusive", int(round(lyr.get("endTimeSeconds", 0) * fps)))
+                if start_f < s_end and end_f > s_start:
+                    has_vocals = True
+                    break
+        else:
+            mid_pres = band_means["mid"] + band_means["presence"]
+            voiced_cnt = int(np.count_nonzero(pitch_hz[s_start:s_end] > 0))
+            has_vocals = (mid_pres >= 0.16) and (voiced_cnt / cnt >= 0.25)
+
+        sections.append({
+            "id": f"sec-{i + 1}",
+            "startFrame": s_start,
+            "endFrame": s_end,
+            "relativeEnergy": rel_energy,
+            "hasVocals": has_vocals,
+            "dominantBand": dominant_band,
+        })
+
+    return sections
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Phase 3 Offline Audio Analyzer")
     parser.add_argument("--audio", required=True, help="Input audio file (.flac, .wav, .mp3)")
@@ -564,6 +728,24 @@ def main() -> None:
         }
 
     rel_bin_path = os.path.relpath(out_bin_path, out_manifest_path.parent)
+    sections = segment_audio_sections(
+        rms_rel_global=rms_rel_global,
+        spectral_flux=spectral_flux,
+        pitch_hz=pitch_hz,
+        bands={
+            "subBass": sub_bass,
+            "bass": bass,
+            "lowMid": low_mid,
+            "mid": mid,
+            "highMid": high_mid,
+            "presence": presence,
+            "brilliance": brilliance,
+        },
+        total_frames=total_frames,
+        fps=fps,
+        beat_grid=beat_grid,
+        lyrics=lyrics,
+    )
     manifest: dict[str, Any] = {
         "metadata": meta,
         "normalization": {
@@ -572,6 +754,7 @@ def main() -> None:
         },
         "lyrics": lyrics,
         "beatEvents": beat_events,
+        "sections": sections,
         "storageReference": {
             "type": "external_binary",
             "columnLayoutVersion": 1,

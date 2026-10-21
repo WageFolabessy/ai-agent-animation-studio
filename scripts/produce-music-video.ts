@@ -209,7 +209,8 @@ async function main(): Promise<void> {
     getAudioFeatureAtFrame: (f) => audioReader.getFrameFeature(f),
     width,
     height,
-    maxRetries: 3
+    maxRetries: 3,
+    useSpecPipeline: true
   });
 
   console.log(

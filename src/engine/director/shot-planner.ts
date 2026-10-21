@@ -13,7 +13,7 @@ import type {
   EnvironmentZoneType
 } from '../../schemas/storyboard.contract.js';
 import type { Vec3 } from '../../schemas/primitives.schema.js';
-import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
+import type { StorySpecContract, SectionStagingSpec } from '../../schemas/story-spec.contract.js';
 import { THEME_PALETTES } from '../library/environment-kit.js';
 
 export interface CinematicAngleFormula {
@@ -90,10 +90,10 @@ export const CINEMATIC_ANGLES: readonly CinematicAngleFormula[] = [
     viewpoint: 'OBJECTIVE_THIRD_PERSON',
     fov: 34,
     rollDegrees: -6,
-    camOffsetStart: [12, 52, 155],
-    camOffsetEnd: [12, 52, 155],
-    targetOffsetStart: [12, 52, 0],
-    targetOffsetEnd: [12, 52, 0],
+    camOffsetStart: [12, 48, 155],
+    camOffsetEnd: [12, 48, 155],
+    targetOffsetStart: [12, 48, 0],
+    targetOffsetEnd: [12, 48, 0],
     easing: 'linear'
   },
   {
@@ -171,6 +171,62 @@ export function snapShotBoundariesToBeats(
 }
 
 /**
+ * Shared pure trajectory solver for character world position.
+ * Computes exact world-space [X, Y, Z] at any arbitrary frame conditioned on section waypoints.
+ * Guarantees Delta X_cam === Delta X_char when camera tracks character position,
+ * and enforces monotonically non-decreasing X for right-facing movement (Safeguard 2).
+ */
+export function computeLeadCharacterWorldPos(
+  frame: number,
+  section: SectionStagingSpec,
+  instanceId?: string
+): Vec3 {
+  const baseX = frame * 0.45;
+  const baseY = 75;
+  const baseZ = 0;
+
+  const directive = section.castDirectives.find(
+    (d) => !instanceId || d.instanceId === instanceId
+  ) ?? section.castDirectives[0];
+
+  if (!directive || !directive.waypoints || directive.waypoints.length === 0) {
+    return [Number(baseX.toFixed(2)), baseY, baseZ];
+  }
+
+  const secDuration = Math.max(1, section.endFrame - section.startFrame);
+  const tau = Math.max(0, Math.min(1, (frame - section.startFrame) / secDuration));
+
+  const wps = directive.waypoints;
+  let wpA = wps[0];
+  let wpB = wps[wps.length - 1];
+
+  for (let i = 0; i < wps.length - 1; i++) {
+    if (tau >= wps[i].frameProgress && tau <= wps[i + 1].frameProgress) {
+      wpA = wps[i];
+      wpB = wps[i + 1];
+      break;
+    }
+  }
+
+  const span = Math.max(1e-6, wpB.frameProgress - wpA.frameProgress);
+  const alpha = Math.max(0, Math.min(1, (tau - wpA.frameProgress) / span));
+
+  const normX = wpA.stagePosNorm[0] + (wpB.stagePosNorm[0] - wpA.stagePosNorm[0]) * alpha;
+  const normY = wpA.stagePosNorm[1] + (wpB.stagePosNorm[1] - wpA.stagePosNorm[1]) * alpha;
+  const normZ = wpA.stagePosNorm[2] + (wpB.stagePosNorm[2] - wpA.stagePosNorm[2]) * alpha;
+
+  const worldX = baseX + normX * 120;
+  const worldY = baseY + normY * 20;
+  const worldZ = baseZ + normZ * 10;
+
+  return [
+    Number(worldX.toFixed(2)),
+    Number(worldY.toFixed(2)),
+    Number(worldZ.toFixed(2))
+  ];
+}
+
+/**
  * Compiles a declarative StorySpecContract + AudioAnalysisManifest into a fully resolved,
  * invariant-compliant DirectorStoryboardContract with beat-snapped cuts and energy-expanded shots.
  */
@@ -208,7 +264,6 @@ export function compileStorySpecToStoryboard(
 
   // 2. Map sections to frame spans
   const sectionCount = spec.sections.length;
-  const sectionDuration = totalFrames / sectionCount;
   const shots: CinematicShot[] = [];
 
   let currentFrame = 0;
@@ -216,8 +271,8 @@ export function compileStorySpecToStoryboard(
 
   for (let sIdx = 0; sIdx < sectionCount; sIdx++) {
     const secSpec = spec.sections[sIdx];
-    const sectionStart = Math.round(sIdx * sectionDuration);
-    const sectionEnd = sIdx === sectionCount - 1 ? totalFrames : Math.round((sIdx + 1) * sectionDuration);
+    const sectionStart = secSpec.startFrame;
+    const sectionEnd = secSpec.endFrame;
     const sectionFrames = sectionEnd - sectionStart;
 
     // Energy-dependent shot duration: lerp(12s, 3.5s, cameraIntensity)
@@ -252,31 +307,31 @@ export function compileStorySpecToStoryboard(
       const viewpoint = angle.viewpoint;
       const cameraFov = angle.fov;
 
-      // Character horizontal progress: 0.45 units per frame, root baseline Y = 75, Z = 0
-      const charStartX = fStart * 0.45;
-      const charEndX = fEnd * 0.45;
-      const charBaseY = 75;
+      // Character horizontal progress via shared pure trajectory solver
+      const leadRigId = castRigIds[0];
+      const charStartPos = computeLeadCharacterWorldPos(fStart, secSpec, leadRigId);
+      const charEndPos = computeLeadCharacterWorldPos(fEnd, secSpec, leadRigId);
 
       const camStartPos: Vec3 = [
-        Number((charStartX + angle.camOffsetStart[0]).toFixed(2)),
-        Number((charBaseY + angle.camOffsetStart[1]).toFixed(2)),
-        Number(angle.camOffsetStart[2].toFixed(2))
+        Number((charStartPos[0] + angle.camOffsetStart[0]).toFixed(2)),
+        Number((charStartPos[1] + angle.camOffsetStart[1]).toFixed(2)),
+        Number((charStartPos[2] + angle.camOffsetStart[2]).toFixed(2))
       ];
       const camStartTarget: Vec3 = [
-        Number((charStartX + angle.targetOffsetStart[0]).toFixed(2)),
-        Number((charBaseY + angle.targetOffsetStart[1]).toFixed(2)),
-        Number(angle.targetOffsetStart[2].toFixed(2))
+        Number((charStartPos[0] + angle.targetOffsetStart[0]).toFixed(2)),
+        Number((charStartPos[1] + angle.targetOffsetStart[1]).toFixed(2)),
+        Number((charStartPos[2] + angle.targetOffsetStart[2]).toFixed(2))
       ];
 
       const camEndPos: Vec3 = [
-        Number((charEndX + angle.camOffsetEnd[0]).toFixed(2)),
-        Number((charBaseY + angle.camOffsetEnd[1]).toFixed(2)),
-        Number(angle.camOffsetEnd[2].toFixed(2))
+        Number((charEndPos[0] + angle.camOffsetEnd[0]).toFixed(2)),
+        Number((charEndPos[1] + angle.camOffsetEnd[1]).toFixed(2)),
+        Number((charEndPos[2] + angle.camOffsetEnd[2]).toFixed(2))
       ];
       const camEndTarget: Vec3 = [
-        Number((charEndX + angle.targetOffsetEnd[0]).toFixed(2)),
-        Number((charBaseY + angle.targetOffsetEnd[1]).toFixed(2)),
-        Number(angle.targetOffsetEnd[2].toFixed(2))
+        Number((charEndPos[0] + angle.targetOffsetEnd[0]).toFixed(2)),
+        Number((charEndPos[1] + angle.targetOffsetEnd[1]).toFixed(2)),
+        Number((charEndPos[2] + angle.targetOffsetEnd[2]).toFixed(2))
       ];
 
       // Exclude foreground parallax rigs on CLOSE_UP shots (Gap 2)

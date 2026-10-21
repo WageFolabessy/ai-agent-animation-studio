@@ -32,7 +32,23 @@ export type CastSpecItem = z.infer<typeof CastSpecItemSchema>;
 export const CastDirectiveSchema = z
   .object({
     instanceId: z.string().min(1),
-    motionPreset: z.enum(['sprint', 'stride', 'hover', 'stalk', 'evade', 'idle']),
+    motionPreset: z.enum([
+      'stalk_crouch',
+      'sprint_frenzy',
+      'evade_leap',
+      'defiant_scream',
+      'combat_clash',
+      'exhausted_walk',
+      'sprint',
+      'stride',
+      'hover',
+      'stalk',
+      'evade',
+      'idle',
+      'dive',
+      'gallop',
+      'pounce'
+    ]),
     waypoints: z.array(StageWaypointSchema).min(1)
   })
   .strict();
@@ -41,6 +57,8 @@ export type CastDirective = z.infer<typeof CastDirectiveSchema>;
 export const SectionStagingSpecSchema = z
   .object({
     sectionId: z.string().min(1),
+    startFrame: z.number().int().min(0),
+    endFrame: z.number().int().positive(),
     narrativeIntent: z.string().min(1),
     environmentKitId: z.enum(['industrial_city', 'orbital_station', 'neon_chasm', 'synth_grid']),
     kitParams: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
@@ -54,7 +72,10 @@ export const SectionStagingSpecSchema = z
     cameraIntensity: z.number().finite().min(0).max(1),
     castDirectives: z.array(CastDirectiveSchema)
   })
-  .strict();
+  .strict()
+  .refine((data) => data.endFrame > data.startFrame, {
+    message: 'endFrame must be strictly greater than startFrame'
+  });
 export type SectionStagingSpec = z.infer<typeof SectionStagingSpecSchema>;
 
 export const StorySpecContractSchema = z
