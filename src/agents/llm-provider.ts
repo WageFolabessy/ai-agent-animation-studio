@@ -8,7 +8,6 @@ import type {
   LlmJsonMode,
   LlmOptions,
   LlmProvider,
-  RigAgentInput,
   TokenUsage
 } from './types.js';
 import { buildDeterministicDirectorStoryboard } from './director-agent.js';
@@ -725,7 +724,6 @@ export class DeterministicMockLlmProvider implements LlmProvider {
       }
       payload = buildDeterministicDirectorStoryboard(directorInput);
     } else if (role === 'rig') {
-      const _rigInput = ctx.rigInput as RigAgentInput | undefined;
       payload = buildDeterministicRigCatalog();
     } else if (role === 'choreographer') {
       const choreographerInput = ctx.choreographerInput as ChoreographerAgentInput | undefined;

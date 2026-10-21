@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ArchetypeFactory, BipedPoseClips } from '../src/engine/library/archetype-factory.js';
+import { ArchetypeFactory } from '../src/engine/library/archetype-factory.js';
 import { samplePoseTrack } from '../src/engine/rigging/deformer.js';
 
 test('Pose Clips & Motion State Machine Suite', async (t) => {

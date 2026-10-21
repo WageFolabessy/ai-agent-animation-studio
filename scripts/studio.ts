@@ -450,7 +450,6 @@ async function main(): Promise<void> {
         const now = performance.now();
         if (now - lastProgressUpdate > 250 || localIndex === chunk.frameCount - 1) {
           lastProgressUpdate = now;
-          const chunkProgress = (localIndex + 1) / chunk.frameCount;
           const overallProgress = (globalIndex - startFrame + 1) / effectiveTotalFrames;
           const elapsedSec = (now - productionStartWall) / 1000;
           const currentFps =

@@ -1,4 +1,4 @@
-import type { AssetRigContract, JointPoseTransform, PoseKeyframe } from '../../schemas/rig.contract.js';
+import type { AssetRigContract } from '../../schemas/rig.contract.js';
 import type { Vec2 } from '../../schemas/primitives.schema.js';
 import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
 import { interpolatePoseEasing, lerp, lerpVec2 } from '../math/easing.js';

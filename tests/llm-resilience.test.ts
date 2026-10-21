@@ -6,15 +6,12 @@ import {
   LlmFatalError,
   LlmTransientError,
   LlmOutputTruncatedError,
-  LlmProviderError,
   computeBackoffDelay,
   parseRetryAfter,
   sanitizeSecrets
 } from '../src/agents/llm-provider.js';
 import {
-  formatRepairFeedbackPrompt,
-  extractSubtreeAtPath,
-  parsePathTokens
+  formatRepairFeedbackPrompt
 } from '../src/agents/repair-helper.js';
 
 test('LLM Resilience & Production Provider Suite', async (t) => {

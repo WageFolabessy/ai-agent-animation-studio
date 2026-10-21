@@ -34,13 +34,16 @@ WIN_DRIVE_RE = re.compile(r"^([A-Za-z]):[\\/](.*)$")
 
 def resolve_cross_platform_path(raw_path: str) -> Path:
     trimmed = raw_path.strip()
-    if os.name == "posix":
-        m = WIN_DRIVE_RE.match(trimmed)
-        if m:
-            drive = m.group(1).lower()
-            rest = m.group(2).replace("\\", "/")
-            return Path(f"/mnt/{drive}/{rest}").resolve()
-    return Path(trimmed).resolve()
+    try:
+        if os.name == "posix":
+            m = WIN_DRIVE_RE.match(trimmed)
+            if m:
+                drive = m.group(1).lower()
+                rest = m.group(2).replace("\\", "/")
+                return Path(f"/mnt/{drive}/{rest}").resolve()
+        return Path(trimmed).resolve()
+    except Exception:
+        return Path(trimmed)
 
 
 def load_audio_mono(

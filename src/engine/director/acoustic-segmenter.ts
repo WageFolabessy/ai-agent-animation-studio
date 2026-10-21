@@ -106,7 +106,7 @@ interface FrameSample {
 export class AcousticTimelineSegmenter {
   private readonly manifest: AudioAnalysisManifest;
   private readonly getFeature?: (f: number) => AudioFrameFeature;
-  private readonly targetSectionSeconds: number;
+  public readonly targetSectionSeconds: number;
   private readonly minSectionSeconds: number;
   private readonly maxSectionSeconds: number;
 
@@ -139,13 +139,13 @@ export class AcousticTimelineSegmenter {
     const framesPerBar = 4 * framesPerBeat; // 4/4 musical measure assumption
 
     // 3. Detect candidate boundary frames
-    const rawBoundaries = this.detectCandidateBoundaries(samples, totalFrames, fps, framesPerBar);
+    const rawBoundaries = this.detectCandidateBoundaries(samples, totalFrames, fps);
 
     // 4. Snap boundaries to bar grid and enforce minimum/maximum section lengths
     const boundaries = this.cleanAndSnapBoundaries(rawBoundaries, totalFrames, fps, framesPerBar);
 
     // 5. Partition sections into 3 continuous Acts
-    const sectionRanges = this.buildSectionRanges(boundaries, totalFrames);
+    const sectionRanges = this.buildSectionRanges(boundaries);
     const actAssignments = this.assignActs(sectionRanges, totalFrames);
 
     // 6. Acoustically classify each section and assign environment biomes + palettes
@@ -308,8 +308,7 @@ export class AcousticTimelineSegmenter {
   private detectCandidateBoundaries(
     samples: FrameSample[],
     totalFrames: number,
-    fps: number,
-    framesPerBar: number
+    fps: number
   ): number[] {
     const minSpan = Math.round(this.minSectionSeconds * fps);
     const candidates: Array<{ frame: number; score: number }> = [];
@@ -421,8 +420,7 @@ export class AcousticTimelineSegmenter {
   }
 
   private buildSectionRanges(
-    boundaries: number[],
-    totalFrames: number
+    boundaries: number[]
   ): Array<{ start: number; end: number }> {
     const ranges: Array<{ start: number; end: number }> = [];
     for (let i = 1; i < boundaries.length; i++) {

@@ -6,8 +6,7 @@ import { findTemporaryImageFiles } from '../src/diagnostics/artifact-hygiene.js'
 import {
   evaluateSmokeBenchmarkGates,
   type GateIterationReport,
-  MEMORY_HARD_FAIL_MB,
-  MEMORY_TARGET_MB
+  MEMORY_HARD_FAIL_MB
 } from '../src/diagnostics/benchmark-gates.js';
 import { X264_MEMORY_PARAMS } from '../src/config/render-config.js';
 

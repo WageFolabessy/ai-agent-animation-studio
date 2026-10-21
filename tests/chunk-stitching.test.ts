@@ -8,7 +8,6 @@ import { findTemporaryImageFiles } from '../src/diagnostics/artifact-hygiene.js'
 import { probeVideo, assertBt709Tv } from '../src/diagnostics/ffprobe.js';
 import {
   buildConcatDemuxerContent,
-  writeConcatDemuxerFile,
   stitchChunksWithMasterAudio
 } from '../src/engine/audio/concat-stitcher.js';
 import {

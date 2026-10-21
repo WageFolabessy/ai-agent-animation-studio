@@ -1,4 +1,4 @@
-import type { AssetRigContract, PlanarJoint } from '../../schemas/rig.contract.js';
+import type { PlanarJoint } from '../../schemas/rig.contract.js';
 import type { Vec2, Vec3, CameraTransform } from '../../schemas/primitives.schema.js';
 import { worldToCameraSpace, type CameraBasis } from '../camera/camera-3d.js';
 import { projectCameraPointToScreen, type ScreenPoint } from '../camera/clipping.js';

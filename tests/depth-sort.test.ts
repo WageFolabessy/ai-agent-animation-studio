@@ -6,7 +6,6 @@ import {
   shouldSplitPrimitive,
   splitLargeLine,
   splitLargePolygon,
-  compareDrawables,
   sortDrawables,
   type SortablePrimitive,
   type CameraSpaceLine,

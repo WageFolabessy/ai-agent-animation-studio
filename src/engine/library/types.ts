@@ -1,6 +1,4 @@
 import { z } from 'zod';
-import type { AssetRigContract } from '../../schemas/rig.contract.js';
-import type { SceneEnvironment } from '../compositor/scene-compositor.js';
 import type { CastSpecItem, SectionStagingSpec } from '../../schemas/story-spec.contract.js';
 
 export const IndustrialCityParamsSchema = z

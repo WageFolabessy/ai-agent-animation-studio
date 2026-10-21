@@ -78,6 +78,7 @@ For technical specifications, see:
 - [Phase 3 Audio Intelligence, LRC & Muxing Architecture](docs/phase-3-architecture.md)
 - [Phase 4 Multi-Agent LLM Orchestration Architecture](docs/phase-4-architecture.md)
 - [Phase 5 Production Video Architecture](docs/phase-5-architecture.md)
+- [Phase 6 Remediation & Safe-Framing Architecture](docs/phase-6-architecture.md)
 
 ---
 
@@ -130,18 +131,23 @@ ai-agent-animation-studio/
 │   ├── phase-1-architecture.md    # Phase 1 streaming renderer foundation
 │   ├── phase-2-architecture.md    # Phase 2 cinema, kinematics, morphing & compositor
 │   ├── phase-3-architecture.md    # Phase 3 audio intelligence, columnar binary & AAC muxing
-│   └── phase-4-architecture.md    # Phase 4 multi-agent LLM orchestration architecture
+│   ├── phase-4-architecture.md    # Phase 4 multi-agent LLM orchestration architecture
+│   ├── phase-5-architecture.md    # Phase 5 production video architecture & chunked engine
+│   ├── phase-6-architecture.md    # Phase 6 safe-framing remediation, motion presets & parallax
+│   └── theatrical-narrative-architecture.md # Phase 7 theatrical narrative 2.5D procedural studio vision
 ├── python/
 │   ├── README.md                  # Python offline ML audio analysis tooling guide
 │   ├── __init__.py                # Python package root
 │   ├── analyze_audio.py           # Offline STFT 7-band feature extraction & binary exporter
 │   └── requirements.txt           # Python dependencies (numpy, scipy, soundfile)
 ├── scripts/
-│   ├── conformance-render.ts      # Conformance test (Gate B: pixel, color, metadata validation)
 │   ├── benchmark-smoke.ts         # Smoke benchmark (Gate C: 3 runs @ 1080p, memory/speed gate)
+│   ├── conformance-render.ts      # Conformance test (Gate B: pixel, color, metadata validation)
 │   ├── demo-phase2-cinema.ts      # Phase 2 multi-shot procedural cinema demo & plateau benchmark
 │   ├── demo-phase3-audio.ts       # Phase 3 audio intelligence, LRC alignment & AAC muxing demo
-│   └── demo-phase4-orchestration.ts # Phase 4 multi-agent orchestration cinema demo & benchmark
+│   ├── demo-phase4-orchestration.ts # Phase 4 multi-agent orchestration cinema demo & benchmark
+│   ├── produce-music-video.ts     # Phase 5 & 6 production-grade full-song music video generator
+│   └── studio.ts                  # Unified Spec-Then-Compile autonomous studio CLI with checkpointing
 ├── src/
 │   ├── agents/
 │   │   ├── README.md              # AI agents overview
@@ -150,7 +156,9 @@ ai-agent-animation-studio/
 │   │   ├── index.ts               # Barrel export for agents and orchestration modules
 │   │   ├── llm-provider.ts        # OpenAiCompatibleProvider, DeterministicMockLlmProvider & draft retention
 │   │   ├── orchestrator.ts        # StudioAgentOrchestrator: closed-loop self-healing repair loop
+│   │   ├── repair-helper.ts       # Targeted subtree extraction and localized error diagnostic repair
 │   │   ├── rig-agent.ts           # Rig Agent: asset & character rigs, knee constraints, and connectors
+│   │   ├── story-spec-agent.ts    # StorySpec Agent: lyric/acoustic dramaturgy, cast roles & beat snapping
 │   │   └── types.ts               # LlmProvider, LlmOptions, OrchestrationResult, and AgentInput interfaces
 │   ├── assets/
 │   │   └── fonts/
@@ -193,12 +201,24 @@ ai-agent-animation-studio/
 │   │   │   ├── svg-builder.ts     # Type-safe SVG XML generator (paths, groups, gradients)
 │   │   │   └── svg-policy-validator.ts # Security scanner enforcing zero scripts/external URLs
 │   │   ├── director/
+│   │   │   ├── acoustic-segmenter.ts # Song-agnostic macro energy contour & 3-act musical segmentation
 │   │   │   ├── camera-shake.ts    # Continuous impulse-decay trauma camera shake system
+│   │   │   ├── checkpoint-manager.ts # Fault-tolerant chunk checkpointing, ffprobe validation & resume
+│   │   │   ├── choreography-solver.ts # Multi-character entity tracks, presets & anti-moonwalk solver
 │   │   │   ├── choreography.ts    # Entity track interpolation and audio-reactive morph evaluation
+│   │   │   ├── chunk-renderer.ts  # In-memory streaming chunk renderer with memory recycling
+│   │   │   ├── environment-generator.ts # Procedural 4-tier parallax world & 3D biome synthesis
 │   │   │   ├── frame-state-builder.ts # Deterministic FrameStateContract orchestrator
+│   │   │   ├── index.ts           # Director engine barrel export
+│   │   │   ├── macro-planner.ts   # Hierarchical macro-to-micro storyboard planner
+│   │   │   ├── shot-planner.ts    # 6 cinematic angle formulas, FOV safety bounds & shot solver
 │   │   │   └── shot-sequencer.ts  # O(log N) shot lookup, DOLLY/TRACKING, and circular ORBIT slerp
 │   │   ├── effects/
 │   │   │   └── particle-emitter.ts # Stateless analytical particle emitter & burst evaluator
+│   │   ├── library/
+│   │   │   ├── archetype-factory.ts # Biped runner, quadruped hound, aerial drone & 6 motion presets
+│   │   │   ├── environment-kit.ts # Industrial city, rooftop, highway, bridge & reactor kits
+│   │   │   └── types.ts           # Character and environment library archetype interfaces
 │   │   ├── math/
 │   │   │   ├── color.ts           # Deterministic RGB/Hex conversion, mixing, and shading
 │   │   │   ├── easing.ts          # Camera & pose easing functions and Hermite spline interpolation
@@ -221,28 +241,36 @@ ai-agent-animation-studio/
 │       ├── invariants.ts          # Cross-contract validation and continuity verification
 │       ├── primitives.schema.ts   # Vec2, Vec3, Color, CameraTransform, and FrameRange
 │       ├── rig.contract.ts        # Planar 2.5D asset rigs, skeletons, parts, and morph targets
+│       ├── story-spec.contract.ts # High-level narrative spec, cast, and dramatic section schema
 │       └── storyboard.contract.ts # Director storyboards, acts, and cinematic shots
 └── tests/
+    ├── acoustic-segmenter.test.ts # Song-agnostic acoustic segmentation & 3-act partitioning tests
     ├── agents-orchestrator.test.ts # Multi-agent orchestration, self-healing retries & visual invariants
     ├── audio-columnar.test.ts     # .features.bin binary layout, alignment guard & O(1) reader tests
     ├── audio-mux.test.ts          # Dual-stream FFmpeg video + AAC audio muxing & Python bridge tests
     ├── audio-parity.test.ts       # Sub-frame parabolic tempo estimation and TS vs Python parity tests
     ├── backpressure.test.ts       # Streamer backpressure, drain, and EPIPE recovery
     ├── benchmark-gates.test.ts    # Memory gate, plateau check, and artifact hygiene tests
+    ├── chunk-stitching.test.ts    # Lossless Concat Demuxer assembly, audio muxing & chunk validation
     ├── clipping.test.ts           # Near/far frustum, 1/z depth, and canonical cube culling tests
     ├── demo-phase2.test.ts        # Cinema demo contracts, 180-frame budget, and determinism tests
     ├── depth-order.test.ts        # LayerPass priority and ground vs character depth ordering tests
     ├── depth-sort.test.ts         # Pre-clip depth keys, primitive splitting, and sort order tests
     ├── emitter-saturation.test.ts # FIFO ring-buffer particle emitter saturation and audio burst retention
+    ├── environment-narrative.test.ts # 4-tier parallax world & dynamic 3D biome synthesis tests
     ├── font-rasterizer.test.ts    # Deterministic font rasterization tests
     ├── frame-state.test.ts        # Particle emitter, choreography, and FrameStateBuilder tests
     ├── invariants.test.ts         # Storyboard timeline, act, rig, and choreography invariants
     ├── library-kits.test.ts       # Modular archetype factory and environment kit generation tests
     ├── llm-resilience.test.ts     # Error taxonomy, exponential backoff, truncation detection & repair tests
     ├── lrc-parser.test.ts         # Deterministic LRC parser, multi-timestamp expansion & emphasis tests
+    ├── macro-planner.test.ts      # Full-song 7-section storyboard decomposition & transition tests
     ├── math.test.ts               # Easing, spring physics, noise, and color math tests
+    ├── multi-entity-choreo.test.ts # Pursuit drone FK kinematics and multi-entity depth sorting tests
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
+    ├── pose-clips.test.ts         # 6 motion presets, joint clamping limits & Hermite continuity tests
     ├── rigging.test.ts            # FK chain, joint clamping, Bezier morphing, and billboard tests
+    ├── safe-framing.test.ts       # 10,598-frame mathematical safe-framing (z_c >= 135, head centering)
     ├── scene-compositor.test.ts   # Painter's algorithm, cube culling, pulse decay, and lyric fade
     ├── schemas.test.ts            # Schema parsing and Zod 4 JSON Schema export tests
     ├── shot-sequencer.test.ts     # Shot lookup, ORBIT slerp, and trauma camera shake tests
@@ -275,7 +303,8 @@ ai-agent-animation-studio/
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
 | `typecheck` | `tsc --noEmit` | Strict static typecheck without emitting JavaScript |
-| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (174 tests across 25 suites) |
+| `lint` | `tsc --noEmit` | Validates static types and checks for compiler errors |
+| `test` | `tsx --test tests/**/*.test.ts` | Runs the full automated test suite (181 tests across 32 suites) |
 | `test:schemas` | `tsx --test tests/schemas.test.ts` | Tests primitive schemas and Zod 4 contracts |
 | `test:invariants` | `tsx --test tests/invariants.test.ts` | Tests cross-contract timeline, skeleton, and choreography invariants |
 | `test:backpressure`| `tsx --test tests/backpressure.test.ts` | Tests FFmpeg streamer backpressure and lifecycle |

@@ -14,8 +14,7 @@ import { CANONICAL_RIG_IDS } from '../../agents/director-agent.js';
 import {
   AcousticTimelineSegmenter,
   THEMATIC_PALETTES,
-  type AcousticPersonalityType,
-  type AcousticSectionDescriptor
+  type AcousticPersonalityType
 } from './acoustic-segmenter.js';
 
 export { THEMATIC_PALETTES };
@@ -61,7 +60,6 @@ export function decomposeMusicalTimeline(
   }
 
   const totalFrames = manifest.metadata.totalFrames;
-  const fps = manifest.metadata.fps;
 
   // For short durations (e.g. <= 300 frames demo), map to 3 compact sections
   if (totalFrames <= 300) {
@@ -245,7 +243,6 @@ export function generateFullSongStoryboard(
   // Group sections by Act to determine exact Act boundaries
   const act1Sections = sections.filter((s) => s.actNumber === 1);
   const act2Sections = sections.filter((s) => s.actNumber === 2);
-  const act3Sections = sections.filter((s) => s.actNumber === 3);
 
   const act1End = act1Sections[act1Sections.length - 1].endFrame;
   const act2End = act2Sections[act2Sections.length - 1].endFrame;

@@ -3,7 +3,7 @@ import type {
   NormalizedCubicBezierSegment,
   PoseInterpolationContract
 } from '../../schemas/rig.contract.js';
-import type { ArchetypeBuildOptions, CharacterArchetypeId } from './types.js';
+import type { ArchetypeBuildOptions } from './types.js';
 
 const baseMouthSegments: NormalizedCubicBezierSegment[] = [
   { p0: [-3.5, 0], p1: [-1.8, 0.45], p2: [1.8, 0.45], p3: [3.5, 0] },

@@ -7,7 +7,7 @@ import { findTemporaryImageFiles } from '../src/diagnostics/artifact-hygiene.js'
 import { OUTPUT_DIR } from '../src/config/paths.js';
 import { DEMO_FPS } from '../src/demo/phase2-cinema/index.js';
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
-import { SceneCompositor, type SceneBudgetStats } from '../src/engine/compositor/scene-compositor.js';
+import { SceneCompositor } from '../src/engine/compositor/scene-compositor.js';
 import {
   loadAudioAnalysis,
   resolveCrossPlatformPath,
@@ -18,8 +18,7 @@ import {
 } from '../src/engine/audio/index.js';
 import {
   CheckpointManager,
-  renderChunk,
-  type ChunkDescriptor
+  renderChunk
 } from '../src/engine/director/index.js';
 import {
   DeterministicMockLlmProvider,
@@ -309,7 +308,6 @@ async function main(): Promise<void> {
         const now = performance.now();
         if (now - lastProgressUpdate > 150 || localIndex === chunk.frameCount - 1) {
           lastProgressUpdate = now;
-          const chunkProgress = (localIndex + 1) / chunk.frameCount;
           const overallProgress = (globalIndex + 1) / effectiveTotalFrames;
           const elapsedSec = (now - productionStartWall) / 1000;
           const currentFps =

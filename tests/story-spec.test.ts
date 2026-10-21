@@ -5,8 +5,7 @@ import {
   type StorySpecContract
 } from '../src/schemas/story-spec.contract.js';
 import {
-  buildDeterministicStorySpec,
-  StorySpecAgent
+  buildDeterministicStorySpec
 } from '../src/agents/story-spec-agent.js';
 import {
   compileStorySpecToStoryboard,

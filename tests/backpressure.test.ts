@@ -11,7 +11,7 @@ class MockStdin extends EventEmitter {
   public simulateWriteError: Error | null = null;
   public ended = false;
 
-  public write(chunk: Uint8Array, cb?: (err?: Error | null) => void): boolean {
+  public write(_chunk: Uint8Array, cb?: (err?: Error | null) => void): boolean {
     const err = this.simulateWriteError;
     if (this.writeCallbackDelay > 0) {
       setTimeout(() => {
@@ -41,7 +41,7 @@ class MockChildProcess extends EventEmitter {
   public exitCode: number | null = null;
   public killed = false;
 
-  public kill(signal?: string): boolean {
+  public kill(_signal?: string): boolean {
     this.killed = true;
     return true;
   }

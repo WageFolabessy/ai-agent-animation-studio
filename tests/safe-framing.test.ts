@@ -28,7 +28,7 @@ test('Mathematical Safe Framing Verification Suite', async (t) => {
   }
 
   const storyboard = compileStorySpecToStoryboard(spec, manifest);
-  const choreography = solveChoreography(spec, storyboard, rigsMap);
+  solveChoreography(spec, storyboard, rigsMap);
   const sequencer = new ShotSequencer(storyboard);
 
   await t.test('All 10,598 frames obey z_c >= 135, safe horizontal framing, and head centering (< 1.0s)', () => {

@@ -7,7 +7,6 @@ import type {
   ColorLightingPalette,
   EnvironmentZoneType
 } from '../../schemas/storyboard.contract.js';
-import type { Vec3 } from '../../schemas/primitives.schema.js';
 import { shadeHexColor } from '../math/color.js';
 
 export interface EnvironmentGeneratorOptions {

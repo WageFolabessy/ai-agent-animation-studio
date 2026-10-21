@@ -6,13 +6,8 @@ import {
   type ColorLightingPalette
 } from '../schemas/storyboard.contract.js';
 import type { AudioAnalysisManifest, AudioFrameFeature } from '../schemas/audio.contract.js';
-import type { ValidationErrorItem } from '../schemas/invariants.js';
 import type { AcousticSummary, DirectorAgentInput, LlmProvider } from './types.js';
-import type {
-  SceneEnvironment,
-  EnvironmentPolygon,
-  EnvironmentLine
-} from '../engine/compositor/scene-compositor.js';
+import type { SceneEnvironment } from '../engine/compositor/scene-compositor.js';
 import { generateFullSongStoryboard } from '../engine/director/macro-planner.js';
 import { buildDynamicEnvironment } from '../engine/director/environment-generator.js';
 

@@ -2,12 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Resvg } from '@resvg/resvg-js';
 import {
-  AcousticTimelineSegmenter,
-  type AcousticSectionDescriptor
+  AcousticTimelineSegmenter
 } from '../src/engine/director/acoustic-segmenter.js';
 import {
   generateFullSongStoryboard,
-  decomposeMusicalTimeline,
   THEMATIC_PALETTES
 } from '../src/engine/director/macro-planner.js';
 import { buildDeterministicRigCatalog } from '../src/agents/rig-agent.js';

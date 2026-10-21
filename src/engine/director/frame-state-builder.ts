@@ -1,7 +1,4 @@
-import type {
-  DirectorStoryboardContract,
-  CinematicShot
-} from '../../schemas/storyboard.contract.js';
+import type { DirectorStoryboardContract } from '../../schemas/storyboard.contract.js';
 import type { AudioAnalysisManifest, AudioFrameFeature } from '../../schemas/audio.contract.js';
 import type { AssetRigContract } from '../../schemas/rig.contract.js';
 import type { ChoreographyContract } from '../../schemas/choreography.contract.js';

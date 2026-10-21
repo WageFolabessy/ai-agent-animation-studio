@@ -6,10 +6,6 @@ import type {
 import type { ColorLightingPalette } from '../../schemas/storyboard.contract.js';
 import { shadeHexColor } from '../math/color.js';
 import {
-  IndustrialCityParamsSchema,
-  OrbitalStationParamsSchema,
-  NeonChasmParamsSchema,
-  SynthGridParamsSchema,
   type EnvironmentBuildOptions,
   type EnvironmentKitId,
   type IndustrialCityParams,
@@ -112,7 +108,7 @@ export class EnvironmentKit {
     xMin: number,
     xMax: number,
     palette: ColorLightingPalette,
-    kitId: EnvironmentKitId = 'industrial_city',
+    _kitId: EnvironmentKitId = 'industrial_city',
     isCloseUp = false
   ): SceneEnvironment {
     const polygons: EnvironmentPolygon[] = [];

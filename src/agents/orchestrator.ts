@@ -17,7 +17,7 @@ import {
 } from './director-agent.js';
 import { RigAgent } from './rig-agent.js';
 import { ChoreographerAgent } from './choreographer-agent.js';
-import { StorySpecAgent, buildDeterministicStorySpec } from './story-spec-agent.js';
+import { StorySpecAgent } from './story-spec-agent.js';
 import { compileStorySpecToStoryboard } from '../engine/director/shot-planner.js';
 import { solveChoreography } from '../engine/director/choreography-solver.js';
 import { ArchetypeFactory } from '../engine/library/archetype-factory.js';

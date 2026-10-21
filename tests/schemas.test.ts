@@ -6,14 +6,10 @@ import {
   Vec3Schema,
   FrameRangeSchema,
   CameraTransformSchema,
-  PerspectiveCameraSchema,
-  OrthographicCameraSchema,
-  AudioBandEnergySchema,
   AudioFrameFeatureSchema,
   AudioAnalysisManifestSchema,
   DirectorStoryboardContractSchema,
-  AssetRigContractSchema,
-  FrameStateContractSchema
+  AssetRigContractSchema
 } from '../src/schemas/index.js';
 
 test('Primitives: Vec2, Vec3, and FrameRange validation', () => {

@@ -6,7 +6,6 @@ import { BUNDLED_FONT_FAMILY } from '../../config/fonts.js';
 import { SvgBuilder, type PathCommand } from './svg-builder.js';
 import { computeCameraBasis, worldToCameraSpace, type CameraBasis } from '../camera/camera-3d.js';
 import {
-  clipAndProjectLine,
   clipAndProjectPolygon,
   clipAndProjectCameraLine,
   clipAndProjectCameraPolygon,
@@ -16,7 +15,6 @@ import {
   sortDrawables,
   splitLargeLine,
   splitLargePolygon,
-  computePointsDepthKey,
   type DepthTier,
   type SortablePrimitive,
   type CameraSpacePolygon,
@@ -33,7 +31,7 @@ import {
   type BillboardProjectionContext
 } from '../rigging/kinematics.js';
 import { blendMorphTargets, flattenCubicBezier } from '../rigging/morpher.js';
-import { evaluateParticleEmitter, type ActiveParticle } from '../effects/particle-emitter.js';
+import { evaluateParticleEmitter } from '../effects/particle-emitter.js';
 import { shadeHexColor } from '../math/color.js';
 
 export interface EnvironmentPolygon {

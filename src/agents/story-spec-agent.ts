@@ -6,7 +6,7 @@ import {
   type CastSpecItem,
   type SectionStagingSpec
 } from '../schemas/story-spec.contract.js';
-import type { LlmCallMetadata, LlmOptions, LlmProvider } from './types.js';
+import type { LlmCallMetadata, LlmProvider } from './types.js';
 import { formatRepairFeedbackPrompt } from './repair-helper.js';
 import type { ValidationErrorItem } from '../schemas/invariants.js';
 
@@ -36,7 +36,7 @@ export function buildDeterministicStorySpec(
   manifest: AudioAnalysisManifest,
   projectId = 'autonomous-cinema'
 ): StorySpecContract {
-  const { totalFrames, durationSeconds } = manifest.metadata;
+  const { durationSeconds } = manifest.metadata;
   const tempo = manifest.metadata.tempoBpm ?? manifest.beatGrid?.tempoBpm ?? 120;
   const sections = manifest.sections ?? [];
   const lyricCount = manifest.lyrics.length;

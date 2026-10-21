@@ -4,14 +4,12 @@ import {
   computeSkeletonFK,
   applyAffine2D,
   createBillboardContext,
-  projectBillboardPoint,
-  transformPlanarPointToWorld
+  projectBillboardPoint
 } from '../src/engine/rigging/kinematics.js';
-import { blendMorphTargets, flattenCubicBezier } from '../src/engine/rigging/morpher.js';
-import { samplePoseTrack, evaluateSecondaryMotion } from '../src/engine/rigging/deformer.js';
+import { blendMorphTargets } from '../src/engine/rigging/morpher.js';
+import { samplePoseTrack } from '../src/engine/rigging/deformer.js';
 import type { AssetRigContract } from '../src/schemas/rig.contract.js';
 import type { CameraTransform } from '../src/schemas/primitives.schema.js';
-import type { AudioFrameFeature } from '../src/schemas/audio.contract.js';
 import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
 
 test('Rigging FK: Evaluates 2-bone FK chain with translation and rotation correctly', () => {

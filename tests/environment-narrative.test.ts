@@ -2,14 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Resvg } from '@resvg/resvg-js';
 import {
-  buildDynamicEnvironment,
   buildRooftopEnvironment,
   buildHighwayEnvironment,
   buildBridgeEnvironment,
   buildReactorTunnelEnvironment
 } from '../src/engine/director/environment-generator.js';
 import {
-  decomposeMusicalTimeline,
   generateFullSongStoryboard,
   THEMATIC_PALETTES
 } from '../src/engine/director/macro-planner.js';
@@ -214,7 +212,6 @@ test('EnvironmentNarrative: SceneCompositor and Resvg rasterize sample frames fr
   });
 
   const compositor = new SceneCompositor({ width: 1920, height: 1080, fps: 30 });
-  const shotMap = new Map(storyboard.shots.map((s) => [s.id, s]));
 
   // Pick 1 representative frame from each zone:
   const rooftopShot = storyboard.shots.find((s) => s.environmentZone === 'ROOFTOP');
