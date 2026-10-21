@@ -84,7 +84,7 @@ export const StorySpecContractSchema = z
     title: z.string().min(1),
     overallMood: z.string().min(1),
     cast: z.array(CastSpecItemSchema).min(1).max(4),
-    sections: z.array(SectionStagingSpecSchema).min(3).max(12)
+    sections: z.array(SectionStagingSpecSchema).min(3).max(32)
   })
   .strict();
 export type StorySpecContract = z.infer<typeof StorySpecContractSchema>;

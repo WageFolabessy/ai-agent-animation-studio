@@ -112,16 +112,34 @@ export function buildDeterministicStorySpec(
 
   const sections: CleanSectionSpan[] = [];
   if (rawSections.length >= 3) {
-    for (const s of rawSections) {
-      sections.push({
-        id: s.id,
-        startFrame: s.startFrame,
-        endFrame: s.endFrame,
-        relativeEnergy: s.relativeEnergy,
-        hasVocals: s.hasVocals,
-        dominantBand: s.dominantBand
-      });
+    const working: CleanSectionSpan[] = rawSections.map((s) => ({
+      id: s.id,
+      startFrame: s.startFrame,
+      endFrame: s.endFrame,
+      relativeEnergy: s.relativeEnergy,
+      hasVocals: s.hasVocals,
+      dominantBand: s.dominantBand
+    }));
+
+    // Ensure array never exceeds 32 items by merging shortest adjacent spans
+    while (working.length > 32) {
+      let minSpanIdx = 0;
+      let minSpanFrames = Infinity;
+      for (let i = 0; i < working.length - 1; i++) {
+        const span = working[i].endFrame - working[i].startFrame;
+        if (span < minSpanFrames) {
+          minSpanFrames = span;
+          minSpanIdx = i;
+        }
+      }
+      const next = working[minSpanIdx + 1];
+      working[minSpanIdx].endFrame = next.endFrame;
+      working[minSpanIdx].relativeEnergy = (working[minSpanIdx].relativeEnergy + next.relativeEnergy) / 2;
+      working[minSpanIdx].hasVocals = working[minSpanIdx].hasVocals || next.hasVocals;
+      working.splice(minSpanIdx + 1, 1);
     }
+
+    sections.push(...working);
   } else {
     // Partition totalFrames into 3 contiguous spans
     const b1 = Math.max(1, Math.floor(totalFrames * 0.25));
