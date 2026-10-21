@@ -6,7 +6,19 @@ Zero-browser in-memory procedural 2.5D animation rendering engine and automated 
 
 ## 1. Project Purpose & Vision
 
-AI-Agent Animation Studio is an automated studio engineered to convert song audio (`.flac` / `.mp3`) and time-stamped lyrics (`.lrc`) into cinematic 2.5D narrative animated music videos. The system combines multi-agent LLM planning with a high-performance procedural cinema engine, producing multi-angle camera cuts, 3D-to-2D perspective projection, dynamic character articulation, shape morphing, and audio-reactive lighting—exported directly to H.264 MP4 (1920x1080 at 30 or 60 fps).
+AI-Agent Animation Studio is an automated procedural 2.5D animation rendering engine and cinema director engineered to convert song audio (`.flac` / `.mp3`) and time-stamped lyrics (`.lrc`) into cinematic, narrative animated music videos across **any musical genre** (Pop, Rock, Metal, Ballad, Acoustic, Electronic).
+
+### Strategic Manifesto: Procedural 2.5D Vector vs. Generative AI Video
+This project **explicitly rejects generative AI video models (diffusion, Sora, Runway, Kling, Pika)**. Rather than relying on black-box pixel hallucination with temporal flickering, rubbery anatomy, and loose audio sync, the studio is built on **100% deterministic, controllable, code-driven procedural 2.5D SVG vector engineering**:
+- **Absolute Directorial Control:** Precise camera paths, joint limits, kinematic spline tangents, and color palettes.
+- **Zero Temporal Degradation:** Anatomical skeletons and rigid bone lengths never warp or lose identity between frames.
+- **Frame-Exact Audio & Lyric Sync:** Sub-frame beat snapping and $O(1)$ columnar binary audio analysis synchronize lighting pulses, camera trauma shake, and facial phonemes to acoustic transients.
+- **Ultra-Lightweight In-Memory Execution:** Renders 1080p @ 30/60 FPS entirely on CPU with zero browser dependencies and bounded memory ($< 400\text{ MB}$ RSS).
+- **Infinite Vector Scalability:** Sharp mathematical vector geometry rendered directly in RAM via Rust `@resvg/resvg-js`.
+
+The creative vision draws inspiration from iconic narrative music videos (such as Avenged Sevenfold's *"A Little Piece of Heaven"*) and classic vector/cutout storytelling (*Samurai Jack*, *South Park*, *Limbo*, *The Tale of the Three Brothers*), reimagined as a fully autonomous procedural vector cinema.
+
+For complete architectural details, see [Theatrical Narrative 2.5D Procedural Cinema Architecture](docs/theatrical-narrative-architecture.md).
 
 ---
 
@@ -46,8 +58,21 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Sub-second lossless assembly via FFmpeg Concat Demuxer (`src/engine/audio/concat-stitcher.ts`) with continuous uncompressed master FLAC $\to$ AAC 256kbps stereo audio muxing (`-c:v copy -c:a aac -shortest`).
   - Hierarchical macro-to-micro storyboard planner (`src/engine/director/macro-planner.ts`) decomposing full songs into 7 musical sections with 5 dynamic thematic palettes (`CYBERPUNK_CYAN`, `VOLTAGE_ORANGE`, `SUNSET_GOLD`, `CRIMSON_FURY`, `MIDNIGHT_VOID`).
   - Secondary articulated pursuit enforcer drone rig (`CANONICAL_RIG_IDS.PURSUIT_DRONE`) with 4-joint FK thrusters and dynamic flight tracking.
+- **Phase 6: Completed**
+  - Forensic visual remediation eliminating camera inside character / near-plane blob explosions and framing decapitation defects.
+  - Mathematical safe-framing invariant verification suite ([`tests/safe-framing.test.ts`](tests/safe-framing.test.ts)) guaranteeing $z_c \ge 135.0$, bounded screen horizontal framing ($500 \le x_s \le 1420$), and safe head height ($354 \le y_{s,\text{head}} \le 504$) across all 10,598 frames in 41ms.
+  - Motion state machine with 6 named looping motion presets (`stalk_crouch`, `sprint_frenzy`, `evade_leap`, `defiant_scream`, `combat_clash`, `exhausted_walk`) in [`ArchetypeFactory`](src/engine/library/archetype-factory.ts).
+  - Anti-moonwalk tracking solver in [`choreography-solver.ts`](src/engine/director/choreography-solver.ts) locking camera velocity to character displacement ($\Delta X_{\text{cam}} = \Delta X_{\text{runner}}$) during continuous tracking shots.
+  - 4-tier continuous parallax world generation (`SKYLINE_BACKDROP`, `MID_CITY_BLOCKS`, `NEAR_COLUMNS`, `GROUND_STRIP`) resolving the empty-black-space defect.
+- **Phase 7: Active / In Progress (Theatrical Narrative Staging & Universal Genre Evolution)**
+  - Transition from single-line treadmill running into discrete theatrical scene staging (`SetStageSchema`).
+  - Multi-character interpersonal casting and relational blocking (Protagonist, Partner, Antagonist).
+  - Multi-angle character rigs (Frontal $0^\circ$, $3/4$ perspective, and profile $90^\circ$) with expressive lyric-synchronized singing phonemes.
+  - Narrative vector prop system (microphones, umbrellas, park benches, lanterns, instruments).
+  - Universal genre-aware directing matrix adapting visual aesthetic to Pop, Ballad, Rock, Metal, Acoustic, and Electronic music.
 
 For technical specifications, see:
+- [Theatrical Narrative Architecture (Phase 7 & Beyond)](docs/theatrical-narrative-architecture.md)
 - [Phase 1 Architecture Foundation](docs/phase-1-architecture.md)
 - [Phase 2 Cinema & Compositor Architecture](docs/phase-2-architecture.md)
 - [Phase 3 Audio Intelligence, LRC & Muxing Architecture](docs/phase-3-architecture.md)
@@ -495,6 +520,10 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   Multi-agent LLM orchestration: `DirectorAgent`, `RigAgent`, `ChoreographerAgent`, and `StudioAgentOrchestrator` with automated self-healing contract validation and repair loops.
 - **Phase 5 (Completed):**  
   Full-length music video production engine (`produce:video`, `scripts/produce-music-video.ts`) supporting 10,598 frames (~6.0 minutes @ 30 FPS), chunked streaming rendering, fault-tolerant checkpoint management with instant resume, sub-second lossless FFmpeg concat stitching with uncompressed continuous master FLAC $\to$ AAC 256k audio, hierarchical macro-to-micro storyboard planning across 7 musical sections, and secondary articulated pursuit enforcer drone kinematics.
+- **Phase 6 (Completed):**  
+  Mathematical safe-framing invariant verification suite ($10,598 / 10,598$ frames verified with zero near-plane or decapitation violations in 41ms), motion state machine with 6 named looping motion presets, velocity-locked anti-moonwalk tracking, and continuous 4-tier parallax skyline background generation.
+- **Phase 7 (Active / In Progress):**  
+  Theatrical Narrative Staging & Universal Genre Evolution: Transition from single-axis treadmill running to discrete theatrical sets (`SetStageContract`), multi-character casting and interpersonal relational blocking (Protagonist, Partner, Antagonist), multi-angle rigs (Frontal $0^\circ$, $3/4$ perspective) with lyric-synced singing phonemes, narrative vector props, and universal genre-aware directing matrices (Pop, Ballad, Rock, Metal, Acoustic, Electronic). See [Theatrical Narrative Architecture](docs/theatrical-narrative-architecture.md).
 
 ---
 
