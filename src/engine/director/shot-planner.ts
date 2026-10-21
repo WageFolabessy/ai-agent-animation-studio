@@ -237,35 +237,33 @@ export function compileStorySpecToStoryboard(
   const { totalFrames, fps } = manifest.metadata;
   const castRigIds = spec.cast.map((c) => c.instanceId);
 
-  // 1. Compute 3 Acts contiguous boundaries
-  const act1Boundary = Math.round(totalFrames * 0.25);
-  const act2Boundary = Math.round(totalFrames * 0.75);
-
-  const acts: [StoryboardAct, StoryboardAct, StoryboardAct] = [
-    {
-      actNumber: 1,
-      title: 'Act I: Exposition & World Staging',
-      narrativeArc: `${spec.title} - Exposition in ${spec.overallMood}`,
-      frameRange: { startFrameInclusive: 0, endFrameExclusive: act1Boundary }
-    },
-    {
-      actNumber: 2,
-      title: 'Act II: Dynamic Pursuit & Conflict',
-      narrativeArc: 'Escalation of kinetic tempo and environment transitions',
-      frameRange: { startFrameInclusive: act1Boundary, endFrameExclusive: act2Boundary }
-    },
-    {
-      actNumber: 3,
-      title: 'Act III: Climax & Resolution',
-      narrativeArc: 'Virtuosic resolution and final thematic coda',
-      frameRange: { startFrameInclusive: act2Boundary, endFrameExclusive: totalFrames }
-    }
-  ];
-
-  // 2. Map sections to frame spans
+  // 1. Determine section-aligned Act partitioning indices (25% and 75% target anchors)
   const sectionCount = spec.sections.length;
-  const shots: CinematicShot[] = [];
+  let k1 = 1;
+  let k2 = 2;
+  if (sectionCount >= 3) {
+    const t1 = totalFrames * 0.25;
+    const t2 = totalFrames * 0.75;
+    let minDiff1 = Infinity;
+    for (let i = 1; i <= sectionCount - 2; i++) {
+      const diff = Math.abs(spec.sections[i].startFrame - t1);
+      if (diff < minDiff1) {
+        minDiff1 = diff;
+        k1 = i;
+      }
+    }
+    let minDiff2 = Infinity;
+    for (let i = k1 + 1; i <= sectionCount - 1; i++) {
+      const diff = Math.abs(spec.sections[i].startFrame - t2);
+      if (diff < minDiff2) {
+        minDiff2 = diff;
+        k2 = i;
+      }
+    }
+  }
 
+  // 2. Map sections to frame spans and assemble shots
+  const shots: CinematicShot[] = [];
   let currentFrame = 0;
   let shotIndex = 0;
 
@@ -290,15 +288,14 @@ export function compileStorySpecToStoryboard(
     const { snappedFrames } = snapShotBoundariesToBeats(rawCuts, manifest.beatGrid);
     const cutPoints = [sectionStart, ...snappedFrames, sectionEnd];
 
+    // Determine Act Number for all shots in this section
+    const actNumber: 1 | 2 | 3 = sIdx < k1 ? 1 : sIdx < k2 ? 2 : 3;
+
     // Build shots for this section
     for (let i = 0; i < cutPoints.length - 1; i++) {
       const fStart = i === 0 && sIdx === 0 ? 0 : currentFrame;
       const fEnd = cutPoints[i + 1];
       if (fEnd <= fStart) continue;
-
-      // Determine Act Number
-      const midFrame = (fStart + fEnd) / 2;
-      const actNumber: 1 | 2 | 3 = midFrame < act1Boundary ? 1 : midFrame < act2Boundary ? 2 : 3;
 
       // 6-Angle cinematic state machine
       const angle = CINEMATIC_ANGLES[shotIndex % CINEMATIC_ANGLES.length];
@@ -394,6 +391,62 @@ export function compileStorySpecToStoryboard(
   if (shots.length > 0 && shots[shots.length - 1].frameRange.endFrameExclusive !== totalFrames) {
     (shots[shots.length - 1].frameRange as { endFrameExclusive: number }).endFrameExclusive = totalFrames;
   }
+
+  // If spec had < 3 sections, partition acts across compiled shots if possible
+  if (sectionCount < 3 && shots.length >= 3) {
+    const t1 = totalFrames * 0.25;
+    const t2 = totalFrames * 0.75;
+    let j1 = 1;
+    let minD1 = Infinity;
+    for (let i = 1; i <= shots.length - 2; i++) {
+      const d = Math.abs(shots[i].frameRange.startFrameInclusive - t1);
+      if (d < minD1) {
+        minD1 = d;
+        j1 = i;
+      }
+    }
+    let j2 = j1 + 1;
+    let minD2 = Infinity;
+    for (let i = j1 + 1; i <= shots.length - 1; i++) {
+      const d = Math.abs(shots[i].frameRange.startFrameInclusive - t2);
+      if (d < minD2) {
+        minD2 = d;
+        j2 = i;
+      }
+    }
+    for (let i = 0; i < shots.length; i++) {
+      shots[i].actNumber = i < j1 ? 1 : i < j2 ? 2 : 3;
+    }
+  }
+
+  // Derive exact Act boundaries from actual shot ranges
+  const act2Start =
+    shots.find((s) => s.actNumber === 2)?.frameRange.startFrameInclusive ??
+    (sectionCount >= 3 ? spec.sections[k1].startFrame : Math.max(1, Math.floor(totalFrames / 3)));
+  const act3Start =
+    shots.find((s) => s.actNumber === 3)?.frameRange.startFrameInclusive ??
+    (sectionCount >= 3 ? spec.sections[k2].startFrame : Math.max(act2Start + 1, Math.floor((2 * totalFrames) / 3)));
+
+  const acts: [StoryboardAct, StoryboardAct, StoryboardAct] = [
+    {
+      actNumber: 1,
+      title: 'Act I: Exposition & World Staging',
+      narrativeArc: `${spec.title} - Exposition in ${spec.overallMood}`,
+      frameRange: { startFrameInclusive: 0, endFrameExclusive: act2Start }
+    },
+    {
+      actNumber: 2,
+      title: 'Act II: Dynamic Pursuit & Conflict',
+      narrativeArc: 'Escalation of kinetic tempo and environment transitions',
+      frameRange: { startFrameInclusive: act2Start, endFrameExclusive: act3Start }
+    },
+    {
+      actNumber: 3,
+      title: 'Act III: Climax & Resolution',
+      narrativeArc: 'Virtuosic resolution and final thematic coda',
+      frameRange: { startFrameInclusive: act3Start, endFrameExclusive: totalFrames }
+    }
+  ];
 
   return {
     projectId: spec.projectId,
