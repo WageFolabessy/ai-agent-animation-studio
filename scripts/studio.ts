@@ -46,6 +46,8 @@ interface StudioCliOptions {
   maxChunks?: number;
   resume: boolean;
   bitrateKbps: number;
+  startFrame?: number;
+  frameCount?: number;
 }
 
 function parseCliArgs(argv: string[]): StudioCliOptions {
@@ -60,6 +62,8 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
   let maxChunks: number | undefined;
   let resume = true;
   let bitrateKbps = 256;
+  let startFrame: number | undefined;
+  let frameCount: number | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -86,6 +90,10 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
       chunkFrames = Math.max(30, Number.parseInt(argv[++i], 10));
     } else if (arg === '--max-chunks' && i + 1 < argv.length) {
       maxChunks = Math.max(1, Number.parseInt(argv[++i], 10));
+    } else if (arg === '--start-frame' && i + 1 < argv.length) {
+      startFrame = Math.max(0, Number.parseInt(argv[++i], 10));
+    } else if (arg === '--frame-count' && i + 1 < argv.length) {
+      frameCount = Math.max(1, Number.parseInt(argv[++i], 10));
     } else if (arg === '--no-resume') {
       resume = false;
     } else if (arg === '--resume') {
@@ -106,6 +114,8 @@ Options:
   --spec / --no-spec       Use 'Spec-Then-Compile' architecture (default: enabled)
   --chunk-frames <num>     Number of frames per rendered chunk (default: 1500)
   --max-chunks <num>       Maximum number of chunks to render (useful for quick previews)
+  --start-frame <num>      Initial timeline frame index to start rendering from (default: 0)
+  --frame-count <num>      Total number of frames to render from start-frame
   --resume / --no-resume   Resume rendering using valid existing chunk files (default: enabled)
   --bitrate <kbps>         Master continuous audio AAC bitrate in kbps (default: 256)
   --help, -h               Show this help message and exit
@@ -124,6 +134,8 @@ Options:
     useSpec,
     chunkFrames,
     ...(maxChunks !== undefined ? { maxChunks } : {}),
+    ...(startFrame !== undefined ? { startFrame } : {}),
+    ...(frameCount !== undefined ? { frameCount } : {}),
     resume,
     bitrateKbps
   };
@@ -154,7 +166,7 @@ async function main(): Promise<void> {
   const fps: 30 | 60 = DEMO_FPS as 30;
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  const chunksDir = path.join(OUTPUT_DIR, 'chunks');
+  const chunksDir = path.join(OUTPUT_DIR, 'chunks', path.basename(cli.outputPath, '.mp4'));
   fs.mkdirSync(chunksDir, { recursive: true });
 
   // 1. Resolve Audio Master & LRC
@@ -272,7 +284,9 @@ async function main(): Promise<void> {
           Math.floor(startFrame / secDuration)
         );
         const sec = storySpec.sections[secIdx];
-        return EnvironmentKit.build({ section: sec, shotId, centerX });
+        const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
+        const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
+        return EnvironmentKit.build({ section: sec, shotId, centerX, framing: shot?.framing, xMin, xMax });
       }
       const zone = shot?.environmentZone ?? 'ROOFTOP';
       const palette = shot?.palette;
@@ -327,6 +341,12 @@ async function main(): Promise<void> {
       path.join(artifactsDir, 'agent-log.json'),
       JSON.stringify(orchestration.attempts, null, 2)
     );
+    if (orchestration.storySpec) {
+      fs.writeFileSync(
+        path.join(artifactsDir, 'story-spec.json'),
+        JSON.stringify(orchestration.storySpec, null, 2)
+      );
+    }
     console.log(
       `✓ Storyboard synthesized: ${orchestration.storyboard.acts.length} Acts | ${orchestration.storyboard.shots.length} Shots | ${orchestration.rigs.size} Rigs`
     );
@@ -334,15 +354,23 @@ async function main(): Promise<void> {
 
   // 3. Partitioning & Checkpoints
   console.log(`\n[Stage 3/5] Evaluating Checkpoints & Chunks...`);
+  const startFrame = cli.startFrame ?? 0;
+  const availableFrames = Math.max(0, totalFrames - startFrame);
+  const requestedFrames =
+    cli.frameCount !== undefined
+      ? Math.min(availableFrames, cli.frameCount)
+      : availableFrames;
+
   const effectiveTotalFrames =
     cli.maxChunks !== undefined
-      ? Math.min(totalFrames, cli.maxChunks * cli.chunkFrames)
-      : totalFrames;
+      ? Math.min(requestedFrames, cli.maxChunks * cli.chunkFrames)
+      : requestedFrames;
 
   const checkpointManager = new CheckpointManager({
     totalFrames: effectiveTotalFrames,
     chunkFrames: cli.chunkFrames,
     chunksDir,
+    startFrame,
     autoCleanCorrupted: true
   });
 
@@ -423,13 +451,13 @@ async function main(): Promise<void> {
         if (now - lastProgressUpdate > 250 || localIndex === chunk.frameCount - 1) {
           lastProgressUpdate = now;
           const chunkProgress = (localIndex + 1) / chunk.frameCount;
-          const overallProgress = (globalIndex + 1) / effectiveTotalFrames;
+          const overallProgress = (globalIndex - startFrame + 1) / effectiveTotalFrames;
           const elapsedSec = (now - productionStartWall) / 1000;
           const currentFps =
             renderedFramesInSession > 0 && elapsedSec > 0
               ? (renderedFramesInSession / elapsedSec).toFixed(1)
               : '0.0';
-          const remainingFrames = effectiveTotalFrames - (globalIndex + 1);
+          const remainingFrames = effectiveTotalFrames - (globalIndex - startFrame + 1);
           const etaSec = Number(currentFps) > 0 ? remainingFrames / Number(currentFps) : 0;
           const rssMb = (process.memoryUsage().rss / 1024 / 1024).toFixed(0);
 
@@ -437,7 +465,7 @@ async function main(): Promise<void> {
           const pct = (overallProgress * 100).toFixed(1);
 
           process.stdout.write(
-            `\r[${c + 1}/${checkpointStatus.totalChunks}] ${progressBar} ${globalIndex + 1}/${effectiveTotalFrames}f (${pct}%) | ${currentFps} FPS | RSS: ${rssMb}MB | ETA: ${formatDuration(etaSec)} `
+            `\r[${c + 1}/${checkpointStatus.totalChunks}] ${progressBar} ${globalIndex - startFrame + 1}/${effectiveTotalFrames}f (${pct}%) | ${currentFps} FPS | RSS: ${rssMb}MB | ETA: ${formatDuration(etaSec)} `
           );
         }
       }
@@ -464,6 +492,7 @@ async function main(): Promise<void> {
     chunkPaths: finalChunkPaths,
     outputPath: cli.outputPath,
     masterAudioPath: activeAudioPath,
+    audioStartSeconds: startFrame / fps,
     audioBitrateKbps: cli.bitrateKbps,
     totalExpectedFrames: effectiveTotalFrames,
     tempDir: OUTPUT_DIR

@@ -17,6 +17,7 @@ export interface EvaluatedTrackState {
   opacity: number;
   timeScale: number;
   startPoseFrame: number;
+  clipId?: string;
   morphWeights: Record<string, number>;
 }
 
@@ -149,6 +150,7 @@ export function evaluateEntityTrack(
     opacity: transform.opacity,
     timeScale: track.pose?.timeScale ?? 1.0,
     startPoseFrame: track.pose?.startPoseFrame ?? 0,
+    clipId: track.pose?.clipId,
     morphWeights
   };
 }

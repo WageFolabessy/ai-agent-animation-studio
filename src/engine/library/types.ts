@@ -57,8 +57,13 @@ export interface ArchetypeBuildOptions {
   readonly fps?: 30 | 60;
 }
 
+import type { CameraFraming } from '../../schemas/storyboard.contract.js';
+
 export interface EnvironmentBuildOptions {
   readonly section: SectionStagingSpec;
   readonly shotId: string;
   readonly centerX: number;
+  readonly framing?: CameraFraming;
+  readonly xMin?: number;
+  readonly xMax?: number;
 }

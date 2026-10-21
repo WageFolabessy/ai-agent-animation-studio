@@ -85,38 +85,297 @@ export const THEME_PALETTES: Record<string, ColorLightingPalette> = {
  */
 export class EnvironmentKit {
   public static build(options: EnvironmentBuildOptions): SceneEnvironment {
-    const { section, centerX } = options;
+    const { section, centerX, framing } = options;
     const palette = THEME_PALETTES[section.colorThemeId] ?? THEME_PALETTES.CYBERPUNK_CYAN;
+    const xMin = options.xMin ?? (centerX - 600);
+    const xMax = options.xMax ?? (centerX + 900);
+    const isCloseUp = framing === 'CLOSE_UP';
 
-    switch (section.environmentKitId) {
-      case 'industrial_city': {
-        const res = IndustrialCityParamsSchema.safeParse(section.kitParams ?? {});
-        const params = res.success ? res.data : IndustrialCityParamsSchema.parse({});
-        return EnvironmentKit.buildIndustrialCity(centerX, palette, params);
-      }
-      case 'orbital_station': {
-        const res = OrbitalStationParamsSchema.safeParse(section.kitParams ?? {});
-        const params = res.success ? res.data : OrbitalStationParamsSchema.parse({});
-        return EnvironmentKit.buildOrbitalStation(centerX, palette, params);
-      }
-      case 'neon_chasm': {
-        const res = NeonChasmParamsSchema.safeParse(section.kitParams ?? {});
-        const params = res.success ? res.data : NeonChasmParamsSchema.parse({});
-        return EnvironmentKit.buildNeonChasm(centerX, palette, params);
-      }
-      case 'synth_grid': {
-        const res = SynthGridParamsSchema.safeParse(section.kitParams ?? {});
-        const params = res.success ? res.data : SynthGridParamsSchema.parse({});
-        return EnvironmentKit.buildSynthGrid(centerX, palette, params);
-      }
-      default:
-        return EnvironmentKit.buildIndustrialCity(centerX, palette, {
-          rooftopDensity: 0.5,
-          hvacVisible: true,
-          overheadGantry: false,
-          streetlamps: true
+    return EnvironmentKit.buildTiledParallaxEnvironment(
+      xMin,
+      xMax,
+      palette,
+      section.environmentKitId,
+      isCloseUp
+    );
+  }
+
+  /**
+   * Procedural 4-tier scrolling parallax environment generator.
+   * Generates continuous world geometry across [xMin, xMax]:
+   * - Tier 1 (Z = -900): Distant skyline (spires, megaliths, citadels)
+   * - Tier 2 (Z = -450): Midground industrial structures and trusses
+   * - Tier 3 (Z = -120 to +40): Continuous runway floor, expansion lines, streetlamps, tech barriers
+   * - Tier 4 (Z = +140): Foreground overhead conduits (strictly excluded on CLOSE_UP shots)
+   */
+  public static buildTiledParallaxEnvironment(
+    xMin: number,
+    xMax: number,
+    palette: ColorLightingPalette,
+    kitId: EnvironmentKitId = 'industrial_city',
+    isCloseUp = false
+  ): SceneEnvironment {
+    const polygons: EnvironmentPolygon[] = [];
+    const lines: EnvironmentLine[] = [];
+
+    // --- Tier 1 (Z = -900): Distant Skyline (Spacing = 450u) ---
+    const s1 = 450;
+    const k1Min = Math.floor(xMin / s1);
+    const k1Max = Math.ceil(xMax / s1);
+
+    for (let k = k1Min; k <= k1Max; k++) {
+      const bx = k * s1;
+      const variant = Math.abs(k) % 3;
+
+      if (variant === 0) {
+        // Gothic Spire
+        polygons.push({
+          vertices: [
+            [bx - 50, 0, -900],
+            [bx + 50, 0, -900],
+            [bx + 38, 320, -900],
+            [bx - 38, 320, -900]
+          ],
+          fill: shadeHexColor(palette.background, 0.45),
+          opacity: 0.9,
+          tier: 1
         });
+        polygons.push({
+          vertices: [
+            [bx - 16, 320, -900],
+            [bx + 16, 320, -900],
+            [bx, 480, -900]
+          ],
+          fill: shadeHexColor(palette.secondary, -0.2),
+          opacity: 0.85,
+          tier: 1
+        });
+        lines.push({
+          p0: [bx, 480, -900],
+          p1: [bx, 530, -900],
+          stroke: palette.accent,
+          strokeWidth: 2,
+          opacity: 0.9,
+          tier: 1
+        });
+      } else if (variant === 1) {
+        // Neon Megalith
+        polygons.push({
+          vertices: [
+            [bx - 70, 0, -920],
+            [bx + 70, 0, -920],
+            [bx + 60, 420, -920],
+            [bx - 60, 420, -920]
+          ],
+          fill: shadeHexColor(palette.background, 0.35),
+          opacity: 0.88,
+          tier: 1
+        });
+        lines.push({
+          p0: [bx + 60, 420, -920],
+          p1: [bx + 60, 0, -920],
+          stroke: palette.primary,
+          strokeWidth: 2,
+          opacity: 0.7,
+          tier: 1
+        });
+      } else {
+        // Sky Citadel
+        polygons.push({
+          vertices: [
+            [bx - 80, 0, -880],
+            [bx + 80, 0, -880],
+            [bx + 40, 360, -880],
+            [bx - 40, 360, -880]
+          ],
+          fill: shadeHexColor(palette.background, 0.4),
+          opacity: 0.9,
+          tier: 1
+        });
+        lines.push({
+          p0: [bx - 40, 360, -880],
+          p1: [bx + 40, 360, -880],
+          stroke: palette.accent,
+          strokeWidth: 2.5,
+          opacity: 0.85,
+          tier: 1
+        });
+      }
     }
+
+    // --- Tier 2 (Z = -450): Midground Industrial (Spacing = 300u) ---
+    const s2 = 300;
+    const k2Min = Math.floor(xMin / s2);
+    const k2Max = Math.ceil(xMax / s2);
+
+    for (let k = k2Min; k <= k2Max; k++) {
+      const bx = k * s2;
+      const variant = Math.abs(k) % 2;
+
+      if (variant === 0) {
+        // Factory Block
+        polygons.push({
+          vertices: [
+            [bx - 55, 0, -450],
+            [bx + 55, 0, -450],
+            [bx + 55, 170, -450],
+            [bx - 55, 170, -450]
+          ],
+          fill: shadeHexColor(palette.secondary, -0.1),
+          opacity: 0.92,
+          tier: 2
+        });
+        lines.push({
+          p0: [bx - 60, 110, -440],
+          p1: [bx + 60, 110, -440],
+          stroke: palette.primary,
+          strokeWidth: 2,
+          opacity: 0.8,
+          tier: 2
+        });
+      } else {
+        // Lattice Truss / Reactor Frame
+        lines.push(
+          {
+            p0: [bx - 40, 0, -460],
+            p1: [bx - 40, 200, -460],
+            stroke: shadeHexColor(palette.secondary, 0.3),
+            strokeWidth: 2.5,
+            opacity: 0.85,
+            tier: 2
+          },
+          {
+            p0: [bx + 40, 0, -460],
+            p1: [bx + 40, 200, -460],
+            stroke: shadeHexColor(palette.secondary, 0.3),
+            strokeWidth: 2.5,
+            opacity: 0.85,
+            tier: 2
+          },
+          {
+            p0: [bx - 40, 80, -460],
+            p1: [bx + 40, 160, -460],
+            stroke: palette.accent,
+            strokeWidth: 1.5,
+            opacity: 0.7,
+            tier: 2
+          }
+        );
+      }
+    }
+
+    // --- Tier 3 (Z = -120 to +40): Near-Ground Runway (Continuous Floor Z in [-300, 300], Spacing = 200u) ---
+    const floorPad = 300;
+    polygons.push({
+      vertices: [
+        [xMin - floorPad, 0, 300],
+        [xMax + floorPad, 0, 300],
+        [xMax + floorPad, 0, -300],
+        [xMin - floorPad, 0, -300]
+      ],
+      fill: shadeHexColor(palette.background, 0.15),
+      opacity: 0.96,
+      tier: 0
+    });
+
+    const zLines = [-200, -80, 80, 200];
+    for (const z of zLines) {
+      lines.push({
+        p0: [xMin - floorPad, 0.3, z],
+        p1: [xMax + floorPad, 0.3, z],
+        stroke: shadeHexColor(palette.secondary, -0.4),
+        strokeWidth: 1.5,
+        opacity: 0.75,
+        tier: 1
+      });
+    }
+
+    const s3 = 200;
+    const k3Min = Math.floor(xMin / s3);
+    const k3Max = Math.ceil(xMax / s3);
+
+    for (let k = k3Min; k <= k3Max; k++) {
+      const bx = k * s3;
+
+      // Streetlamp (Z = -120)
+      lines.push(
+        {
+          p0: [bx, 0, -120],
+          p1: [bx, 130, -120],
+          stroke: shadeHexColor(palette.secondary, 0.4),
+          strokeWidth: 2.2,
+          opacity: 0.85,
+          tier: 2
+        },
+        {
+          p0: [bx, 130, -120],
+          p1: [bx + 25, 125, -120],
+          stroke: palette.primary,
+          strokeWidth: 2,
+          opacity: 0.9,
+          tier: 2
+        }
+      );
+      polygons.push({
+        vertices: [
+          [bx + 20, 127, -120],
+          [bx + 28, 127, -120],
+          [bx + 26, 120, -120],
+          [bx + 22, 120, -120]
+        ],
+        fill: palette.accent,
+        opacity: 0.95,
+        tier: 2
+      });
+
+      // Barrier Tech Box (Z = -70)
+      if (Math.abs(k) % 2 === 1) {
+        polygons.push({
+          vertices: [
+            [bx + 50, 0, -70],
+            [bx + 80, 0, -70],
+            [bx + 80, 26, -70],
+            [bx + 50, 26, -70]
+          ],
+          fill: shadeHexColor(palette.secondary, -0.3),
+          opacity: 0.9,
+          tier: 2
+        });
+      }
+    }
+
+    // --- Tier 4 (Z = +140): Foreground Overhang (Spacing = 600u) ---
+    // Strictly excluded on CLOSE_UP shots (Gap 2)
+    if (!isCloseUp) {
+      const s4 = 600;
+      const k4Min = Math.floor(xMin / s4);
+      const k4Max = Math.ceil(xMax / s4);
+
+      for (let k = k4Min; k <= k4Max; k++) {
+        const bx = k * s4;
+        polygons.push({
+          vertices: [
+            [bx - 80, 240, 140],
+            [bx + 180, 240, 140],
+            [bx + 180, 252, 140],
+            [bx - 80, 252, 140]
+          ],
+          fill: shadeHexColor(palette.background, 0.2),
+          opacity: 0.92,
+          tier: 3
+        });
+        lines.push({
+          p0: [bx + 50, 252, 140],
+          p1: [bx + 50, 360, 140],
+          stroke: palette.secondary,
+          strokeWidth: 1.5,
+          opacity: 0.8,
+          tier: 3
+        });
+      }
+    }
+
+    return { polygons, lines };
   }
 
   public static buildIndustrialCity(

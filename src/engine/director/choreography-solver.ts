@@ -9,6 +9,25 @@ import type {
 } from '../../schemas/choreography.contract.js';
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
 
+function resolveClipIdForSection(
+  sectionType?: string,
+  energyBand?: string,
+  narrativeIntent?: string
+): string {
+  const type = sectionType?.toUpperCase();
+  const intent = (narrativeIntent ?? '').toLowerCase();
+
+  if (type === 'INTRO') return 'stalk_crouch';
+  if (type === 'OUTRO') return 'exhausted_walk';
+  if (type === 'SOLO') return 'combat_clash';
+  if (type === 'CHORUS' || energyBand === 'PEAK') {
+    return intent.includes('scream') || intent.includes('defian')
+      ? 'defiant_scream'
+      : 'evade_leap';
+  }
+  return 'sprint_frenzy';
+}
+
 export function solveChoreography(
   spec: StorySpecContract,
   storyboard: DirectorStoryboardContract,
@@ -39,7 +58,88 @@ export function solveChoreography(
       const isCastMember = castMap.has(rigId);
 
       if (isCastMember && rig) {
-        // Character entity track
+        const castItem = spec.cast.find((c) => c.instanceId === rigId);
+        const archetype = castItem?.archetypeId ?? (rig.id.includes('drone') ? 'aerial_drone' : rig.id.includes('hound') || rig.id.includes('beast') ? 'quadruped_beast' : 'biped_runner');
+
+        if (archetype === 'aerial_drone') {
+          // Active Sinusoidal Dive & Swoop Pursuit Drone (Z = -40)
+          const droneKeyframes: EntityTrackKeyframe[] = [];
+          const step = Math.max(12, Math.floor(duration / 4));
+          for (let f = startFrame; f < endFrame; f += step) {
+            const x = f * 0.45 + 110 + 10 * Math.sin(0.04 * f);
+            const y = 175 + 45 * Math.cos(0.06 * f);
+            const rotZ = Math.sin(0.04 * f) * 8;
+            droneKeyframes.push({
+              frame: f,
+              position: [Number(x.toFixed(2)), Number(y.toFixed(2)), -40],
+              rotationZDegrees: Number(rotZ.toFixed(2)),
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            });
+          }
+          const lastX = lastFrame * 0.45 + 110 + 10 * Math.sin(0.04 * lastFrame);
+          const lastY = 175 + 45 * Math.cos(0.06 * lastFrame);
+          const lastRotZ = Math.sin(0.04 * lastFrame) * 8;
+          if (droneKeyframes.length === 0 || droneKeyframes[droneKeyframes.length - 1].frame < lastFrame) {
+            droneKeyframes.push({
+              frame: lastFrame,
+              position: [Number(lastX.toFixed(2)), Number(lastY.toFixed(2)), -40],
+              rotationZDegrees: Number(lastRotZ.toFixed(2)),
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            });
+          }
+
+          tracks.push({
+            shotId: shot.id,
+            rigId,
+            transform: { keyframes: droneKeyframes },
+            morphKeyframes: {},
+            morphBindings: []
+          });
+          continue;
+        }
+
+        if (archetype === 'quadruped_beast') {
+          // Active Ground Pursuit Hound (Z = 0, Y = 50)
+          const beastStartX = startFrame * 0.45 - 140;
+          const beastEndX = lastFrame * 0.45 - 60;
+          const beastKeyframes: EntityTrackKeyframe[] = [
+            {
+              frame: startFrame,
+              position: [Number(beastStartX.toFixed(2)), 50, 0],
+              rotationZDegrees: 0,
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: lastFrame,
+              position: [Number(beastEndX.toFixed(2)), 50, 0],
+              rotationZDegrees: 0,
+              scale: [1, 1],
+              opacity: 1,
+              easing: 'linear'
+            }
+          ];
+
+          tracks.push({
+            shotId: shot.id,
+            rigId,
+            transform: { keyframes: beastKeyframes },
+            pose: {
+              timeScale: 1.4,
+              startPoseFrame: Number((accumulatedPoseClock % 24).toFixed(4))
+            },
+            morphKeyframes: {},
+            morphBindings: []
+          });
+          continue;
+        }
+
+        // Character entity track (biped_runner)
         const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);
         const facing = rig.facingDirection ?? 'right';
 
@@ -78,7 +178,7 @@ export function solveChoreography(
         const keyframes: EntityTrackKeyframe[] = [
           {
             frame: startFrame,
-            position: [Number(startX.toFixed(2)), 75, -60],
+            position: [Number(startX.toFixed(2)), 75, 0],
             rotationZDegrees: 0,
             scale: [1, 1],
             opacity: 1,
@@ -86,7 +186,7 @@ export function solveChoreography(
           },
           {
             frame: lastFrame,
-            position: [Number(endX.toFixed(2)), 75, -60],
+            position: [Number(endX.toFixed(2)), 75, 0],
             rotationZDegrees: 0,
             scale: [1, 1],
             opacity: 1,
@@ -134,13 +234,20 @@ export function solveChoreography(
           }
         }
 
+        const clipId = resolveClipIdForSection(
+          shot.actNumber === 1 ? 'INTRO' : shot.actNumber === 3 ? 'SOLO' : 'VERSE',
+          undefined,
+          sectionSpec?.narrativeIntent
+        );
+
         tracks.push({
           shotId: shot.id,
           rigId,
           transform: { keyframes },
           pose: {
             timeScale,
-            startPoseFrame
+            startPoseFrame,
+            clipId
           },
           morphKeyframes,
           morphBindings

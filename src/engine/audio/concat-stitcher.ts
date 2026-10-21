@@ -11,6 +11,8 @@ export interface ConcatStitcherOptions {
   outputPath: string;
   /** Optional master audio file (FLAC, WAV, MP3) to mux as a continuous soundtrack. */
   masterAudioPath?: string;
+  /** Optional audio start offset in seconds for slicing (default: 0). */
+  audioStartSeconds?: number;
   /** Audio bitrate in kbps when encoding master audio to AAC (default: 256). */
   audioBitrateKbps?: number;
   /** Expected total frame count across all chunks for post-stitch verification. */
@@ -108,6 +110,9 @@ export async function stitchChunksWithMasterAudio(
     const resolvedAudio = resolveCrossPlatformPath(masterAudioPath);
     if (!fs.existsSync(resolvedAudio)) {
       throw new Error(`Master audio file not found: ${resolvedAudio}`);
+    }
+    if (options.audioStartSeconds && options.audioStartSeconds > 0) {
+      ffmpegArgs.push('-ss', options.audioStartSeconds.toFixed(3));
     }
     ffmpegArgs.push(
       '-i',

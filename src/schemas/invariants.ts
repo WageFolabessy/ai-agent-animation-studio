@@ -2,7 +2,12 @@ import type { AudioAnalysisManifest } from './audio.contract.js';
 import type { DirectorStoryboardContract } from './storyboard.contract.js';
 import type { RenderConfig } from '../config/render-config.js';
 import type { AssetRigContract, RigPart } from './rig.contract.js';
-import type { ChoreographyContract } from './choreography.contract.js';
+import type { ChoreographyContract, EntityTrack } from './choreography.contract.js';
+import type { Vec3 } from './primitives.schema.js';
+import { computeCameraBasis, worldToCameraSpace } from '../engine/camera/camera-3d.js';
+import { projectCameraPointToScreen } from '../engine/camera/clipping.js';
+import { ShotSequencer } from '../engine/director/shot-sequencer.js';
+import { lerpVec3 } from '../engine/math/easing.js';
 
 function computePartPivotDistance(part: RigPart): number {
   const [ox, oy] = part.localOffset2D;
@@ -832,7 +837,8 @@ export function validateProjectContracts(
 export function validateChoreography(
   choreography: ChoreographyContract,
   storyboard: DirectorStoryboardContract,
-  rigs: Map<string, AssetRigContract>
+  rigs: Map<string, AssetRigContract>,
+  options?: { validateFraming?: boolean }
 ): ValidationReport {
   const errors: ValidationErrorItem[] = [];
 
@@ -979,6 +985,134 @@ export function validateChoreography(
             path: `choreography.tracks[${t}].morphBindings[${b}].target`,
             severity: 'error',
             message: `Morph binding target "${binding.target}" does not exist in rig "${rig.id}" morphTopology.`
+          });
+        }
+      }
+    }
+  }
+
+  if (options?.validateFraming) {
+    const framingReport = validateSafeFraming(storyboard, choreography, rigs);
+    errors.push(...framingReport.errors);
+  }
+
+  return {
+    isValid: errors.filter((e) => e.severity === 'fatal' || e.severity === 'error').length === 0,
+    errors
+  };
+}
+
+/**
+ * Validates camera framing invariants across all shots:
+ * 1. CAMERA_DISTANCE_TOO_CLOSE: camera-space distance zc >= 135 units.
+ * 2. CHARACTER_OUTSIDE_SAFE_FRAMING: character center screen X in [384, 1536] (0.20*W <= x <= 0.80*W).
+ * 3. CHARACTER_HEAD_DECAPITATED: character head screen Y in [194, 594] in CLOSE_UP and MEDIUM shots.
+ */
+export function validateSafeFraming(
+  storyboard: DirectorStoryboardContract,
+  choreography: ChoreographyContract,
+  rigs: Map<string, AssetRigContract>,
+  width = 1920,
+  height = 1080
+): ValidationReport {
+  const errors: ValidationErrorItem[] = [];
+
+  let characterRigId: string | undefined;
+  for (const [id, rig] of rigs.entries()) {
+    if (rig.type === 'character') {
+      characterRigId = id;
+      break;
+    }
+  }
+
+  if (!characterRigId && storyboard.shots.length > 0) {
+    characterRigId = storyboard.shots[0].activeRigIds.find((id) => rigs.get(id)?.type === 'character') ?? storyboard.shots[0].activeRigIds[0];
+  }
+
+  const trackMap = new Map<string, EntityTrack>();
+  for (const track of choreography.tracks) {
+    trackMap.set(`${track.shotId}:${track.rigId}`, track);
+  }
+
+  const sequencer = new ShotSequencer(storyboard);
+
+  for (let sIdx = 0; sIdx < storyboard.shots.length; sIdx++) {
+    const shot = storyboard.shots[sIdx];
+    const track = characterRigId ? trackMap.get(`${shot.id}:${characterRigId}`) : undefined;
+
+    const fStart = shot.frameRange.startFrameInclusive;
+    const fEnd = shot.frameRange.endFrameExclusive;
+    const sampleFrames = [
+      fStart,
+      Math.floor((fStart + fEnd) / 2),
+      Math.max(fStart, fEnd - 1)
+    ];
+
+    for (const f of sampleFrames) {
+      const progress = fEnd > fStart ? (f - fStart) / (fEnd - fStart) : 0;
+      const camera = sequencer.interpolateCamera(shot, progress);
+      const basis = computeCameraBasis(camera);
+
+      let charPos: Vec3;
+      if (track && track.transform.keyframes.length > 0) {
+        const kfs = track.transform.keyframes;
+        if (f <= kfs[0].frame || kfs.length === 1) {
+          charPos = kfs[0].position;
+        } else if (f >= kfs[kfs.length - 1].frame) {
+          charPos = kfs[kfs.length - 1].position;
+        } else {
+          let k = 0;
+          while (k < kfs.length - 1 && kfs[k + 1].frame <= f) k++;
+          const k0 = kfs[k];
+          const k1 = kfs[k + 1];
+          const u = (f - k0.frame) / (k1.frame - k0.frame);
+          charPos = lerpVec3(k0.position, k1.position, u);
+        }
+      } else {
+        charPos = [f * 0.45, 75, 0];
+      }
+
+      const pCamChar = worldToCameraSpace(charPos, camera, basis);
+      const zc = pCamChar[2];
+
+      // 1. Camera Distance: zc >= 135
+      if (zc < 135) {
+        errors.push({
+          code: 'CAMERA_DISTANCE_TOO_CLOSE',
+          path: `storyboard.shots[${sIdx}].camera`,
+          severity: 'fatal',
+          message: `Camera distance zc=${zc.toFixed(2)} < 135 in shot "${shot.id}" at frame ${f} causes scale explosion. Minimum safe distance is 135 units.`,
+          relatedIds: [shot.id]
+        });
+      }
+
+      // 2. Safe Framing Bounds: 384 <= xs <= 1536
+      const pScreenChar = projectCameraPointToScreen(pCamChar, camera, width, height);
+      if (pScreenChar.x < 384 || pScreenChar.x > 1536) {
+        if (shot.framing !== 'EXTREME_WIDE') {
+          errors.push({
+            code: 'CHARACTER_OUTSIDE_SAFE_FRAMING',
+            path: `choreography.tracks[${shot.id}:${characterRigId}].position`,
+            severity: 'error',
+            message: `Character projected screen X=${pScreenChar.x.toFixed(1)}px is outside safe framing [384, 1536] in shot "${shot.id}" at frame ${f}.`,
+            relatedIds: [shot.id]
+          });
+        }
+      }
+
+      // 3. Head Decapitation Guard: 194 <= ys_head <= 594 in CLOSE_UP and MEDIUM shots
+      const headPos: Vec3 = [charPos[0] + 3, charPos[1] + 58, charPos[2]];
+      const pCamHead = worldToCameraSpace(headPos, camera, basis);
+      const pScreenHead = projectCameraPointToScreen(pCamHead, camera, width, height);
+
+      if (shot.framing === 'CLOSE_UP' || shot.framing === 'MEDIUM') {
+        if (pScreenHead.y < 194 || pScreenHead.y > 594) {
+          errors.push({
+            code: 'CHARACTER_HEAD_DECAPITATED',
+            path: `storyboard.shots[${sIdx}].camera.target`,
+            severity: 'error',
+            message: `Character head projected screen Y=${pScreenHead.y.toFixed(1)}px is outside safe vertical range [194, 594] in shot "${shot.id}" (${shot.framing}) at frame ${f}. Camera target must aim at chest/neck/head height (~125u), not pelvis (~75u).`,
+            relatedIds: [shot.id]
           });
         }
       }

@@ -8,10 +8,108 @@ import type {
   StoryboardAct,
   CameraFraming,
   CameraMovement,
+  CameraViewpoint,
+  CameraEasing,
   EnvironmentZoneType
 } from '../../schemas/storyboard.contract.js';
+import type { Vec3 } from '../../schemas/primitives.schema.js';
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
 import { THEME_PALETTES } from '../library/environment-kit.js';
+
+export interface CinematicAngleFormula {
+  readonly name: string;
+  readonly framing: CameraFraming;
+  readonly movement: CameraMovement;
+  readonly viewpoint: CameraViewpoint;
+  readonly fov: number;
+  readonly rollDegrees: number;
+  readonly camOffsetStart: Vec3;
+  readonly camOffsetEnd: Vec3;
+  readonly targetOffsetStart: Vec3;
+  readonly targetOffsetEnd: Vec3;
+  readonly easing: CameraEasing;
+}
+
+export const CINEMATIC_ANGLES: readonly CinematicAngleFormula[] = [
+  {
+    name: 'ESTABLISHING_PANORAMA',
+    framing: 'EXTREME_WIDE',
+    movement: 'CRANE',
+    viewpoint: 'HIGH_ANGLE',
+    fov: 60,
+    rollDegrees: 0,
+    camOffsetStart: [60, 160, 750],
+    camOffsetEnd: [60, 100, 650],
+    targetOffsetStart: [60, 50, 0],
+    targetOffsetEnd: [60, 50, 0],
+    easing: 'easeInOutCubic'
+  },
+  {
+    name: 'LOW_ANGLE_HERO',
+    framing: 'MEDIUM',
+    movement: 'TRACKING',
+    viewpoint: 'LOW_ANGLE',
+    fov: 48,
+    rollDegrees: 0,
+    camOffsetStart: [25, -20, 240],
+    camOffsetEnd: [25, -20, 240],
+    targetOffsetStart: [25, 50, 0],
+    targetOffsetEnd: [25, 50, 0],
+    easing: 'linear'
+  },
+  {
+    name: 'PURSUIT_OVER_SHOULDER',
+    framing: 'WIDE',
+    movement: 'DOLLY',
+    viewpoint: 'OVER_THE_SHOULDER',
+    fov: 52,
+    rollDegrees: 3,
+    camOffsetStart: [-110, 140, 340],
+    camOffsetEnd: [-70, 110, 300],
+    targetOffsetStart: [30, 75, 0],
+    targetOffsetEnd: [30, 75, 0],
+    easing: 'easeInOutSine'
+  },
+  {
+    name: 'ORBIT_CLIMAX',
+    framing: 'WIDE',
+    movement: 'ORBIT',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 50,
+    rollDegrees: 0,
+    camOffsetStart: [83, 120, 309],
+    camOffsetEnd: [309, 120, 83],
+    targetOffsetStart: [0, 50, 0],
+    targetOffsetEnd: [0, 50, 0],
+    easing: 'easeInOutCubic'
+  },
+  {
+    name: 'FACE_SCREAM_CLOSEUP',
+    framing: 'CLOSE_UP',
+    movement: 'TRACKING',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 34,
+    rollDegrees: -6,
+    camOffsetStart: [12, 52, 155],
+    camOffsetEnd: [12, 52, 155],
+    targetOffsetStart: [12, 52, 0],
+    targetOffsetEnd: [12, 52, 0],
+    easing: 'linear'
+  },
+  {
+    name: 'DYNAMIC_PROFILE_SPRINT',
+    framing: 'MEDIUM',
+    movement: 'DOLLY',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 45,
+    rollDegrees: 0,
+    camOffsetStart: [15, 30, 310],
+    camOffsetEnd: [35, 30, 260],
+    targetOffsetStart: [25, 30, 0],
+    targetOffsetEnd: [25, 30, 0],
+    easing: 'easeInOutSine'
+  }
+];
 
 export interface SnappedBoundariesResult {
   readonly snappedFrames: readonly number[];
@@ -147,10 +245,44 @@ export function compileStorySpecToStoryboard(
       const midFrame = (fStart + fEnd) / 2;
       const actNumber: 1 | 2 | 3 = midFrame < act1Boundary ? 1 : midFrame < act2Boundary ? 2 : 3;
 
-      // Vary camera framing: alternating wide -> medium -> close-up
-      const framings: CameraFraming[] = ['WIDE', 'MEDIUM', 'CLOSE_UP'];
-      const framing = framings[shotIndex % framings.length];
-      const movement: CameraMovement = framing === 'WIDE' ? 'TRACKING' : framing === 'MEDIUM' ? 'DOLLY' : 'STATIC';
+      // 6-Angle cinematic state machine
+      const angle = CINEMATIC_ANGLES[shotIndex % CINEMATIC_ANGLES.length];
+      const framing = angle.framing;
+      const movement = angle.movement;
+      const viewpoint = angle.viewpoint;
+      const cameraFov = angle.fov;
+
+      // Character horizontal progress: 0.45 units per frame, root baseline Y = 75, Z = 0
+      const charStartX = fStart * 0.45;
+      const charEndX = fEnd * 0.45;
+      const charBaseY = 75;
+
+      const camStartPos: Vec3 = [
+        Number((charStartX + angle.camOffsetStart[0]).toFixed(2)),
+        Number((charBaseY + angle.camOffsetStart[1]).toFixed(2)),
+        Number(angle.camOffsetStart[2].toFixed(2))
+      ];
+      const camStartTarget: Vec3 = [
+        Number((charStartX + angle.targetOffsetStart[0]).toFixed(2)),
+        Number((charBaseY + angle.targetOffsetStart[1]).toFixed(2)),
+        Number(angle.targetOffsetStart[2].toFixed(2))
+      ];
+
+      const camEndPos: Vec3 = [
+        Number((charEndX + angle.camOffsetEnd[0]).toFixed(2)),
+        Number((charBaseY + angle.camOffsetEnd[1]).toFixed(2)),
+        Number(angle.camOffsetEnd[2].toFixed(2))
+      ];
+      const camEndTarget: Vec3 = [
+        Number((charEndX + angle.targetOffsetEnd[0]).toFixed(2)),
+        Number((charBaseY + angle.targetOffsetEnd[1]).toFixed(2)),
+        Number(angle.targetOffsetEnd[2].toFixed(2))
+      ];
+
+      // Exclude foreground parallax rigs on CLOSE_UP shots (Gap 2)
+      const activeRigIds = framing === 'CLOSE_UP'
+        ? castRigIds.filter((id) => !id.includes('foreground') && !id.includes('fg_'))
+        : castRigIds;
 
       const palette = THEME_PALETTES[secSpec.colorThemeId] ?? THEME_PALETTES.CYBERPUNK_CYAN;
 
@@ -162,9 +294,6 @@ export function compileStorySpecToStoryboard(
       };
       const environmentZone = zoneMap[secSpec.environmentKitId] ?? 'ROOFTOP';
 
-      const cameraZ = framing === 'CLOSE_UP' ? -65 : framing === 'MEDIUM' ? -75 : -85;
-      const cameraFov = framing === 'CLOSE_UP' ? 36 : framing === 'MEDIUM' ? 45 : 55;
-
       const shot: CinematicShot = {
         id: `shot_${shotIndex.toString().padStart(2, '0')}`,
         shotIndex,
@@ -172,31 +301,31 @@ export function compileStorySpecToStoryboard(
         frameRange: { startFrameInclusive: fStart, endFrameExclusive: fEnd },
         framing,
         movement,
-        viewpoint: 'OBJECTIVE_THIRD_PERSON',
+        viewpoint,
         cameraStart: {
-          position: [fStart * 0.5, 75, cameraZ],
-          target: [fStart * 0.5 + 40, 75, 0],
+          position: camStartPos,
+          target: camStartTarget,
           up: [0, 1, 0],
           nearPlane: 0.1,
           farPlane: 2000,
-          rollDegrees: 0,
+          rollDegrees: angle.rollDegrees,
           verticalFovDegrees: cameraFov,
           projectionMode: 'perspective'
         },
         cameraEnd: {
-          position: [movement === 'STATIC' ? fStart * 0.5 : fEnd * 0.5, 75, cameraZ],
-          target: [movement === 'STATIC' ? fStart * 0.5 + 40 : fEnd * 0.5 + 40, 75, 0],
+          position: camEndPos,
+          target: camEndTarget,
           up: [0, 1, 0],
           nearPlane: 0.1,
           farPlane: 2000,
-          rollDegrees: 0,
+          rollDegrees: angle.rollDegrees,
           verticalFovDegrees: cameraFov,
           projectionMode: 'perspective'
         },
-        cameraEasing: 'easeInOutCubic',
+        cameraEasing: angle.easing,
         palette,
-        narrativeAction: `${secSpec.narrativeIntent} (${framing})`,
-        activeRigIds: castRigIds,
+        narrativeAction: `${secSpec.narrativeIntent} (${angle.name})`,
+        activeRigIds: activeRigIds.length > 0 ? activeRigIds : castRigIds,
         environmentZone
       };
 

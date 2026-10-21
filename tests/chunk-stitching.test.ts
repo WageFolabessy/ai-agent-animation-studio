@@ -48,6 +48,20 @@ test('Chunking: partitionSongIntoChunks segments frame ranges contiguously witho
   assert.equal(last.frameCount, 98);
 });
 
+test('Chunking: partitionSongIntoChunks supports non-zero startFrame for timeline slicing', () => {
+  const chunksDir = '/tmp/fake-chunks';
+  const totalFrames = 300;
+  const chunkFrames = 1500;
+  const startFrame = 1440;
+
+  const chunks = partitionSongIntoChunks(totalFrames, chunkFrames, chunksDir, startFrame);
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0].chunkIndex, 0);
+  assert.equal(chunks[0].startFrame, 1440);
+  assert.equal(chunks[0].endFrame, 1740);
+  assert.equal(chunks[0].frameCount, 300);
+});
+
 test('Chunking: buildConcatDemuxerContent formats valid ffmpeg concat demuxer script', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aaas-concat-syntax-'));
   try {

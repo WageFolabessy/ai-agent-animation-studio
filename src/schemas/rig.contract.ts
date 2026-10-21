@@ -207,6 +207,7 @@ export const AssetRigContractSchema = z.object({
   emitter: ParticleEmitterSchema.optional(),
   secondaryMotion: z.array(SecondaryMotionSchema).default([]),
   poseInterpolation: PoseInterpolationContractSchema.optional(),
+  poseClips: z.record(z.string(), PoseInterpolationContractSchema).optional(),
   morphTopology: z.object({
     baseSegments: z.array(NormalizedCubicBezierSegmentSchema).min(1),
     targets: z.array(NormalizedMorphTargetSchema)

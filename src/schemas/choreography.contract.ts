@@ -45,7 +45,8 @@ export const EntityTrackSchema = z.object({
   }).strict(),
   pose: z.object({
     timeScale: z.number().finite().min(0).default(1),
-    startPoseFrame: z.number().finite().min(0).default(0)
+    startPoseFrame: z.number().finite().min(0).default(0),
+    clipId: z.string().optional()
   }).strict().optional(),
   morphKeyframes: z.record(z.string(), z.array(MorphKeyframeItemSchema)).optional().default({}),
   morphBindings: z.array(MorphBindingSchema).optional().default([])

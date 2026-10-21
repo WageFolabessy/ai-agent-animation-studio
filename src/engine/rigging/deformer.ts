@@ -30,7 +30,8 @@ export function samplePoseTrack(
   frameIndex: number,
   shotStartFrame: number,
   timeScale = 1.0,
-  startPoseFrame = 0
+  startPoseFrame = 0,
+  clipId?: string
 ): SampledPoseResult {
   const jointAngles: Record<string, number> = {};
   const jointOffsets: Record<string, Vec2> = {};
@@ -43,7 +44,7 @@ export function samplePoseTrack(
     }
   }
 
-  const poseContract = rig.poseInterpolation;
+  const poseContract = (clipId && rig.poseClips?.[clipId]) ?? rig.poseInterpolation;
   if (!poseContract || poseContract.keyframes.length === 0) {
     return { jointAngles, jointOffsets };
   }

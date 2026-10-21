@@ -477,7 +477,9 @@ export class StudioAgentOrchestrator {
         Math.floor(startFrame / sectionDuration)
       );
       const section = storySpec.sections[secIdx];
-      return EnvironmentKit.build({ section, shotId, centerX });
+      const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
+      const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
+      return EnvironmentKit.build({ section, shotId, centerX, framing: shot?.framing, xMin, xMax });
     };
 
     // 4. Invariant Validations
@@ -501,6 +503,7 @@ export class StudioAgentOrchestrator {
       storyboard,
       rigs,
       choreography,
+      storySpec,
       getEnvironmentForShot,
       projectValidation,
       choreographyValidation,

@@ -36,7 +36,8 @@ export interface CheckpointManifest {
 export function partitionSongIntoChunks(
   totalFrames: number,
   chunkFrames: number,
-  chunksDir: string
+  chunksDir: string,
+  startFrame = 0
 ): ChunkDescriptor[] {
   if (totalFrames <= 0) {
     throw new Error(`totalFrames must be positive, got ${totalFrames}`);
@@ -47,11 +48,12 @@ export function partitionSongIntoChunks(
 
   const resolvedDir = path.resolve(chunksDir);
   const chunks: ChunkDescriptor[] = [];
-  let currentStart = 0;
+  let currentStart = startFrame;
   let chunkIndex = 0;
+  const targetEnd = startFrame + totalFrames;
 
-  while (currentStart < totalFrames) {
-    const endFrame = Math.min(totalFrames, currentStart + chunkFrames);
+  while (currentStart < targetEnd) {
+    const endFrame = Math.min(targetEnd, currentStart + chunkFrames);
     const frameCount = endFrame - currentStart;
     const filename = `chunk_${String(chunkIndex).padStart(3, '0')}.mp4`;
     chunks.push({
@@ -123,6 +125,7 @@ export interface CheckpointManagerOptions {
   chunkFrames: number;
   chunksDir: string;
   autoCleanCorrupted?: boolean;
+  startFrame?: number;
 }
 
 /**
@@ -132,6 +135,7 @@ export class CheckpointManager {
   public readonly totalFrames: number;
   public readonly chunkFrames: number;
   public readonly chunksDir: string;
+  public readonly startFrame: number;
   private readonly autoCleanCorrupted: boolean;
   public readonly descriptors: ChunkDescriptor[];
 
@@ -139,8 +143,14 @@ export class CheckpointManager {
     this.totalFrames = options.totalFrames;
     this.chunkFrames = options.chunkFrames;
     this.chunksDir = path.resolve(options.chunksDir);
+    this.startFrame = options.startFrame ?? 0;
     this.autoCleanCorrupted = options.autoCleanCorrupted ?? true;
-    this.descriptors = partitionSongIntoChunks(this.totalFrames, this.chunkFrames, this.chunksDir);
+    this.descriptors = partitionSongIntoChunks(
+      this.totalFrames,
+      this.chunkFrames,
+      this.chunksDir,
+      this.startFrame
+    );
   }
 
   /**

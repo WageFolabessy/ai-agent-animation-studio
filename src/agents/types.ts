@@ -161,6 +161,7 @@ export interface OrchestrationResult {
   readonly storyboard: DirectorStoryboardContract;
   readonly rigs: Map<string, AssetRigContract>;
   readonly choreography: ChoreographyContract;
+  readonly storySpec?: any;
   readonly getEnvironmentForShot: (shotId: string) => SceneEnvironment;
   readonly projectValidation: ValidationReport;
   readonly choreographyValidation: ValidationReport;
