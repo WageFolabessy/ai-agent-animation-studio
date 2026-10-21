@@ -21,6 +21,11 @@ export const CameraEasingEnum = z.enum([
 ]);
 export type CameraEasing = z.infer<typeof CameraEasingEnum>;
 
+export const EnvironmentZoneTypeEnum = z.enum([
+  'ROOFTOP', 'HIGHWAY', 'BRIDGE', 'REACTOR'
+]);
+export type EnvironmentZoneType = z.infer<typeof EnvironmentZoneTypeEnum>;
+
 export const ColorLightingPaletteSchema = z.object({
   background: HexColorSchema,
   primary: HexColorSchema,
@@ -50,7 +55,8 @@ export const CinematicShotSchema = z.object({
   }).strict().optional(),
   palette: ColorLightingPaletteSchema,
   narrativeAction: z.string().min(1),
-  activeRigIds: z.array(z.string().min(1)).min(1)
+  activeRigIds: z.array(z.string().min(1)).min(1),
+  environmentZone: EnvironmentZoneTypeEnum.optional()
 }).strict().refine(
   (shot) => shot.cameraStart.projectionMode === shot.cameraEnd.projectionMode,
   { message: 'Camera projectionMode must match between start and end' }

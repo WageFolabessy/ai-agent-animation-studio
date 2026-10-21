@@ -9,6 +9,7 @@ import {
   formatContractJsonSchema,
   formatRepairFeedbackPrompt
 } from './director-agent.js';
+import { computeRunnerTrajectoryX } from '../engine/director/macro-planner.js';
 
 export const CHOREOGRAPHY_JSON_SCHEMA = formatContractJsonSchema(ChoreographyContractSchema);
 
@@ -44,8 +45,14 @@ export function buildDeterministicChoreography(
     const shotDurationFrames = Math.max(1, shot.frameRange.endFrameExclusive - startFrame);
     const midFrame = Math.floor((startFrame + lastFrame) / 2);
 
-    const startX = runnerWaypointsX[Math.min(i, runnerWaypointsX.length - 2)];
-    const endX = runnerWaypointsX[Math.min(i + 1, runnerWaypointsX.length - 1)];
+    const startX =
+      shots.length <= 4
+        ? runnerWaypointsX[Math.min(i, runnerWaypointsX.length - 2)]
+        : computeRunnerTrajectoryX(startFrame, 30);
+    const endX =
+      shots.length <= 4
+        ? runnerWaypointsX[Math.min(i + 1, runnerWaypointsX.length - 1)]
+        : computeRunnerTrajectoryX(lastFrame, 30);
     const frameSpan = Math.max(1, lastFrame - startFrame);
     const speedPerFrame = (endX - startX) / frameSpan;
     // Base stride speed is ~2.44 world units/frame at timeScale 1.15
@@ -59,6 +66,7 @@ export function buildDeterministicChoreography(
 
     for (const rigId of shot.activeRigIds) {
       if (rigId === CANONICAL_RIG_IDS.SKYLINE) {
+        const skylineX = shots.length <= 4 ? 0 : startX;
         tracks.push({
           shotId: shot.id,
           rigId,
@@ -66,7 +74,7 @@ export function buildDeterministicChoreography(
             keyframes: [
               {
                 frame: startFrame,
-                position: [0, 200, -900],
+                position: [skylineX, 200, -900],
                 rotationZDegrees: 0,
                 scale: [1, 1],
                 opacity: 1,
@@ -78,6 +86,7 @@ export function buildDeterministicChoreography(
           morphBindings: []
         });
       } else if (rigId === CANONICAL_RIG_IDS.FACTORIES) {
+        const factoryX = shots.length <= 4 ? 0 : startX + 50;
         tracks.push({
           shotId: shot.id,
           rigId,
@@ -85,7 +94,7 @@ export function buildDeterministicChoreography(
             keyframes: [
               {
                 frame: startFrame,
-                position: [0, 150, -400],
+                position: [factoryX, 150, -400],
                 rotationZDegrees: 0,
                 scale: [1, 1],
                 opacity: 1,
@@ -97,6 +106,7 @@ export function buildDeterministicChoreography(
           morphBindings: []
         });
       } else if (rigId === CANONICAL_RIG_IDS.SMOKE_CHIMNEY) {
+        const chimneyX = shots.length <= 4 ? -150 : startX - 80;
         tracks.push({
           shotId: shot.id,
           rigId,
@@ -104,7 +114,7 @@ export function buildDeterministicChoreography(
             keyframes: [
               {
                 frame: startFrame,
-                position: [-150, 220, -380],
+                position: [chimneyX, 220, -380],
                 rotationZDegrees: 0,
                 scale: [1, 1],
                 opacity: 1,
@@ -116,66 +126,96 @@ export function buildDeterministicChoreography(
           morphBindings: []
         });
       } else if (rigId === CANONICAL_RIG_IDS.FG_PIPES) {
-        const pipeKeyframes =
-          i === 0
-            ? [
-                {
-                  frame: startFrame,
-                  position: [0, 0, 140] as [number, number, number],
-                  rotationZDegrees: 0,
-                  scale: [1, 1] as [number, number],
-                  opacity: 0.92,
-                  easing: 'linear' as const
-                }
-              ]
-            : i === 1 && lastFrame > startFrame
+        let pipeKeyframes =
+          shots.length <= 4
+            ? i === 0
               ? [
                   {
                     frame: startFrame,
-                    position: [130, 0, 140] as [number, number, number],
+                    position: [0, 0, 140] as [number, number, number],
                     rotationZDegrees: 0,
                     scale: [1, 1] as [number, number],
                     opacity: 0.92,
                     easing: 'linear' as const
+                  }
+                ]
+              : i === 1 && lastFrame > startFrame
+                ? [
+                    {
+                      frame: startFrame,
+                      position: [130, 0, 140] as [number, number, number],
+                      rotationZDegrees: 0,
+                      scale: [1, 1] as [number, number],
+                      opacity: 0.92,
+                      easing: 'linear' as const
+                    },
+                    {
+                      frame: lastFrame,
+                      position: [60, 0, 140] as [number, number, number],
+                      rotationZDegrees: 0,
+                      scale: [1, 1] as [number, number],
+                      opacity: 0.85,
+                      easing: 'linear' as const
+                    }
+                  ]
+                : lastFrame > startFrame
+                  ? [
+                      {
+                        frame: startFrame,
+                        position: [60, 0, 140] as [number, number, number],
+                        rotationZDegrees: 0,
+                        scale: [1, 1] as [number, number],
+                        opacity: 0.85,
+                        easing: 'easeOutQuad' as const
+                      },
+                      {
+                        frame: lastFrame,
+                        position: [-260, 0, 140] as [number, number, number],
+                        rotationZDegrees: 0,
+                        scale: [1, 1] as [number, number],
+                        opacity: 0,
+                        easing: 'linear' as const
+                      }
+                    ]
+                  : [
+                      {
+                        frame: startFrame,
+                        position: [-260, 0, 140] as [number, number, number],
+                        rotationZDegrees: 0,
+                        scale: [1, 1] as [number, number],
+                        opacity: 0,
+                        easing: 'linear' as const
+                      }
+                    ]
+            : lastFrame > startFrame
+              ? [
+                  {
+                    frame: startFrame,
+                    position: [startX + 60, 0, 140] as [number, number, number],
+                    rotationZDegrees: 0,
+                    scale: [1, 1] as [number, number],
+                    opacity: 0.85,
+                    easing: 'easeOutQuad' as const
                   },
                   {
                     frame: lastFrame,
-                    position: [60, 0, 140] as [number, number, number],
+                    position: [startX - 180, 0, 140] as [number, number, number],
+                    rotationZDegrees: 0,
+                    scale: [1, 1] as [number, number],
+                    opacity: 0,
+                    easing: 'linear' as const
+                  }
+                ]
+              : [
+                  {
+                    frame: startFrame,
+                    position: [startX, 0, 140] as [number, number, number],
                     rotationZDegrees: 0,
                     scale: [1, 1] as [number, number],
                     opacity: 0.85,
                     easing: 'linear' as const
                   }
-                ]
-              : lastFrame > startFrame
-                ? [
-                    {
-                      frame: startFrame,
-                      position: [60, 0, 140] as [number, number, number],
-                      rotationZDegrees: 0,
-                      scale: [1, 1] as [number, number],
-                      opacity: 0.85,
-                      easing: 'easeOutQuad' as const
-                    },
-                    {
-                      frame: lastFrame,
-                      position: [-260, 0, 140] as [number, number, number],
-                      rotationZDegrees: 0,
-                      scale: [1, 1] as [number, number],
-                      opacity: 0,
-                      easing: 'linear' as const
-                    }
-                  ]
-                : [
-                    {
-                      frame: startFrame,
-                      position: [-260, 0, 140] as [number, number, number],
-                      rotationZDegrees: 0,
-                      scale: [1, 1] as [number, number],
-                      opacity: 0,
-                      easing: 'linear' as const
-                    }
-                  ];
+                ];
 
         tracks.push({
           shotId: shot.id,
@@ -312,6 +352,128 @@ export function buildDeterministicChoreography(
               spring: { zeta: 0.5, omega: 18 }
             }
           ]
+        });
+      } else if (rigId === CANONICAL_RIG_IDS.PURSUIT_DRONE) {
+        // Enforcer pursuit drone hovers above and behind runner, locking searchlight
+        const droneKeyframes =
+          lastFrame > startFrame
+            ? [
+                {
+                  frame: startFrame,
+                  position: [startX - 80, 185, 20] as [number, number, number],
+                  rotationZDegrees: -4,
+                  scale: [0.9, 0.9] as [number, number],
+                  opacity: 1,
+                  easing: 'linear' as const
+                },
+                {
+                  frame: lastFrame,
+                  position: [endX - 70, 195, 20] as [number, number, number],
+                  rotationZDegrees: 4,
+                  scale: [0.9, 0.9] as [number, number],
+                  opacity: 1,
+                  easing: 'linear' as const
+                }
+              ]
+            : [
+                {
+                  frame: startFrame,
+                  position: [startX - 80, 185, 20] as [number, number, number],
+                  rotationZDegrees: -4,
+                  scale: [0.9, 0.9] as [number, number],
+                  opacity: 1,
+                  easing: 'linear' as const
+                }
+              ];
+
+        tracks.push({
+          shotId: shot.id,
+          rigId,
+          transform: {
+            keyframes: droneKeyframes
+          },
+          pose: {
+            startPoseFrame: startFrame % 30,
+            timeScale: 1.0
+          },
+          morphKeyframes: {},
+          morphBindings: []
+        });
+      } else if (rigId === CANONICAL_RIG_IDS.HIGHWAY_GANTRY) {
+        tracks.push({
+          shotId: shot.id,
+          rigId,
+          transform: {
+            keyframes: [
+              {
+                frame: startFrame,
+                position: [startX + 120, 240, -60],
+                rotationZDegrees: 0,
+                scale: [1, 1],
+                opacity: 0.95,
+                easing: 'linear'
+              }
+            ]
+          },
+          morphKeyframes: {},
+          morphBindings: []
+        });
+      } else if (rigId === CANONICAL_RIG_IDS.NEON_BILLBOARD) {
+        tracks.push({
+          shotId: shot.id,
+          rigId,
+          transform: {
+            keyframes: [
+              {
+                frame: startFrame,
+                position: [startX - 140, 200, -320],
+                rotationZDegrees: 0,
+                scale: [1, 1],
+                opacity: 0.95,
+                easing: 'linear'
+              }
+            ]
+          },
+          morphKeyframes: {},
+          morphBindings: []
+        });
+      } else if (rigId === CANONICAL_RIG_IDS.BRIDGE_PYLON) {
+        tracks.push({
+          shotId: shot.id,
+          rigId,
+          transform: {
+            keyframes: [
+              {
+                frame: startFrame,
+                position: [startX + 180, 260, -220],
+                rotationZDegrees: 0,
+                scale: [1, 1],
+                opacity: 0.95,
+                easing: 'linear'
+              }
+            ]
+          },
+          morphKeyframes: {},
+          morphBindings: []
+        });
+      } else if (rigId === CANONICAL_RIG_IDS.REACTOR_CORE) {
+        tracks.push({
+          shotId: shot.id,
+          rigId,
+          transform: {
+            keyframes: [
+              {
+                frame: startFrame,
+                position: [startX + 80, 180, -350],
+                rotationZDegrees: 0,
+                scale: [1, 1],
+                opacity: 0.95,
+                easing: 'linear'
+              }
+            ]
+          },
+          morphKeyframes: {},
+          morphBindings: []
         });
       } else {
         const rig = input.rigs.get(rigId);

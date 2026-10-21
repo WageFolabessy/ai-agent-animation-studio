@@ -780,6 +780,506 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
     svgAsset: { idNamespace: 'runner' }
   };
 
+  const pursuitDroneRig: AssetRigContract = {
+    id: CANONICAL_RIG_IDS.PURSUIT_DRONE,
+    name: 'Cybernetic Pursuit Enforcer Drone',
+    type: 'character',
+    renderMode: 'billboard',
+    baseTransform: {
+      position: [-100, 180, 20],
+      rotationZDegrees: 0,
+      scale: [1, 1]
+    },
+    skeleton: {
+      rootJointId: 'chassis_core',
+      joints: [
+        {
+          id: 'chassis_core',
+          parentId: null,
+          localOffset2D: [0, 0],
+          length: 12,
+          rotationZDegrees: 0,
+          constraintsDeg: [-45, 45]
+        },
+        {
+          id: 'left_thruster',
+          parentId: 'chassis_core',
+          localOffset2D: [-28, 6],
+          length: 14,
+          rotationZDegrees: 12,
+          constraintsDeg: [-45, 60]
+        },
+        {
+          id: 'right_thruster',
+          parentId: 'chassis_core',
+          localOffset2D: [28, 6],
+          length: 14,
+          rotationZDegrees: -12,
+          constraintsDeg: [-60, 45]
+        },
+        {
+          id: 'scanner_turret',
+          parentId: 'chassis_core',
+          localOffset2D: [0, -14],
+          length: 10,
+          rotationZDegrees: 0,
+          constraintsDeg: [-60, 60]
+        }
+      ]
+    },
+    parts: [
+      {
+        id: 'drone_hull',
+        jointId: 'chassis_core',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-24, -8],
+            [24, -8],
+            [32, 4],
+            [16, 16],
+            [-16, 16],
+            [-32, 4]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: -0.2 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0 }, width: 2 },
+          opacity: 1,
+          lit: true
+        }
+      },
+      {
+        id: 'drone_visor',
+        jointId: 'chassis_core',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-14, -4],
+            [14, -4],
+            [10, 8],
+            [-10, 8]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+          stroke: { paint: { kind: 'solid', color: '#ffffff' }, width: 1.5 },
+          opacity: 0.95,
+          lit: false
+        }
+      },
+      {
+        id: 'thruster_nacelle_left',
+        jointId: 'left_thruster',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-8, -12],
+            [4, -12],
+            [6, 14],
+            [-6, 14]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.3 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0 }, width: 1.5 },
+          opacity: 1,
+          lit: true
+        }
+      },
+      {
+        id: 'thruster_flame_left',
+        jointId: 'left_thruster',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-4, -12],
+            [2, -12],
+            [-1, -26]
+          ]
+        },
+        style: {
+          fill: { kind: 'solid', color: '#00ffff' },
+          opacity: 0.85,
+          lit: false
+        }
+      },
+      {
+        id: 'thruster_nacelle_right',
+        jointId: 'right_thruster',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-4, -12],
+            [8, -12],
+            [6, 14],
+            [-6, 14]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.3 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0 }, width: 1.5 },
+          opacity: 1,
+          lit: true
+        }
+      },
+      {
+        id: 'thruster_flame_right',
+        jointId: 'right_thruster',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-2, -12],
+            [4, -12],
+            [1, -26]
+          ]
+        },
+        style: {
+          fill: { kind: 'solid', color: '#00ffff' },
+          opacity: 0.85,
+          lit: false
+        }
+      },
+      {
+        id: 'drone_scanner',
+        jointId: 'scanner_turret',
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-6, -4],
+            [6, -4],
+            [4, 4],
+            [-4, 4]
+          ]
+        },
+        style: {
+          fill: { kind: 'solid', color: '#ffbe0b' },
+          stroke: { paint: { kind: 'solid', color: '#ffffff' }, width: 1 },
+          opacity: 1,
+          lit: false
+        }
+      }
+    ],
+    poseInterpolation: {
+      loopFrames: 30,
+      interpolationMode: 'cubic_spline',
+      keyframes: [
+        {
+          frame: 0,
+          jointTransforms: [
+            { jointId: 'chassis_core', rotationZDegrees: 2 },
+            { jointId: 'left_thruster', rotationZDegrees: 12 },
+            { jointId: 'right_thruster', rotationZDegrees: -12 },
+            { jointId: 'scanner_turret', rotationZDegrees: -10 }
+          ]
+        },
+        {
+          frame: 15,
+          jointTransforms: [
+            { jointId: 'chassis_core', rotationZDegrees: -2 },
+            { jointId: 'left_thruster', rotationZDegrees: 18 },
+            { jointId: 'right_thruster', rotationZDegrees: -18 },
+            { jointId: 'scanner_turret', rotationZDegrees: 10 }
+          ]
+        },
+        {
+          frame: 30,
+          jointTransforms: [
+            { jointId: 'chassis_core', rotationZDegrees: 2 },
+            { jointId: 'left_thruster', rotationZDegrees: 12 },
+            { jointId: 'right_thruster', rotationZDegrees: -12 },
+            { jointId: 'scanner_turret', rotationZDegrees: -10 }
+          ]
+        }
+      ]
+    },
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'drone' }
+  };
+
+  const highwayGantryRig: AssetRigContract = {
+    id: CANONICAL_RIG_IDS.HIGHWAY_GANTRY,
+    name: 'Overhead Highway Gantry & Directional Truss',
+    type: 'prop',
+    renderMode: 'planar',
+    baseTransform: {
+      position: [0, 240, -60],
+      rotationZDegrees: 0,
+      scale: [1, 1]
+    },
+    parts: [
+      {
+        id: 'gantry_beam',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [340, 26] },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.2 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0 }, width: 2 },
+          opacity: 0.95,
+          lit: true
+        }
+      },
+      {
+        id: 'gantry_sign',
+        jointId: null,
+        localOffset2D: [0, -18],
+        shape: { kind: 'rect', size: [190, 52] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: -0.4 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.2 }, width: 2 },
+          opacity: 0.95,
+          lit: false
+        }
+      },
+      {
+        id: 'hazard_chevron_strip',
+        jointId: null,
+        localOffset2D: [0, 16],
+        shape: { kind: 'rect', size: [280, 10] },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0 },
+          opacity: 0.9,
+          lit: false
+        }
+      },
+      {
+        id: 'gantry_support_left',
+        jointId: null,
+        localOffset2D: [-160, -120],
+        shape: { kind: 'rect', size: [20, 240] },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.35 },
+          opacity: 0.9,
+          lit: false
+        }
+      }
+    ],
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'gantry' }
+  };
+
+  const neonBillboardRig: AssetRigContract = {
+    id: CANONICAL_RIG_IDS.NEON_BILLBOARD,
+    name: 'Cyberpunk Holographic Billboard',
+    type: 'prop',
+    renderMode: 'planar',
+    baseTransform: {
+      position: [0, 200, -320],
+      rotationZDegrees: 0,
+      scale: [1, 1]
+    },
+    parts: [
+      {
+        id: 'billboard_frame',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [240, 140] },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.3 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0 }, width: 3 },
+          opacity: 0.95,
+          lit: true
+        }
+      },
+      {
+        id: 'billboard_screen',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [220, 120] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: -0.4 },
+          opacity: 0.9,
+          lit: false
+        }
+      },
+      {
+        id: 'billboard_glyph',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-50, -25],
+            [0, 30],
+            [50, -25],
+            [30, -25],
+            [0, 10],
+            [-30, -25]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0.3 },
+          opacity: 0.95,
+          lit: false
+        }
+      },
+      {
+        id: 'billboard_mounting_pole',
+        jointId: null,
+        localOffset2D: [0, -100],
+        shape: { kind: 'rect', size: [18, 200] },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.5 },
+          opacity: 0.85,
+          lit: false
+        }
+      }
+    ],
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'billboard' }
+  };
+
+  const bridgePylonRig: AssetRigContract = {
+    id: CANONICAL_RIG_IDS.BRIDGE_PYLON,
+    name: 'Suspension Bridge Mega Pylon Tower',
+    type: 'parallax_midground',
+    renderMode: 'planar',
+    baseTransform: {
+      position: [0, 260, -220],
+      rotationZDegrees: 0,
+      scale: [1, 1]
+    },
+    parts: [
+      {
+        id: 'pylon_left_column',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [-55, -260],
+            [-18, 260],
+            [-6, 260],
+            [-30, -260]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.3 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0 }, width: 2 },
+          opacity: 0.95,
+          lit: true
+        }
+      },
+      {
+        id: 'pylon_right_column',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: {
+          kind: 'polygon',
+          points: [
+            [30, -260],
+            [6, 260],
+            [18, 260],
+            [55, -260]
+          ]
+        },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.3 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0 }, width: 2 },
+          opacity: 0.95,
+          lit: true
+        }
+      },
+      {
+        id: 'pylon_cross_brace',
+        jointId: null,
+        localOffset2D: [0, 40],
+        shape: { kind: 'rect', size: [80, 26] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: -0.15 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0 }, width: 1.5 },
+          opacity: 0.9,
+          lit: true
+        }
+      },
+      {
+        id: 'pylon_beacon_housing',
+        jointId: null,
+        localOffset2D: [0, 270],
+        shape: { kind: 'rect', size: [32, 24] },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+          stroke: { paint: { kind: 'solid', color: '#ffffff' }, width: 1.5 },
+          opacity: 0.95,
+          lit: false
+        }
+      }
+    ],
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'bridge_pylon' }
+  };
+
+  const reactorCoreRig: AssetRigContract = {
+    id: CANONICAL_RIG_IDS.REACTOR_CORE,
+    name: 'Subterranean Reactor Power Conduit',
+    type: 'parallax_midground',
+    renderMode: 'planar',
+    baseTransform: {
+      position: [0, 180, -350],
+      rotationZDegrees: 0,
+      scale: [1, 1]
+    },
+    parts: [
+      {
+        id: 'reactor_main_cylinder',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [260, 360] },
+        style: {
+          fill: { kind: 'palette', role: 'secondary', shade: -0.4 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 2 },
+          opacity: 0.95,
+          lit: true
+        }
+      },
+      {
+        id: 'plasma_ring_upper',
+        jointId: null,
+        localOffset2D: [0, 80],
+        shape: { kind: 'rect', size: [285, 32] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: 0.1 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0 }, width: 2.5 },
+          opacity: 0.95,
+          lit: false
+        }
+      },
+      {
+        id: 'plasma_ring_lower',
+        jointId: null,
+        localOffset2D: [0, -80],
+        shape: { kind: 'rect', size: [285, 32] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: 0.1 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0 }, width: 2.5 },
+          opacity: 0.95,
+          lit: false
+        }
+      },
+      {
+        id: 'reactor_hazard_sign',
+        jointId: null,
+        localOffset2D: [0, 0],
+        shape: { kind: 'rect', size: [170, 22] },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0 },
+          opacity: 0.9,
+          lit: false
+        }
+      }
+    ],
+    secondaryMotion: [],
+    svgAsset: { idNamespace: 'reactor' }
+  };
+
   return {
     rigs: [
       skylineRig,
@@ -787,7 +1287,12 @@ export function buildDeterministicRigCatalog(): RigCatalogContract {
       foregroundPipesRig,
       chimneySmokeRig,
       runnerAuraRig,
-      runnerRig
+      runnerRig,
+      pursuitDroneRig,
+      highwayGantryRig,
+      neonBillboardRig,
+      bridgePylonRig,
+      reactorCoreRig
     ]
   };
 }

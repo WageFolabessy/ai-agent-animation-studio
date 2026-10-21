@@ -358,15 +358,30 @@ export class SceneCompositor {
           const camPt = worldToCameraSpace(worldPt, camera, basis);
           if (camPt[2] < camera.nearPlane || camPt[2] > camera.farPlane) continue;
 
+          const screenCenter = projectCameraPointToScreen(camPt, camera, this.width, this.height);
+          const r = pt.radius;
+          const particleOpacity = pt.opacity * entity.opacity;
+          if (particleOpacity <= 0.01) continue;
+
+          // Cull off-screen particles to prevent resvg zero-intersection opacity panics
+          if (
+            screenCenter.x + r < -32 ||
+            screenCenter.x - r > this.width + 32 ||
+            screenCenter.y + r < -32 ||
+            screenCenter.y - r > this.height + 32
+          ) {
+            continue;
+          }
+
           sortables.push({
             kind: 'particle',
             depthKey: camPt[2],
             tier: 5,
             index: submitIndex++,
-            screenCenter: projectCameraPointToScreen(camPt, camera, this.width, this.height),
-            radius: pt.radius,
+            screenCenter,
+            radius: r,
             fill: frameState.palette[rig.emitter.paintRole],
-            opacity: pt.opacity * entity.opacity
+            opacity: particleOpacity
           });
         }
         continue;
@@ -466,15 +481,26 @@ export class SceneCompositor {
         }
 
         case 'particle': {
+          const screenCenter = item.screenCenter as { x: number; y: number };
+          const r = item.radius as number;
+          const op = item.opacity as number;
+          if (op <= 0.01) break;
+          if (
+            screenCenter.x + r < 0 ||
+            screenCenter.x - r > this.width ||
+            screenCenter.y + r < 0 ||
+            screenCenter.y - r > this.height
+          ) {
+            break;
+          }
           stats.drawablesCount++;
           stats.particlesCount++;
-          const screenCenter = item.screenCenter as { x: number; y: number };
           builder.addCircle(
             screenCenter.x,
             screenCenter.y,
-            item.radius as number,
+            r,
             item.fill as string,
-            item.opacity as number
+            op
           );
           break;
         }
@@ -621,28 +647,31 @@ export class SceneCompositor {
       return projectBillboardPoint(world2dP, ctx);
     };
 
-    const isOffScreen = (pts: [number, number][]): boolean => {
+    const isOffScreen = (pts: [number, number][], margin = 32): boolean => {
+      if (pts.length === 0) return true;
       let allLeft = true;
       let allRight = true;
       let allTop = true;
       let allBottom = true;
       for (const [x, y] of pts) {
-        if (x >= 0) allLeft = false;
-        if (x <= this.width) allRight = false;
-        if (y >= 0) allTop = false;
-        if (y <= this.height) allBottom = false;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return true;
+        if (x >= -margin) allLeft = false;
+        if (x <= this.width + margin) allRight = false;
+        if (y >= -margin) allTop = false;
+        if (y <= this.height + margin) allBottom = false;
       }
       return allLeft || allRight || allTop || allBottom;
     };
 
     const optionalStroke = strokeColor !== 'none' ? strokeColor : undefined;
+    const strokeMargin = Math.max(32, strokeWidth * 2);
 
     switch (part.shape.kind) {
       case 'rect': {
         const [w, h] = part.shape.size;
         const localPts = buildRoundedRectPoints(w, h, part.shape.rx, part.shape.ry);
         const pts: [number, number][] = localPts.map((pt) => transformPoint(pt));
-        if (isOffScreen(pts)) return;
+        if (isOffScreen(pts, strokeMargin)) return;
         stats.drawablesCount++;
         builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         break;
@@ -662,10 +691,10 @@ export class SceneCompositor {
           const center = transformPoint([0, 0]);
           const rScreen = rxLocal * ctx.scaleFactor * ctx.entityScale[0];
           if (
-            center[0] + rScreen < 0 ||
-            center[0] - rScreen > this.width ||
-            center[1] + rScreen < 0 ||
-            center[1] - rScreen > this.height
+            center[0] + rScreen < -strokeMargin ||
+            center[0] - rScreen > this.width + strokeMargin ||
+            center[1] + rScreen < -strokeMargin ||
+            center[1] - rScreen > this.height + strokeMargin
           ) {
             return;
           }
@@ -678,7 +707,7 @@ export class SceneCompositor {
             const angle = (i * Math.PI * 2) / steps;
             pts.push(transformPoint([rxLocal * Math.cos(angle), ryLocal * Math.sin(angle)]));
           }
-          if (isOffScreen(pts)) return;
+          if (isOffScreen(pts, strokeMargin)) return;
           stats.drawablesCount++;
           builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         }
@@ -687,18 +716,20 @@ export class SceneCompositor {
 
       case 'polygon': {
         const pts = part.shape.points.map((p) => transformPoint(p));
-        if (isOffScreen(pts)) return;
+        if (isOffScreen(pts, strokeMargin)) return;
         stats.drawablesCount++;
         builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         break;
       }
 
       case 'path': {
+        const transformedPoints: [number, number][] = [];
         const transformedCommands: PathCommand[] = part.shape.segments.flatMap((seg, idx) => {
           const p0 = transformPoint(seg.p0);
           const p1 = transformPoint(seg.p1);
           const p2 = transformPoint(seg.p2);
           const p3 = transformPoint(seg.p3);
+          transformedPoints.push(p0, p1, p2, p3);
           const cmds: PathCommand[] = [];
           if (idx === 0) {
             cmds.push({ cmd: 'M', x: p0[0], y: p0[1] });
@@ -706,6 +737,7 @@ export class SceneCompositor {
           cmds.push({ cmd: 'C', x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1], x: p3[0], y: p3[1] });
           return cmds;
         });
+        if (isOffScreen(transformedPoints, strokeMargin)) return;
         if (part.shape.closed) {
           transformedCommands.push({ cmd: 'Z' });
         }
@@ -730,11 +762,13 @@ export class SceneCompositor {
           true
         );
 
+        const transformedPoints: [number, number][] = [];
         const transformedCommands: PathCommand[] = blended.segments.flatMap((seg, idx) => {
           const p0 = transformPoint(seg.p0);
           const p1 = transformPoint(seg.p1);
           const p2 = transformPoint(seg.p2);
           const p3 = transformPoint(seg.p3);
+          transformedPoints.push(p0, p1, p2, p3);
           const cmds: PathCommand[] = [];
           if (idx === 0) {
             cmds.push({ cmd: 'M', x: p0[0], y: p0[1] });
@@ -742,6 +776,7 @@ export class SceneCompositor {
           cmds.push({ cmd: 'C', x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1], x: p3[0], y: p3[1] });
           return cmds;
         });
+        if (isOffScreen(transformedPoints, strokeMargin)) return;
         transformedCommands.push({ cmd: 'Z' });
 
         stats.drawablesCount++;

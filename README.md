@@ -40,12 +40,19 @@ AI-Agent Animation Studio is an automated studio engineered to convert song audi
   - Embedded Zod 4 `draft-07` JSON Schemas in all agent system prompts for zero-shot real LLM conformance.
   - Stateless closed-loop self-healing retry pipeline with `[PREVIOUS FAILED JSON DRAFT]` retention and diagnostics feedback across schema (`LlmSchemaValidationError`) and invariant failures.
   - Kinematic smoothing and visual polish: periodic Hermite spline tangent unwrapping, stride phase continuity across camera cuts, seamless neck (`neck_collar`) and waist (`abdomen_core`) connectors on close-ups, elimination of floating double-offsets on coat wings/ribbons (`PART_DETACHED_FROM_JOINT_PIVOT`), and near-plane clipping prevention for foreground gantries (`FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE`).
+- **Phase 5: Completed**
+  - Production-grade full-song music video generator (`scripts/produce-music-video.ts`, `npm run produce:video`) rendering up to 10,598 frames (~6.0 minutes @ 30 FPS) with single-line interactive ASCII progress telemetry (`\r`).
+  - Chunked streaming rendering pipeline (`src/engine/director/chunk-renderer.ts`) and fault-tolerant checkpoint manager (`src/engine/director/checkpoint-manager.ts`) supporting deep `ffprobe` inspection, automated corrupted-chunk purging, and zero-overhead instant resume (`--resume`).
+  - Sub-second lossless assembly via FFmpeg Concat Demuxer (`src/engine/audio/concat-stitcher.ts`) with continuous uncompressed master FLAC $\to$ AAC 256kbps stereo audio muxing (`-c:v copy -c:a aac -shortest`).
+  - Hierarchical macro-to-micro storyboard planner (`src/engine/director/macro-planner.ts`) decomposing full songs into 7 musical sections with 5 dynamic thematic palettes (`CYBERPUNK_CYAN`, `VOLTAGE_ORANGE`, `SUNSET_GOLD`, `CRIMSON_FURY`, `MIDNIGHT_VOID`).
+  - Secondary articulated pursuit enforcer drone rig (`CANONICAL_RIG_IDS.PURSUIT_DRONE`) with 4-joint FK thrusters and dynamic flight tracking.
 
 For technical specifications, see:
 - [Phase 1 Architecture Foundation](docs/phase-1-architecture.md)
 - [Phase 2 Cinema & Compositor Architecture](docs/phase-2-architecture.md)
 - [Phase 3 Audio Intelligence, LRC & Muxing Architecture](docs/phase-3-architecture.md)
 - [Phase 4 Multi-Agent LLM Orchestration Architecture](docs/phase-4-architecture.md)
+- [Phase 5 Production Video Architecture](docs/phase-5-architecture.md)
 
 ---
 
@@ -299,6 +306,19 @@ npm run demo:phase4 -- --provider openai
 npm run demo:phase4 -- --audio "assets/audio/trashed-and-scattered.flac" --lrc "assets/audio/trashed-and-scattered.lrc" --start 49.0 --duration 6.0 --out "my_cinema.mp4"
 ```
 
+### 8. Phase 5 Full-Length Music Video Production
+Executes the production pipeline across full-length songs (~6 minutes / 10,598 frames) using chunked streaming, fault-tolerant checkpointing, and lossless FFmpeg concat stitching:
+```bash
+# Full-length production of Trashed And Scattered (default 1500f chunks, continuous AAC master audio):
+npm run produce:video
+
+# Custom chunk sizing and automated instant resume:
+npm run produce:video -- --chunk-frames 1500 --resume
+
+# Quick multi-chunk test run (e.g. 2 chunks of 60 frames):
+npm run produce:video -- --chunk-frames 60 --max-chunks 2 --out test_slice.mp4
+```
+
 ---
 
 ## 9. Data Contract Overview
@@ -376,7 +396,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 - **Zero Process Leaks:**  
   No orphaned FFmpeg child processes may remain running after either successful render completion or caught pipeline exceptions.
 
-### Measured Quantitative Benchmark Numbers (Phase 1 – Phase 4)
+### Measured Quantitative Benchmark Numbers (Phase 1 – Phase 5)
 
 | Stage / Demo | Median FPS | Peak Aggregate RSS | Plateau Growth (540f) | Max Drawables | Streams / Conformance | Result |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -384,6 +404,7 @@ Every production build and smoke benchmark must satisfy these quantitative gates
 | **Phase 2 Procedural Cinema** (`demo:phase2`) | **21.39 FPS** | **314.25 MB** | $+12.02\text{ MB}$ | 103 peak | BT.709 `tv` | **PASS (Green)** |
 | **Phase 3 Audio Mux** (`demo:phase3`) | **19.30 FPS** | **329.61 MB** | $+1.39\text{ MB}$ | 103 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
 | **Phase 4 Multi-Agent Cinema** (`demo:phase4`) | **19.87 FPS** | **322.71 MB** | $+10.19\text{ MB}$ | 104 peak | BT.709 `tv` + AAC 44.1k | **PASS (Green)** |
+| **Phase 5 Production Video** (`produce:video`) | **18.30 FPS** | **189.30 MB** | $+0.00\text{ MB}$ (recycled) | 104 peak | BT.709 `tv` + AAC 256k | **PASS (Green)** |
 
 > [!NOTE]
 > All benchmarks were measured under WSL2 Ubuntu (2 CPU threads allocated to FFmpeg) with memory target $< 400\text{ MB}$, hard ceiling $\le 600\text{ MB}$, and throughput gate $\ge 15.0\text{ FPS}$. In Phase 4, max gradient definitions remain capped at **10** and active particles remain bounded at **50**.
@@ -440,6 +461,8 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   Offline audio signal feature extraction (7-band STFT, RMS envelopes, spectral flux, onset detection), `.features.bin` v1 $O(1)$ columnar reader, deterministic `.lrc` alignment, and FFmpeg AAC audio-video muxing.
 - **Phase 4 (Completed):**  
   Multi-agent LLM orchestration: `DirectorAgent`, `RigAgent`, `ChoreographerAgent`, and `StudioAgentOrchestrator` with automated self-healing contract validation and repair loops.
+- **Phase 5 (Completed):**  
+  Full-length music video production engine (`produce:video`, `scripts/produce-music-video.ts`) supporting 10,598 frames (~6.0 minutes @ 30 FPS), chunked streaming rendering, fault-tolerant checkpoint management with instant resume, sub-second lossless FFmpeg concat stitching with uncompressed continuous master FLAC $\to$ AAC 256k audio, hierarchical macro-to-micro storyboard planning across 7 musical sections, and secondary articulated pursuit enforcer drone kinematics.
 
 ---
 

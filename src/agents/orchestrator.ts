@@ -10,6 +10,7 @@ import {
 import type { DirectorStoryboardContract } from '../schemas/storyboard.contract.js';
 import type { AssetRigContract } from '../schemas/rig.contract.js';
 import type { ChoreographyContract } from '../schemas/choreography.contract.js';
+import type { SceneEnvironment } from '../engine/compositor/scene-compositor.js';
 import {
   DirectorAgent,
   getOrchestratedEnvironment
@@ -315,11 +316,22 @@ export class StudioAgentOrchestrator {
       throw new OrchestrationValidationError('choreographer', choreoRepairErrors, attempts);
     }
 
+    const shotMap = new Map(storyboard.shots.map((s) => [s.id, s]));
+    const getEnvironmentForShot = (shotId: string): SceneEnvironment => {
+      const shot = shotMap.get(shotId);
+      const centerX = shot
+        ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
+        : 0;
+      const zone = shot?.environmentZone ?? 'ROOFTOP';
+      const palette = shot?.palette;
+      return getOrchestratedEnvironment(shotId, centerX, zone, palette);
+    };
+
     return {
       storyboard,
       rigs,
       choreography,
-      getEnvironmentForShot: getOrchestratedEnvironment,
+      getEnvironmentForShot,
       projectValidation,
       choreographyValidation,
       attempts

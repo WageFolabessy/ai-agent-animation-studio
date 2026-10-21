@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import {
   DirectorStoryboardContractSchema,
-  type DirectorStoryboardContract
+  type DirectorStoryboardContract,
+  type EnvironmentZoneType,
+  type ColorLightingPalette
 } from '../schemas/storyboard.contract.js';
 import type { AudioAnalysisManifest, AudioFrameFeature } from '../schemas/audio.contract.js';
 import type { ValidationErrorItem } from '../schemas/invariants.js';
@@ -11,6 +13,8 @@ import type {
   EnvironmentPolygon,
   EnvironmentLine
 } from '../engine/compositor/scene-compositor.js';
+import { generateFullSongStoryboard } from '../engine/director/macro-planner.js';
+import { buildDynamicEnvironment } from '../engine/director/environment-generator.js';
 
 export const CANONICAL_RIG_IDS = {
   SKYLINE: 'rig-skyline',
@@ -18,7 +22,12 @@ export const CANONICAL_RIG_IDS = {
   SMOKE_CHIMNEY: 'rig-smoke-chimney',
   RUNNER: 'rig-runner',
   RUNNER_AURA: 'rig-runner-aura',
-  FG_PIPES: 'rig-fg-pipes'
+  FG_PIPES: 'rig-fg-pipes',
+  PURSUIT_DRONE: 'rig-pursuit-drone',
+  HIGHWAY_GANTRY: 'rig-highway-gantry',
+  NEON_BILLBOARD: 'rig-neon-billboard',
+  BRIDGE_PYLON: 'rig-bridge-pylon',
+  REACTOR_CORE: 'rig-reactor-core'
 } as const;
 
 /**
@@ -158,6 +167,17 @@ export function buildDeterministicDirectorStoryboard(
   const totalFrames = audioManifest.metadata.totalFrames;
   const fps: 30 | 60 = audioManifest.metadata.fps === 60 ? 60 : 30;
   const projectId = input.projectId ?? 'phase4-agent-orchestrated-cinema';
+
+  // For full-song timelines (> 300 frames), invoke the macro song planner
+  if (totalFrames > 300) {
+    return generateFullSongStoryboard({
+      audioManifest,
+      projectId,
+      ...(input.getAudioFeatureAtFrame !== undefined
+        ? { getAudioFeatureAtFrame: input.getAudioFeatureAtFrame }
+        : {})
+    });
+  }
 
   // Divide [0, totalFrames) into 3 contiguous acts and 4 contiguous shots
   const act1End = Math.max(1, Math.floor(totalFrames * 0.25));
@@ -421,8 +441,14 @@ export function buildDeterministicDirectorStoryboard(
  * using a localized ground grid in close-up shots to keep drawable counts low while
  * preserving the horizon floor.
  */
-export function getOrchestratedEnvironment(shotId: string): SceneEnvironment {
-  if (shotId === 'shot-3') {
+export function getOrchestratedEnvironment(
+  shotId: string,
+  centerX = 0,
+  zone: EnvironmentZoneType = 'ROOFTOP',
+  palette?: ColorLightingPalette
+): SceneEnvironment {
+  // Preserve dedicated close-up environment for Phase 4 backwards compatibility
+  if (shotId === 'shot-3' && Math.abs(centerX) < 400 && zone === 'ROOFTOP') {
     return {
       polygons: [
         {
@@ -444,47 +470,23 @@ export function getOrchestratedEnvironment(shotId: string): SceneEnvironment {
     };
   }
 
-  const groundPolygon: EnvironmentPolygon = {
-    vertices: [
-      [-1200, 0, 1200],
-      [1200, 0, 1200],
-      [1200, 0, -1200],
-      [-1200, 0, -1200]
-    ],
-    fill: '#0c101d',
-    opacity: 0.95,
-    tier: 0
+  const effectivePalette: ColorLightingPalette = palette ?? {
+    background: '#090b16',
+    primary: '#00f0ff',
+    secondary: '#3a506b',
+    accent: '#ff0055',
+    ambientLightColor: '#1a243b',
+    ambientIntensity: 0.72,
+    keyLightDirection: [-0.5, -0.8, -0.3],
+    audioReactiveGain: 0.65
   };
 
-  const gridLines: EnvironmentLine[] = [];
-  const steps = [-800, -400, 0, 400, 800];
-
-  for (const z of steps) {
-    gridLines.push({
-      p0: [-1200, 0, z],
-      p1: [1200, 0, z],
-      stroke: '#1b2438',
-      strokeWidth: 1.5,
-      opacity: 0.8,
-      tier: 2
-    });
-  }
-
-  for (const x of steps) {
-    gridLines.push({
-      p0: [x, 0, -1200],
-      p1: [x, 0, 1200],
-      stroke: '#1b2438',
-      strokeWidth: 1.5,
-      opacity: 0.8,
-      tier: 2
-    });
-  }
-
-  return {
-    polygons: [groundPolygon],
-    lines: gridLines
-  };
+  return buildDynamicEnvironment({
+    shotId,
+    centerX,
+    zone,
+    palette: effectivePalette
+  });
 }
 
 /**
