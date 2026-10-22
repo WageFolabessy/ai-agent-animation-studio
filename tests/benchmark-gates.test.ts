@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { findTemporaryImageFiles } from '../src/diagnostics/artifact-hygiene.js';
 import {
@@ -151,8 +152,9 @@ test('Hygiene: Zero temporary svg or png files across entire workspace disk', ()
   assert.equal(junk.length, 0, `No .png or .svg files allowed in workspace: ${junk.join(', ')}`);
 });
 
-test('Hygiene: Detects and rejects temporary image files located in subdirectories of output', () => {
-  const subDir = 'output/test_sub_hygiene';
+test('Hygiene: Detects and rejects temporary image files located in subdirectories', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aaas-hygiene-'));
+  const subDir = path.join(tmpDir, 'test_sub_hygiene');
   const dummyFile = path.join(subDir, 'orphan_frame.png');
 
   if (!fs.existsSync(subDir)) {
@@ -161,10 +163,10 @@ test('Hygiene: Detects and rejects temporary image files located in subdirectori
   fs.writeFileSync(dummyFile, 'dummy png content');
 
   try {
-    const junk = findTemporaryImageFiles('output');
+    const junk = findTemporaryImageFiles(tmpDir);
     assert.ok(
       junk.some((f) => f.includes('orphan_frame.png')),
-      'Must detect temporary image file in output subdirectory'
+      'Must detect temporary image file in subdirectory'
     );
 
     assert.throws(
@@ -181,7 +183,6 @@ test('Hygiene: Detects and rejects temporary image files located in subdirectori
       }
     );
   } finally {
-    if (fs.existsSync(dummyFile)) fs.unlinkSync(dummyFile);
-    if (fs.existsSync(subDir)) fs.rmdirSync(subDir);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

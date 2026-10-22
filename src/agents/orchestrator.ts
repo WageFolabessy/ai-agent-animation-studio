@@ -11,12 +11,6 @@ import type { DirectorStoryboardContract } from '../schemas/storyboard.contract.
 import type { AssetRigContract } from '../schemas/rig.contract.js';
 import type { ChoreographyContract } from '../schemas/choreography.contract.js';
 import type { SceneEnvironment } from '../engine/compositor/scene-compositor.js';
-import {
-  DirectorAgent,
-  getOrchestratedEnvironment
-} from './director-agent.js';
-import { RigAgent } from './rig-agent.js';
-import { ChoreographerAgent } from './choreographer-agent.js';
 import { StorySpecAgent } from './story-spec-agent.js';
 import type { StorySpecContract, SectionStagingSpec } from '../schemas/story-spec.contract.js';
 import { compileStorySpecToStoryboard } from '../engine/director/shot-planner.js';
@@ -132,15 +126,9 @@ interface StageExecutionParams<T> {
  * automated invariant validation, self-healing repair retries, and 1-stage backtracking.
  */
 export class StudioAgentOrchestrator {
-  private readonly directorAgent: DirectorAgent;
-  private readonly rigAgent: RigAgent;
-  private readonly choreographerAgent: ChoreographerAgent;
   private readonly storySpecAgent: StorySpecAgent;
 
   constructor(provider: LlmProvider) {
-    this.directorAgent = new DirectorAgent(provider);
-    this.rigAgent = new RigAgent(provider);
-    this.choreographerAgent = new ChoreographerAgent(provider);
     this.storySpecAgent = new StorySpecAgent(provider);
   }
 
@@ -215,209 +203,11 @@ export class StudioAgentOrchestrator {
     throw new OrchestrationValidationError(params.role, repairErrors, attempts);
   }
 
+  /**
+   * Canonical studio orchestrator entrypoint defaulting to Spec-Then-Compile pipeline.
+   */
   public async orchestrate(options: OrchestrationOptions): Promise<OrchestrationResult> {
-    // If declarative spec-then-compile pipeline is requested:
-    if (options.useSpecPipeline) {
-      return this.orchestrateWithSpec(options);
-    }
-
-    const width = (options.width ?? 1920) as 1920;
-    const height = (options.height ?? 1080) as 1080;
-    const maxRetries = options.maxRetries ?? 3;
-    const maxAttempts = maxRetries + 1;
-
-    const renderConfig = createRenderConfig({
-      width,
-      height,
-      fps: options.audioManifest.metadata.fps === 60 ? 60 : 30,
-      pixelFormat: 'rgba',
-      totalFrames: options.audioManifest.metadata.totalFrames
-    });
-
-    const attempts: AgentAttemptLog[] = [];
-
-    // =========================================================================
-    // Stage 1: Director Agent
-    // =========================================================================
-    const storyboard = await this.runStage<DirectorStoryboardContract>(
-      {
-        role: 'director',
-        maxAttempts,
-        execute: (attempt, errors, draft, onComplete) =>
-          this.directorAgent.generateStoryboard({
-            ...(options.projectId !== undefined ? { projectId: options.projectId } : {}),
-            audioManifest: options.audioManifest,
-            ...(options.getAudioFeatureAtFrame !== undefined
-              ? { getAudioFeatureAtFrame: options.getAudioFeatureAtFrame }
-              : {}),
-            width,
-            height,
-            attempt,
-            repairErrors: errors,
-            previousDraft: draft,
-            onAttemptComplete: onComplete
-          }),
-        validate: (candidate) => {
-          const report = validateProjectContracts(
-            options.audioManifest,
-            candidate,
-            renderConfig,
-            new Map()
-          );
-          return report.errors.filter(
-            (e) => (e.severity === 'fatal' || e.severity === 'error') && e.code !== 'RIG_NOT_FOUND'
-          );
-        },
-        serializeDraft: (c) => JSON.stringify(c, null, 2)
-      },
-      attempts
-    );
-
-    // =========================================================================
-    // Stage 2: Rig Agent
-    // =========================================================================
-    let projectValidationReport: ValidationReport | undefined;
-    let rigs = await this.runStage<Map<string, AssetRigContract>>(
-      {
-        role: 'rig',
-        maxAttempts,
-        execute: (attempt, errors, draft, onComplete) =>
-          this.rigAgent.generateRigs({
-            storyboard,
-            audioManifest: options.audioManifest,
-            attempt,
-            repairErrors: errors,
-            previousDraft: draft,
-            onAttemptComplete: onComplete
-          }),
-        validate: (candidateRigs) => {
-          const report = validateProjectContracts(
-            options.audioManifest,
-            storyboard,
-            renderConfig,
-            candidateRigs
-          );
-          projectValidationReport = report;
-          return report.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error');
-        },
-        serializeDraft: (candidateRigs) =>
-          JSON.stringify({ rigs: Array.from(candidateRigs.values()) }, null, 2)
-      },
-      attempts
-    );
-
-    // =========================================================================
-    // Stage 3: Choreographer Agent (with 1-stage backtracking if unresolvable)
-    // =========================================================================
-    let choreographyValidationReport: ValidationReport | undefined;
-    let choreography: ChoreographyContract;
-
-    try {
-      choreography = await this.runStage<ChoreographyContract>(
-        {
-          role: 'choreographer',
-          maxAttempts,
-          execute: (attempt, errors, draft, onComplete) =>
-            this.choreographerAgent.generateChoreography({
-              storyboard,
-              rigs,
-              audioManifest: options.audioManifest,
-              attempt,
-              repairErrors: errors,
-              previousDraft: draft,
-              onAttemptComplete: onComplete
-            }),
-          validate: (candidateChoreo) => {
-            const report = validateChoreography(candidateChoreo, storyboard, rigs);
-            choreographyValidationReport = report;
-            return report.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error');
-          },
-          serializeDraft: (c) => JSON.stringify(c, null, 2)
-        },
-        attempts
-      );
-    } catch (choreoErr) {
-      if (choreoErr instanceof OrchestrationValidationError && maxAttempts > 1) {
-        // 1-Stage Backtracking: Re-run Rig stage with choreography constraint feedback
-        rigs = await this.runStage<Map<string, AssetRigContract>>(
-          {
-            role: 'rig',
-            maxAttempts: 2,
-            initialRepairErrors: [...choreoErr.errors],
-            execute: (attempt, errors, draft, onComplete) =>
-              this.rigAgent.generateRigs({
-                storyboard,
-                audioManifest: options.audioManifest,
-                attempt,
-                repairErrors: errors,
-                previousDraft: draft,
-                onAttemptComplete: onComplete
-              }),
-            validate: (candidateRigs) => {
-              const report = validateProjectContracts(
-                options.audioManifest,
-                storyboard,
-                renderConfig,
-                candidateRigs
-              );
-              projectValidationReport = report;
-              return report.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error');
-            },
-            serializeDraft: (candidateRigs) =>
-              JSON.stringify({ rigs: Array.from(candidateRigs.values()) }, null, 2)
-          },
-          attempts
-        );
-
-        // Re-attempt Stage 3 with healed rigs
-        choreography = await this.runStage<ChoreographyContract>(
-          {
-            role: 'choreographer',
-            maxAttempts: 2,
-            execute: (attempt, errors, draft, onComplete) =>
-              this.choreographerAgent.generateChoreography({
-                storyboard,
-                rigs,
-                audioManifest: options.audioManifest,
-                attempt,
-                repairErrors: errors,
-                previousDraft: draft,
-                onAttemptComplete: onComplete
-              }),
-            validate: (candidateChoreo) => {
-              const report = validateChoreography(candidateChoreo, storyboard, rigs);
-              choreographyValidationReport = report;
-              return report.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error');
-            },
-            serializeDraft: (c) => JSON.stringify(c, null, 2)
-          },
-          attempts
-        );
-      } else {
-        throw choreoErr;
-      }
-    }
-
-    const shotMap = new Map(storyboard.shots.map((s) => [s.id, s]));
-    const getEnvironmentForShot = (shotId: string): SceneEnvironment => {
-      const shot = shotMap.get(shotId);
-      const centerX = shot
-        ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
-        : 0;
-      const zone = shot?.environmentZone ?? 'ROOFTOP';
-      const palette = shot?.palette;
-      return getOrchestratedEnvironment(shotId, centerX, zone, palette);
-    };
-
-    return {
-      storyboard,
-      rigs,
-      choreography,
-      getEnvironmentForShot,
-      projectValidation: projectValidationReport ?? { isValid: true, errors: [] },
-      choreographyValidation: choreographyValidationReport ?? { isValid: true, errors: [] },
-      attempts
-    };
+    return this.orchestrateWithSpec(options);
   }
 
   /**

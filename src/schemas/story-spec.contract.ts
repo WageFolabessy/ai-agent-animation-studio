@@ -54,12 +54,34 @@ export const CastDirectiveSchema = z
   .strict();
 export type CastDirective = z.infer<typeof CastDirectiveSchema>;
 
+export const EmotionalToneSchema = z.enum([
+  'defiant',
+  'melancholic',
+  'tender',
+  'euphoric',
+  'menacing',
+  'reflective',
+  'chaotic'
+]);
+export type EmotionalTone = z.infer<typeof EmotionalToneSchema>;
+
+export const GenreProfileSchema = z.enum([
+  'rock_metal',
+  'pop_dance',
+  'ballad_acoustic',
+  'electronic_synth',
+  'neutral'
+]);
+export type GenreProfile = z.infer<typeof GenreProfileSchema>;
+
 export const SectionStagingSpecSchema = z
   .object({
     sectionId: z.string().min(1),
     startFrame: z.number().int().min(0),
     endFrame: z.number().int().positive(),
     narrativeIntent: z.string().min(1),
+    emotionalTone: EmotionalToneSchema.default('reflective'),
+    lyricMotifs: z.array(z.string()).max(5).default([]),
     environmentKitId: z.enum(['industrial_city', 'orbital_station', 'neon_chasm', 'synth_grid']),
     kitParams: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
     colorThemeId: z.enum([
@@ -83,6 +105,8 @@ export const StorySpecContractSchema = z
     projectId: z.string().min(1),
     title: z.string().min(1),
     overallMood: z.string().min(1),
+    themes: z.array(z.string()).min(1).max(8).default(['escape']),
+    genreProfile: GenreProfileSchema.default('neutral'),
     cast: z.array(CastSpecItemSchema).min(1).max(4),
     sections: z.array(SectionStagingSpecSchema).min(3).max(32)
   })

@@ -9,6 +9,10 @@ import type {
 } from '../../schemas/choreography.contract.js';
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
 import { computeLeadCharacterWorldPos } from './shot-planner.js';
+import {
+  computeClipStrideLength,
+  calculatePhysicalTimeScaleAndSpeed
+} from './trajectory-solver.js';
 
 function resolveClipIdForSection(
   sectionType?: string,
@@ -38,7 +42,10 @@ export function solveChoreography(
   const shots = storyboard.shots;
   const castMap = new Map(spec.cast.map((c) => [c.instanceId, c]));
 
-  let accumulatedPoseClock = 0;
+  // Independent per-character pose clocks and last clip tracking
+  const entityPoseClocks = new Map<string, number>();
+  const entityLastClips = new Map<string, { clipId: string; loopFrames: number }>();
+
 
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
@@ -58,7 +65,13 @@ export function solveChoreography(
 
       if (isCastMember && rig) {
         const castItem = spec.cast.find((c) => c.instanceId === rigId);
-        const archetype = castItem?.archetypeId ?? (rig.id.includes('drone') ? 'aerial_drone' : rig.id.includes('hound') || rig.id.includes('beast') ? 'quadruped_beast' : 'biped_runner');
+        const archetype =
+          castItem?.archetypeId ??
+          (rig.id.includes('drone')
+            ? 'aerial_drone'
+            : rig.id.includes('hound') || rig.id.includes('beast')
+              ? 'quadruped_beast'
+              : 'biped_runner');
 
         if (archetype === 'aerial_drone') {
           // Active Sinusoidal Dive & Swoop Pursuit Drone (Z = -40)
@@ -80,7 +93,10 @@ export function solveChoreography(
           const lastX = lastFrame * 0.45 + 110 + 10 * Math.sin(0.04 * lastFrame);
           const lastY = 175 + 45 * Math.cos(0.06 * lastFrame);
           const lastRotZ = Math.sin(0.04 * lastFrame) * 8;
-          if (droneKeyframes.length === 0 || droneKeyframes[droneKeyframes.length - 1].frame < lastFrame) {
+          if (
+            droneKeyframes.length === 0 ||
+            droneKeyframes[droneKeyframes.length - 1].frame < lastFrame
+          ) {
             droneKeyframes.push({
               frame: lastFrame,
               position: [Number(lastX.toFixed(2)), Number(lastY.toFixed(2)), -40],
@@ -124,13 +140,19 @@ export function solveChoreography(
             }
           ];
 
+          // Independent pose clock for quadruped
+          const quadLastClock = entityPoseClocks.get(rigId) ?? 0;
+          const quadStartPoseFrame = Number((((quadLastClock % 24) + 24) % 24).toFixed(4));
+          const quadTimeScale = 1.4;
+          entityPoseClocks.set(rigId, quadLastClock + duration * quadTimeScale);
+
           tracks.push({
             shotId: shot.id,
             rigId,
             transform: { keyframes: beastKeyframes },
             pose: {
-              timeScale: 1.4,
-              startPoseFrame: Number((accumulatedPoseClock % 24).toFixed(4))
+              timeScale: quadTimeScale,
+              startPoseFrame: quadStartPoseFrame
             },
             morphKeyframes: {},
             morphBindings: []
@@ -138,88 +160,10 @@ export function solveChoreography(
           continue;
         }
 
-        // Character entity track (biped_runner)
+        // Biped Humanoid Runner
         const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);
-        const facing = rig.facingDirection ?? 'right';
 
-        // Calculate positions using shared pure trajectory solver for lockstep camera tracking
-        const startPos = computeLeadCharacterWorldPos(startFrame, sectionSpec, rigId);
-        const endPos = computeLeadCharacterWorldPos(lastFrame, sectionSpec, rigId);
-
-        let startX = startPos[0];
-        let endX = endPos[0];
-
-        // Ensure anti-moonwalk alignment: +X movement for right-facing
-        if (facing === 'right' && endX <= startX) {
-          endX = startX + 0.45 * Math.max(1, lastFrame - startFrame);
-        }
-
-        const deltaX = endX - startX;
-        const speedPerFrame = deltaX / duration;
-        const timeScale = Number(Math.max(0.4, Math.min(2.5, speedPerFrame * 2.2)).toFixed(2));
-        const startPoseFrame = Number((accumulatedPoseClock % 24).toFixed(4));
-        accumulatedPoseClock += duration * timeScale;
-
-        const keyframes: EntityTrackKeyframe[] = [
-          {
-            frame: startFrame,
-            position: [Number(startX.toFixed(2)), startPos[1], startPos[2]],
-            rotationZDegrees: 0,
-            scale: [1, 1],
-            opacity: 1,
-            easing: 'linear'
-          },
-          {
-            frame: lastFrame,
-            position: [Number(endX.toFixed(2)), endPos[1], endPos[2]],
-            rotationZDegrees: 0,
-            scale: [1, 1],
-            opacity: 1,
-            easing: 'linear'
-          }
-        ];
-
-        // Morph bindings and blinks if rig has morphTopology
-        const morphBindings: MorphBinding[] = [];
-        const morphKeyframes: Record<string, MorphKeyframeItem[]> = {};
-
-        if (rig.morphTopology && rig.morphTopology.targets.length > 0) {
-          const targetNames = new Set(rig.morphTopology.targets.map((t) => t.name));
-
-          if (targetNames.has('mouthOpen')) {
-            morphBindings.push({
-              target: 'mouthOpen',
-              source: 'audio.bands.presence',
-              gain: 1.4,
-              bias: 0.05,
-              spring: { zeta: 0.7, omega: 28 }
-            });
-          }
-
-          if (targetNames.has('browRaise')) {
-            morphBindings.push({
-              target: 'browRaise',
-              source: 'audio.bands.bass',
-              gain: 0.9,
-              bias: 0.1
-            });
-          }
-
-          if (targetNames.has('blink')) {
-            // Natural periodic blink every ~50 frames
-            const blinks: MorphKeyframeItem[] = [];
-            for (let f = startFrame + 20; f < endFrame; f += 50) {
-              blinks.push(
-                { frame: f, weight: 0 },
-                { frame: f + 2, weight: 1 },
-                { frame: f + 4, weight: 0 }
-              );
-            }
-            morphKeyframes.blink = blinks;
-          }
-        }
-
-        // Resolve active motion preset from directive, falling back to section and shot nuance
+        // 1. Resolve active motion preset clip
         const canonicalBipedPresets = new Set([
           'stalk_crouch',
           'sprint_frenzy',
@@ -249,10 +193,116 @@ export function solveChoreography(
         }
 
         // Shot-framing nuance: On CLOSE_UP shots during vocal or peak sections, trigger 'defiant_scream'
-        if (shot.framing === 'CLOSE_UP' && (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') || sectionSpec?.narrativeIntent?.toLowerCase().includes('scream') || shot.actNumber >= 2)) {
+        if (
+          shot.framing === 'CLOSE_UP' &&
+          (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') ||
+            sectionSpec?.narrativeIntent?.toLowerCase().includes('scream') ||
+            shot.actNumber >= 2)
+        ) {
           clipId = 'defiant_scream';
         } else if (shot.framing === 'WIDE' && clipId === 'defiant_scream') {
           clipId = 'evade_leap';
+        }
+
+        const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;
+        const loopFrames = activeClip?.loopFrames ?? 24;
+
+        // 2. Compute Physical Stride Length & Physical Playback Speed (Anti-Moonwalk)
+        const fallbackClip = { keyframes: [], interpolationMode: 'linear' as const };
+        const strideLength = computeClipStrideLength(rig, activeClip ?? fallbackClip, clipId);
+
+        // Calculate positions from single source of truth trajectory solver
+        const startPos = computeLeadCharacterWorldPos(startFrame, sectionSpec, rigId);
+        const endPos = computeLeadCharacterWorldPos(lastFrame, sectionSpec, rigId);
+
+        const targetSpeed = Math.max(0, (endPos[0] - startPos[0]) / duration);
+        const motion = calculatePhysicalTimeScaleAndSpeed(
+          targetSpeed,
+          activeClip ?? fallbackClip,
+          strideLength,
+          clipId
+        );
+
+        const timeScale = motion.timeScale;
+
+        // 3. Independent Per-Character Pose Clock with Continuous Phase Carry-Over
+        const lastClock = entityPoseClocks.get(rigId) ?? 0;
+        const lastClipInfo = entityLastClips.get(rigId);
+        let startPoseFrame: number;
+
+        if (lastClipInfo && lastClipInfo.clipId !== clipId) {
+          // Transitioning between clips: carry over continuous normalized phase
+          // normalizedPhase = clock / currentClip.loopFrames
+          // newClock = normalizedPhase * newClip.loopFrames
+          const normalizedPhase =
+            (((lastClock % lastClipInfo.loopFrames) + lastClipInfo.loopFrames) %
+              lastClipInfo.loopFrames) /
+            lastClipInfo.loopFrames;
+          startPoseFrame = Number((normalizedPhase * loopFrames).toFixed(4));
+        } else {
+          startPoseFrame = Number((((lastClock % loopFrames) + loopFrames) % loopFrames).toFixed(4));
+        }
+
+        const nextClock = startPoseFrame + duration * timeScale;
+        entityPoseClocks.set(rigId, nextClock);
+        entityLastClips.set(rigId, { clipId, loopFrames });
+
+        const keyframes: EntityTrackKeyframe[] = [
+          {
+            frame: startFrame,
+            position: [Number(startPos[0].toFixed(2)), startPos[1], startPos[2]],
+            rotationZDegrees: 0,
+            scale: [1, 1],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: lastFrame,
+            position: [Number(endPos[0].toFixed(2)), endPos[1], endPos[2]],
+            rotationZDegrees: 0,
+            scale: [1, 1],
+            opacity: 1,
+            easing: 'linear'
+          }
+        ];
+
+        // Morph bindings and blinks
+        const morphBindings: MorphBinding[] = [];
+        const morphKeyframes: Record<string, MorphKeyframeItem[]> = {};
+
+        if (rig.morphTopology && rig.morphTopology.targets.length > 0) {
+          const targetNames = new Set(rig.morphTopology.targets.map((t) => t.name));
+
+          if (targetNames.has('mouthOpen')) {
+            morphBindings.push({
+              target: 'mouthOpen',
+              source: 'audio.bands.presence',
+              gain: 1.4,
+              bias: 0.05,
+              spring: { zeta: 0.7, omega: 28 }
+            });
+          }
+
+          if (targetNames.has('browRaise')) {
+            morphBindings.push({
+              target: 'browRaise',
+              source: 'audio.bands.bass',
+              gain: 0.9,
+              bias: 0.1
+            });
+          }
+
+          if (targetNames.has('blink')) {
+            const blinks: MorphKeyframeItem[] = [];
+            for (let f = startFrame + 20; f < endFrame; f += 50) {
+              blinks.push(
+                { frame: f, weight: 0 },
+                { frame: f + 2, weight: 1 },
+                { frame: f + 4, weight: 0 }
+              );
+            }
+            morphKeyframes.blink = blinks;
+          }
         }
 
         tracks.push({

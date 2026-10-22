@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { RenderPipeline } from '../src/renderer/pipeline.js';
 import { FfmpegStreamer } from '../src/renderer/ffmpeg-streamer.js';
@@ -8,7 +9,7 @@ import { createTestRenderConfig } from '../src/config/render-config.js';
 import { SvgBuilder } from '../src/engine/compositor/svg-builder.js';
 
 test('Pipeline Lifecycle: Aborts FFmpeg process and cleans up .part.mp4 when frameGenerator throws', async () => {
-  const outputPath = 'output/test_abort_pipeline.mp4';
+  const outputPath = path.join(os.tmpdir(), 'test_abort_pipeline.mp4');
   const resolvedOutputPath = path.resolve(outputPath);
   const resolvedPartPath = resolvedOutputPath.replace(/\.mp4$/, '.part.mp4');
 
@@ -76,7 +77,7 @@ test('Pipeline Lifecycle: Aborts FFmpeg process and cleans up .part.mp4 when fra
 });
 
 test('Pipeline Lifecycle: Atomically commits .part.mp4 to final output on success', async () => {
-  const outputPath = 'output/test_commit_success.mp4';
+  const outputPath = path.join(os.tmpdir(), 'test_commit_success.mp4');
   const resolvedOutputPath = path.resolve(outputPath);
   const resolvedPartPath = resolvedOutputPath.replace(/\.mp4$/, '.part.mp4');
 
@@ -133,7 +134,7 @@ test('Pipeline Lifecycle: FfmpegStreamer abort is idempotent and safe to call mu
 
   const streamer = new FfmpegStreamer({
     config,
-    outputPath: 'output/test_idempotent.mp4'
+    outputPath: path.join(os.tmpdir(), 'test_idempotent.mp4')
   });
 
   // Call abort before start

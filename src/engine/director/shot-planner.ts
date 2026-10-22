@@ -15,6 +15,7 @@ import type {
 import type { Vec3 } from '../../schemas/primitives.schema.js';
 import type { StorySpecContract, SectionStagingSpec } from '../../schemas/story-spec.contract.js';
 import { THEME_PALETTES } from '../library/environment-kit.js';
+import { globalTrajectorySolver } from './trajectory-solver.js';
 
 export interface CinematicAngleFormula {
   readonly name: string;
@@ -181,49 +182,7 @@ export function computeLeadCharacterWorldPos(
   section: SectionStagingSpec,
   instanceId?: string
 ): Vec3 {
-  const baseX = frame * 0.45;
-  const baseY = 75;
-  const baseZ = 0;
-
-  const directive = section.castDirectives.find(
-    (d) => !instanceId || d.instanceId === instanceId
-  ) ?? section.castDirectives[0];
-
-  if (!directive || !directive.waypoints || directive.waypoints.length === 0) {
-    return [Number(baseX.toFixed(2)), baseY, baseZ];
-  }
-
-  const secDuration = Math.max(1, section.endFrame - section.startFrame);
-  const tau = Math.max(0, Math.min(1, (frame - section.startFrame) / secDuration));
-
-  const wps = directive.waypoints;
-  let wpA = wps[0];
-  let wpB = wps[wps.length - 1];
-
-  for (let i = 0; i < wps.length - 1; i++) {
-    if (tau >= wps[i].frameProgress && tau <= wps[i + 1].frameProgress) {
-      wpA = wps[i];
-      wpB = wps[i + 1];
-      break;
-    }
-  }
-
-  const span = Math.max(1e-6, wpB.frameProgress - wpA.frameProgress);
-  const alpha = Math.max(0, Math.min(1, (tau - wpA.frameProgress) / span));
-
-  const normX = wpA.stagePosNorm[0] + (wpB.stagePosNorm[0] - wpA.stagePosNorm[0]) * alpha;
-  const normY = wpA.stagePosNorm[1] + (wpB.stagePosNorm[1] - wpA.stagePosNorm[1]) * alpha;
-  const normZ = wpA.stagePosNorm[2] + (wpB.stagePosNorm[2] - wpA.stagePosNorm[2]) * alpha;
-
-  const worldX = baseX + normX * 120;
-  const worldY = baseY + normY * 20;
-  const worldZ = baseZ + normZ * 10;
-
-  return [
-    Number(worldX.toFixed(2)),
-    Number(worldY.toFixed(2)),
-    Number(worldZ.toFixed(2))
-  ];
+  return globalTrajectorySolver.computeWorldPos(frame, section, instanceId);
 }
 
 /**
@@ -237,30 +196,10 @@ export function compileStorySpecToStoryboard(
   const { totalFrames, fps } = manifest.metadata;
   const castRigIds = spec.cast.map((c) => c.instanceId);
 
-  // 1. Determine section-aligned Act partitioning indices (25% and 75% target anchors)
+  // 1. Determine section-aligned Act partitioning indices (k1 ~ n/3, k2 ~ 2n/3)
   const sectionCount = spec.sections.length;
-  let k1 = 1;
-  let k2 = 2;
-  if (sectionCount >= 3) {
-    const t1 = totalFrames * 0.25;
-    const t2 = totalFrames * 0.75;
-    let minDiff1 = Infinity;
-    for (let i = 1; i <= sectionCount - 2; i++) {
-      const diff = Math.abs(spec.sections[i].startFrame - t1);
-      if (diff < minDiff1) {
-        minDiff1 = diff;
-        k1 = i;
-      }
-    }
-    let minDiff2 = Infinity;
-    for (let i = k1 + 1; i <= sectionCount - 1; i++) {
-      const diff = Math.abs(spec.sections[i].startFrame - t2);
-      if (diff < minDiff2) {
-        minDiff2 = diff;
-        k2 = i;
-      }
-    }
-  }
+  const k1 = Math.max(1, Math.min(sectionCount - 2, Math.round(sectionCount / 3)));
+  const k2 = Math.max(k1 + 1, Math.min(sectionCount - 1, Math.round((2 * sectionCount) / 3)));
 
   // 2. Map sections to frame spans and assemble shots
   const shots: CinematicShot[] = [];
@@ -306,8 +245,9 @@ export function compileStorySpecToStoryboard(
 
       // Character horizontal progress via shared pure trajectory solver
       const leadRigId = castRigIds[0];
+      const fEndLast = Math.max(fStart, fEnd - 1);
       const charStartPos = computeLeadCharacterWorldPos(fStart, secSpec, leadRigId);
-      const charEndPos = computeLeadCharacterWorldPos(fEnd, secSpec, leadRigId);
+      const charEndPos = computeLeadCharacterWorldPos(fEndLast, secSpec, leadRigId);
 
       const camStartPos: Vec3 = [
         Number((charStartPos[0] + angle.camOffsetStart[0]).toFixed(2)),
@@ -419,13 +359,15 @@ export function compileStorySpecToStoryboard(
     }
   }
 
-  // Derive exact Act boundaries from actual shot ranges
+  // Derive exact Act boundaries from section alignment
   const act2Start =
-    shots.find((s) => s.actNumber === 2)?.frameRange.startFrameInclusive ??
-    (sectionCount >= 3 ? spec.sections[k1].startFrame : Math.max(1, Math.floor(totalFrames / 3)));
+    sectionCount >= 3
+      ? spec.sections[k1].startFrame
+      : (shots.find((s) => s.actNumber === 2)?.frameRange.startFrameInclusive ?? Math.max(1, Math.floor(totalFrames / 3)));
   const act3Start =
-    shots.find((s) => s.actNumber === 3)?.frameRange.startFrameInclusive ??
-    (sectionCount >= 3 ? spec.sections[k2].startFrame : Math.max(act2Start + 1, Math.floor((2 * totalFrames) / 3)));
+    sectionCount >= 3
+      ? spec.sections[k2].startFrame
+      : (shots.find((s) => s.actNumber === 3)?.frameRange.startFrameInclusive ?? Math.max(act2Start + 1, Math.floor((2 * totalFrames) / 3)));
 
   const acts: [StoryboardAct, StoryboardAct, StoryboardAct] = [
     {

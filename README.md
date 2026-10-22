@@ -48,15 +48,15 @@ For complete architectural details, see [Theatrical Narrative 2.5D Procedural Ci
   - Direct FFmpeg audio-video muxing (`-map 0:v:0 -map 1:a:0 -c:a aac -shortest`) and dual-stream `ffprobe` validation (`npm run demo:phase3` verified at **19.30 FPS**, **329.61 MB** RSS, and **+1.39 MB** plateau growth).
 - **Phase 4 & 4.5: Completed**
   - Provider-agnostic `LlmProvider` (`OpenAiCompatibleProvider` + offline `DeterministicMockLlmProvider`) and `extractJsonFromLlmResponse` markdown/BOM sanitizer.
-  - Multi-agent orchestration: `DirectorAgent` (`src/agents/director-agent.ts`), `RigAgent` (`src/agents/rig-agent.ts`), `ChoreographerAgent` (`src/agents/choreographer-agent.ts`), and `StudioAgentOrchestrator` (`src/agents/orchestrator.ts`).
-  - Embedded Zod 4 `draft-07` JSON Schemas in all agent system prompts for zero-shot real LLM conformance.
+  - Spec-Then-Compile studio orchestration: `StorySpecAgent` (`src/agents/story-spec-agent.ts`) and `StudioAgentOrchestrator` (`src/agents/orchestrator.ts`).
+  - Embedded Zod 4 `draft-07` JSON Schemas in agent system prompts for zero-shot real LLM conformance.
   - Stateless closed-loop self-healing retry pipeline with `[PREVIOUS FAILED JSON DRAFT]` retention and diagnostics feedback across schema (`LlmSchemaValidationError`) and invariant failures.
   - Kinematic smoothing and visual polish: periodic Hermite spline tangent unwrapping, stride phase continuity across camera cuts, seamless neck (`neck_collar`) and waist (`abdomen_core`) connectors on close-ups, elimination of floating double-offsets on coat wings/ribbons (`PART_DETACHED_FROM_JOINT_PIVOT`), and near-plane clipping prevention for foreground gantries (`FOREGROUND_RIG_CROSSES_CAMERA_NEAR_PLANE`).
 - **Phase 5: Completed**
-  - Production-grade full-song music video generator (`scripts/produce-music-video.ts`, `npm run produce:video`) rendering up to 10,598 frames (~6.0 minutes @ 30 FPS) with single-line interactive ASCII progress telemetry (`\r`).
+  - Production-grade full-song music video generator (`scripts/produce-music-video.ts`, `npm run produce:video`, and canonical `scripts/studio.ts --produce`) rendering up to 10,598 frames (~6.0 minutes @ 30 FPS) with single-line interactive ASCII progress telemetry (`\r`).
   - Chunked streaming rendering pipeline (`src/engine/director/chunk-renderer.ts`) and fault-tolerant checkpoint manager (`src/engine/director/checkpoint-manager.ts`) supporting deep `ffprobe` inspection, automated corrupted-chunk purging, and zero-overhead instant resume (`--resume`).
   - Sub-second lossless assembly via FFmpeg Concat Demuxer (`src/engine/audio/concat-stitcher.ts`) with continuous uncompressed master FLAC $\to$ AAC 256kbps stereo audio muxing (`-c:v copy -c:a aac -shortest`).
-  - Hierarchical macro-to-micro storyboard planner (`src/engine/director/macro-planner.ts`) decomposing full songs into 7 musical sections with 5 dynamic thematic palettes (`CYBERPUNK_CYAN`, `VOLTAGE_ORANGE`, `SUNSET_GOLD`, `CRIMSON_FURY`, `MIDNIGHT_VOID`).
+  - Hierarchical acoustic timeline segmenter (`src/engine/director/acoustic-segmenter.ts`) decomposing full songs into distinct musical sections with dynamic thematic palettes (`CYBERPUNK_CYAN`, `VOLTAGE_ORANGE`, `SUNSET_GOLD`, `CRIMSON_FURY`, `MIDNIGHT_VOID`).
   - Secondary articulated pursuit enforcer drone rig (`CANONICAL_RIG_IDS.PURSUIT_DRONE`) with 4-joint FK thrusters and dynamic flight tracking.
 - **Phase 6: Completed**
   - Forensic visual remediation eliminating camera inside character / near-plane blob explosions and framing decapitation defects.
@@ -94,8 +94,16 @@ The studio is designed to operate within a WSL2 Ubuntu environment with approxim
    Every frame write must wait for both the stream write callback and the `drain` event whenever the OS pipe buffer is saturated, preventing unbounded memory accumulation on the Node.js heap.
 4. **CPU Encoding with `libx264`:**
    Because GPU acceleration is unavailable in WSL2, encoding is executed entirely on CPU using `libx264` with bounded thread allocations (`AUTO_FFMPEG_THREADS = 2`) and memory-saving encoder flags (`sliced-threads=1:rc-lookahead=0:ref=1:bframes=0`).
-5. **Atomic Output Publishing:**
-   FFmpeg writes directly to a temporary staging file (`.part.mp4`). Only upon clean termination (exit code 0) and contract validation is the file committed atomically to its final destination via `fs.renameSync`. On failure, the staging file is unlinked immediately.
+5. **Atomic Output Publishing & Content-Addressed Chunk Caching:**
+   FFmpeg writes directly to a temporary staging file (`.part.mp4`). Only upon clean termination (exit code 0) and contract validation is the file committed atomically to its final destination via `fs.renameSync`.
+   Chunk caching uses SHA-256 fingerprinting over canonical deep-sorted JSON of all render parameters, story spec, storyboard, rigs, choreography, and audio analysis. Metadata is written atomically to `${chunkFilename}.meta.json`.
+
+### Content-Addressed Chunk Cache & `ENGINE_RENDER_VERSION` Bump Rules
+The engine enforces deterministic content-addressed caching for chunked rendering via `src/config/render-version.ts`:
+- **When to Bump `ENGINE_RENDER_VERSION`:**
+  1. Bump `ENGINE_RENDER_VERSION` (monotonically incrementing integer: `1, 2, 3...`) whenever rendering math, projection matrix, camera FOV calculation, lighting decay, SVG styling, or kinematics logic changes in `src/engine/`.
+  2. Bumping `ENGINE_RENDER_VERSION` causes `inspectChunk()` to evaluate all existing cached chunks as `STALE`, safely forcing a fresh re-render and preventing stale or mismatched video frames from reaching the concat stitcher.
+  3. **Do NOT bump** for changes that do not affect rendered visual output (e.g. CLI argument formatting, test fixtures, documentation, or logging).
 
 ---
 
@@ -143,21 +151,18 @@ ai-agent-animation-studio/
 ├── scripts/
 │   ├── benchmark-smoke.ts         # Smoke benchmark (Gate C: 3 runs @ 1080p, memory/speed gate)
 │   ├── conformance-render.ts      # Conformance test (Gate B: pixel, color, metadata validation)
-│   ├── demo-phase2-cinema.ts      # Phase 2 multi-shot procedural cinema demo & plateau benchmark
-│   ├── demo-phase3-audio.ts       # Phase 3 audio intelligence, LRC alignment & AAC muxing demo
-│   ├── demo-phase4-orchestration.ts # Phase 4 multi-agent orchestration cinema demo & benchmark
-│   ├── produce-music-video.ts     # Phase 5 & 6 production-grade full-song music video generator
-│   └── studio.ts                  # Unified Spec-Then-Compile autonomous studio CLI with checkpointing
+│   ├── demo-phase2-cinema.ts      # Multi-shot procedural cinema demo & plateau benchmark
+│   ├── demo-phase3-audio.ts       # Audio intelligence, LRC alignment & AAC muxing demo
+│   ├── demo-phase4-orchestration.ts # Multi-agent orchestration cinema demo & benchmark
+│   ├── produce-music-video.ts     # Backward-compatible forwarder to studio.ts --produce
+│   └── studio.ts                  # Canonical Spec-Then-Compile autonomous studio CLI with checkpointing
 ├── src/
 │   ├── agents/
 │   │   ├── README.md              # AI agents overview
-│   │   ├── choreographer-agent.ts # Choreographer Agent: entity tracks, poses, and morph bindings
-│   │   ├── director-agent.ts      # Director Agent: acts, shots, camera moves, and JSON schema
 │   │   ├── index.ts               # Barrel export for agents and orchestration modules
 │   │   ├── llm-provider.ts        # OpenAiCompatibleProvider, DeterministicMockLlmProvider & draft retention
 │   │   ├── orchestrator.ts        # StudioAgentOrchestrator: closed-loop self-healing repair loop
 │   │   ├── repair-helper.ts       # Targeted subtree extraction and localized error diagnostic repair
-│   │   ├── rig-agent.ts           # Rig Agent: asset & character rigs, knee constraints, and connectors
 │   │   ├── story-spec-agent.ts    # StorySpec Agent: lyric/acoustic dramaturgy, cast roles & beat snapping
 │   │   └── types.ts               # LlmProvider, LlmOptions, OrchestrationResult, and AgentInput interfaces
 │   ├── assets/
@@ -210,7 +215,7 @@ ai-agent-animation-studio/
 │   │   │   ├── environment-generator.ts # Procedural 4-tier parallax world & 3D biome synthesis
 │   │   │   ├── frame-state-builder.ts # Deterministic FrameStateContract orchestrator
 │   │   │   ├── index.ts           # Director engine barrel export
-│   │   │   ├── macro-planner.ts   # Hierarchical macro-to-micro storyboard planner
+│   │   │   ├── production-pipeline.ts # Modular end-to-end production rendering pipeline
 │   │   │   ├── shot-planner.ts    # 6 cinematic angle formulas, FOV safety bounds & shot solver
 │   │   │   └── shot-sequencer.ts  # O(log N) shot lookup, DOLLY/TRACKING, and circular ORBIT slerp
 │   │   ├── effects/
@@ -264,11 +269,10 @@ ai-agent-animation-studio/
     ├── library-kits.test.ts       # Modular archetype factory and environment kit generation tests
     ├── llm-resilience.test.ts     # Error taxonomy, exponential backoff, truncation detection & repair tests
     ├── lrc-parser.test.ts         # Deterministic LRC parser, multi-timestamp expansion & emphasis tests
-    ├── macro-planner.test.ts      # Full-song 7-section storyboard decomposition & transition tests
     ├── math.test.ts               # Easing, spring physics, noise, and color math tests
-    ├── multi-entity-choreo.test.ts # Pursuit drone FK kinematics and multi-entity depth sorting tests
     ├── pipeline-lifecycle.test.ts # Atomic commit, abort, and error lifecycle tests
     ├── pose-clips.test.ts         # 6 motion presets, joint clamping limits & Hermite continuity tests
+    ├── production-pipeline.test.ts # End-to-end production pipeline, progress telemetry & video probe tests
     ├── rigging.test.ts            # FK chain, joint clamping, Bezier morphing, and billboard tests
     ├── safe-framing.test.ts       # 10,598-frame mathematical safe-framing (z_c >= 135, head centering)
     ├── scene-compositor.test.ts   # Painter's algorithm, cube culling, pulse decay, and lyric fade

@@ -10,6 +10,7 @@ export const VideoStreamInfoSchema = z.object({
   pix_fmt: z.string().optional(),
   r_frame_rate: z.string().optional(),
   avg_frame_rate: z.string().optional(),
+  nb_frames: z.string().optional(),
   nb_read_frames: z.string().optional(),
   color_space: z.string().optional(),
   color_primaries: z.string().optional(),
@@ -57,7 +58,7 @@ export function probeVideo(filePath: string): VideoProbeResult {
   const args = [
     '-v', 'error',
     '-count_frames',
-    '-show_entries', 'stream=codec_type,codec_name,width,height,pix_fmt,r_frame_rate,avg_frame_rate,nb_read_frames,color_space,color_primaries,color_transfer,color_range,sample_rate,channels,bit_rate',
+    '-show_entries', 'stream=codec_type,codec_name,width,height,pix_fmt,r_frame_rate,avg_frame_rate,nb_frames,nb_read_frames,color_space,color_primaries,color_transfer,color_range,sample_rate,channels,bit_rate',
     '-show_entries', 'format=duration',
     '-of', 'json',
     resolved
@@ -82,15 +83,41 @@ export function probeVideo(filePath: string): VideoProbeResult {
   const rawAudioStream = parsed.streams.find((s) => s.codec_type === 'audio');
   const audioStream = rawAudioStream ? AudioStreamInfoSchema.parse(rawAudioStream) : undefined;
 
-  const frameCount = stream.nb_read_frames ? Number.parseInt(stream.nb_read_frames, 10) : undefined;
+  const rawFrames =
+    stream.nb_frames && stream.nb_frames !== 'N/A'
+      ? Number.parseInt(stream.nb_frames, 10)
+      : stream.nb_read_frames
+        ? Number.parseInt(stream.nb_read_frames, 10)
+        : undefined;
+  const frameCount = Number.isInteger(rawFrames) ? rawFrames : undefined;
 
   return {
     filePath: resolved,
     stream,
     ...(audioStream ? { audioStream } : {}),
     format: parsed.format,
-    frameCount: Number.isInteger(frameCount) ? frameCount : undefined
+    frameCount
   };
+}
+
+/**
+ * Validates progressive H.264 BT.709 tv limited-range color tags without throwing.
+ * Returns true if the file exists and adheres strictly to H.264 BT.709 tv parameters, false otherwise.
+ */
+export function isBt709Tv(filePath: string): boolean {
+  try {
+    const probe = probeVideo(filePath);
+    const stream = probe.stream;
+    return (
+      stream.codec_name === 'h264' &&
+      stream.color_space === 'bt709' &&
+      stream.color_primaries === 'bt709' &&
+      stream.color_transfer === 'bt709' &&
+      stream.color_range === 'tv'
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

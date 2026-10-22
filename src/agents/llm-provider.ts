@@ -1,8 +1,6 @@
 import { performance } from 'node:perf_hooks';
 import { ZodError, z } from 'zod';
 import type {
-  ChoreographerAgentInput,
-  DirectorAgentInput,
   LlmCallMetadata,
   LlmExecutionResult,
   LlmJsonMode,
@@ -10,9 +8,6 @@ import type {
   LlmProvider,
   TokenUsage
 } from './types.js';
-import { buildDeterministicDirectorStoryboard } from './director-agent.js';
-import { buildDeterministicRigCatalog } from './rig-agent.js';
-import { buildDeterministicChoreography } from './choreographer-agent.js';
 import { buildDeterministicStorySpec, type StorySpecAgentInput } from './story-spec-agent.js';
 
 // =============================================================================
@@ -715,24 +710,6 @@ export class DeterministicMockLlmProvider implements LlmProvider {
         );
       }
       payload = buildDeterministicStorySpec(storyInput.audioManifest, storyInput.projectId);
-    } else if (role === 'director') {
-      const directorInput = ctx.directorInput as DirectorAgentInput | undefined;
-      if (!directorInput) {
-        throw new LlmProviderError(
-          'DeterministicMockLlmProvider requires context.directorInput for director role.'
-        );
-      }
-      payload = buildDeterministicDirectorStoryboard(directorInput);
-    } else if (role === 'rig') {
-      payload = buildDeterministicRigCatalog();
-    } else if (role === 'choreographer') {
-      const choreographerInput = ctx.choreographerInput as ChoreographerAgentInput | undefined;
-      if (!choreographerInput) {
-        throw new LlmProviderError(
-          'DeterministicMockLlmProvider requires context.choreographerInput for choreographer role.'
-        );
-      }
-      payload = buildDeterministicChoreography(choreographerInput);
     } else {
       throw new LlmProviderError(
         `DeterministicMockLlmProvider received unsupported agentRole "${String(role)}" without an interceptor.`

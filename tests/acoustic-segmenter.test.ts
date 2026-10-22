@@ -1,22 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Resvg } from '@resvg/resvg-js';
 import {
-  AcousticTimelineSegmenter
-} from '../src/engine/director/acoustic-segmenter.js';
-import {
-  generateFullSongStoryboard,
+  AcousticTimelineSegmenter,
   THEMATIC_PALETTES
-} from '../src/engine/director/macro-planner.js';
-import { buildDeterministicRigCatalog } from '../src/agents/rig-agent.js';
-import { buildDeterministicChoreography } from '../src/agents/choreographer-agent.js';
-import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
-import { SceneCompositor } from '../src/engine/compositor/scene-compositor.js';
-import { getOrchestratedEnvironment } from '../src/agents/director-agent.js';
-import { validateProjectContracts } from '../src/schemas/invariants.js';
-import { createTestRenderConfig } from '../src/config/render-config.js';
+} from '../src/engine/director/acoustic-segmenter.js';
 import type { AudioAnalysisManifest, AudioFrameFeature } from '../src/schemas/audio.contract.js';
-import type { AssetRigContract } from '../src/schemas/rig.contract.js';
 
 function createMockManifest(
   totalFrames: number,
@@ -219,7 +207,7 @@ test('AcousticSegmenter: Virtuosic melodic solo section dispatches BRIDGE biome 
   assert.equal(virtuosicSection?.hasPursuitDrone, true);
 });
 
-test('AcousticSegmenter: Full storyboard generation adheres strictly to all project contract invariants', () => {
+test('AcousticSegmenter: Full song acoustic segmentation partitions contiguous timeline into 3 continuous Acts', () => {
   const fps = 30;
   const totalFrames = 3600; // 2 minutes
   const manifest = createMockManifest(totalFrames, fps, 130);
@@ -245,77 +233,25 @@ test('AcousticSegmenter: Full storyboard generation adheres strictly to all proj
     }
   });
 
-  const storyboard = generateFullSongStoryboard({
-    audioManifest: manifest,
-    getAudioFeatureAtFrame: getFeature,
-    useAcousticSegmenter: true,
-    targetShotFrames: 180
-  });
-
-  // Verify storyboard properties
-  assert.equal(storyboard.totalFrames, totalFrames);
-  assert.equal(storyboard.acts.length, 3);
-  assert.ok(storyboard.shots.length >= 15);
-
-  // Validate invariants via validateProjectContracts
-  const catalog = buildDeterministicRigCatalog();
-  const rigMap = new Map<string, AssetRigContract>();
-  for (const rig of catalog.rigs) {
-    rigMap.set(rig.id, rig);
-  }
-
-  const renderConfig = createTestRenderConfig({
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    pixelFormat: 'rgba',
-    totalFrames
-  });
-
-  const report = validateProjectContracts(manifest, storyboard, renderConfig, rigMap);
-  const fatalErrors = report.errors.filter((e) => e.severity === 'fatal');
-  assert.deepEqual(fatalErrors, [], `Invariant violation: ${JSON.stringify(fatalErrors)}`);
-
-  // Smoke rasterize a frame from a dynamic zone
-  const choreography = buildDeterministicChoreography({
-    storyboard,
-    rigs: rigMap,
-    audioManifest: manifest
-  });
-
-  const frameStateBuilder = new FrameStateBuilder({
-    storyboard,
-    audioManifest: manifest,
-    rigs: rigMap,
-    choreography,
+  const segmenter = new AcousticTimelineSegmenter(manifest, {
     getAudioFeatureAtFrame: getFeature
   });
 
-  const compositor = new SceneCompositor({ width: 1920, height: 1080, fps: 30 });
-  const sampleFrame = 500;
-  const frameState = frameStateBuilder.buildFrameState(sampleFrame);
-  const shot = storyboard.shots.find(
-    (s) =>
-      sampleFrame >= s.frameRange.startFrameInclusive &&
-      sampleFrame < s.frameRange.endFrameExclusive
-  );
-  assert.ok(shot);
+  const sections = segmenter.segment();
+  assert.ok(sections.length >= 3);
+  assert.equal(sections[0].startFrame, 0);
+  assert.equal(sections[sections.length - 1].endFrame, totalFrames);
 
-  const centerX = (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2;
-  const env = getOrchestratedEnvironment(shot.id, centerX, shot.environmentZone, shot.palette);
+  for (let i = 1; i < sections.length; i++) {
+    assert.equal(
+      sections[i].startFrame,
+      sections[i - 1].endFrame,
+      `Section ${i} must start where section ${i - 1} ends`
+    );
+  }
 
-  const { svg, stats } = compositor.renderFrame(
-    frameState,
-    rigMap,
-    env,
-    [0, 30],
-    getFeature
-  );
-
-  assert.ok(svg.length > 500);
-  assert.ok(stats.drawablesCount > 0 && stats.drawablesCount < 180);
-
-  const resvg = new Resvg(svg);
-  const png = resvg.render().asPng();
-  assert.ok(png.length > 1000);
+  const actsFound = new Set(sections.map((s) => s.actNumber));
+  assert.ok(actsFound.has(1), 'Must contain Act 1');
+  assert.ok(actsFound.has(2), 'Must contain Act 2');
+  assert.ok(actsFound.has(3), 'Must contain Act 3');
 });

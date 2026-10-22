@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import { FfmpegStreamer } from '../src/renderer/ffmpeg-streamer.js';
@@ -58,7 +60,7 @@ function createTestStreamer(mockChild: MockChildProcess) {
 
   const streamer = new FfmpegStreamer({
     config,
-    outputPath: 'output/test_streamer.mp4',
+    outputPath: path.join(os.tmpdir(), 'test_streamer.mp4'),
     childProcessForTesting: mockChild as unknown as ChildProcess
   });
   streamer.start();

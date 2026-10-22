@@ -14,8 +14,11 @@ import {
   encodeColumnarAudioFeatures,
   type ColumnarAudioColumns
 } from './columnar-format.js';
-import { ColumnarAudioFeatureReader } from './feature-reader.js';
+import { ColumnarAudioFeatureReader, loadAudioAnalysis } from './feature-reader.js';
 import { parseLrcContent, parseLrcFile, resolveCrossPlatformPath } from './lrc-parser.js';
+import { canonicalJsonStringify } from '../director/checkpoint-manager.js';
+
+export const AUDIO_ANALYZER_VERSION = 1;
 
 export const FFT_SIZE = 2048;
 const HALF_FFT = FFT_SIZE >>> 1;
@@ -1103,6 +1106,48 @@ export function analyzeWavFileToArtifacts(options: AnalyzeWavToArtifactsOptions)
   const resolvedWav = resolveCrossPlatformPath(options.wavFilePath);
   const resolvedManifest = path.resolve(options.outManifestPath);
   const resolvedBin = path.resolve(options.outBinaryPath);
+  const sidecarCachePath = `${resolvedManifest}.cache.json`;
+
+  // Compute cache inputs for audio stream hash, LRC content hash, fps, and analyzer version
+  let audioBytesStreamHash = '';
+  if (fs.existsSync(resolvedWav)) {
+    const audioData = fs.readFileSync(resolvedWav);
+    audioBytesStreamHash = crypto.createHash('sha256').update(audioData).digest('hex');
+  }
+
+  let lrcContentHash = '';
+  if (options.lrcFilePath && fs.existsSync(options.lrcFilePath)) {
+    lrcContentHash = crypto.createHash('sha256').update(fs.readFileSync(options.lrcFilePath)).digest('hex');
+  } else if (options.rawLrcContent) {
+    lrcContentHash = crypto.createHash('sha256').update(options.rawLrcContent).digest('hex');
+  }
+
+  const cacheKeyPayload = canonicalJsonStringify({
+    audioBytesStreamHash,
+    lrcContentHash,
+    fps: options.fps,
+    analyzerVersion: AUDIO_ANALYZER_VERSION,
+    startSeconds: options.startSeconds ?? 0,
+    durationSeconds: options.durationSeconds ?? null
+  });
+  const cacheKey = crypto.createHash('sha256').update(cacheKeyPayload).digest('hex');
+
+  // Verify sidecar cache hit before expensive PCM decoding and FFT analysis
+  if (
+    fs.existsSync(sidecarCachePath) &&
+    fs.existsSync(resolvedManifest) &&
+    fs.existsSync(resolvedBin)
+  ) {
+    try {
+      const cacheData = JSON.parse(fs.readFileSync(sidecarCachePath, 'utf-8'));
+      if (cacheData.cacheKey === cacheKey) {
+        const loaded = loadAudioAnalysis(resolvedManifest);
+        return { manifest: loaded.manifest, reader: loaded.reader };
+      }
+    } catch {
+      // Sidecar cache corrupted or invalid, proceed with full re-analysis
+    }
+  }
 
   const decoded = decodeAudioFilePcm(resolvedWav, {
     startSeconds: options.startSeconds,
@@ -1194,6 +1239,21 @@ export function analyzeWavFileToArtifacts(options: AnalyzeWavToArtifactsOptions)
   });
 
   fs.writeFileSync(resolvedManifest, JSON.stringify(manifest, null, 2));
+
+  // Write sidecar cache atomically (.part.cache.json -> .cache.json)
+  const cacheRecord = {
+    cacheKey,
+    audioBytesStreamHash,
+    lrcContentHash,
+    fps: analyzed.fps,
+    analyzerVersion: AUDIO_ANALYZER_VERSION,
+    manifestSha256: crypto.createHash('sha256').update(fs.readFileSync(resolvedManifest)).digest('hex'),
+    binarySha256: sha256,
+    createdAt: new Date().toISOString()
+  };
+  const stagingCachePath = `${sidecarCachePath}.part.cache.json`;
+  fs.writeFileSync(stagingCachePath, JSON.stringify(cacheRecord, null, 2), 'utf-8');
+  fs.renameSync(stagingCachePath, sidecarCachePath);
 
   return { manifest, reader };
 }

@@ -5,7 +5,8 @@ import {
   type StorySpecContract
 } from '../src/schemas/story-spec.contract.js';
 import {
-  buildDeterministicStorySpec
+  buildDeterministicStorySpec,
+  StorySpecAgent
 } from '../src/agents/story-spec-agent.js';
 import {
   compileStorySpecToStoryboard,
@@ -19,6 +20,15 @@ import { demoAudioManifest } from '../src/demo/phase2-cinema/index.js';
 import type { AudioAnalysisManifest } from '../src/schemas/audio.contract.js';
 import { validateProjectContracts, validateChoreography } from '../src/schemas/invariants.js';
 import { createRenderConfig } from '../src/config/render-config.js';
+import {
+  createSyntheticRockManifest,
+  createSyntheticElectronicManifest,
+  createSyntheticPopDanceManifest,
+  createSyntheticBalladManifest,
+  createSyntheticInstrumentalManifest,
+  createSyntheticAudioManifest
+} from './helpers/manifest-factory.js';
+import { classifyGenreProfile } from '../src/engine/audio/genre-classifier.js';
 
 test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
   await t.test('StorySpecContractSchema validation accepts valid spec and rejects malformed spec', () => {
@@ -26,6 +36,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
       projectId: 'test-song-spec',
       title: 'Neon Odyssey',
       overallMood: 'High-Octane Kinetic Action',
+      themes: ['cyberpunk', 'velocity'],
+      genreProfile: 'rock_metal',
       cast: [
         {
           instanceId: 'hero',
@@ -41,6 +53,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
           startFrame: 0,
           endFrame: 100,
           narrativeIntent: 'High-speed urban traversal',
+          emotionalTone: 'defiant',
+          lyricMotifs: ['velocity'],
           environmentKitId: 'industrial_city',
           kitParams: { rooftopDensity: 0.6 },
           colorThemeId: 'VOLTAGE_ORANGE',
@@ -61,6 +75,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
           startFrame: 100,
           endFrame: 200,
           narrativeIntent: 'Abyss crossing encounter',
+          emotionalTone: 'chaotic',
+          lyricMotifs: ['fire', 'shadow'],
           environmentKitId: 'neon_chasm',
           kitParams: { abyssDepth: 600 },
           colorThemeId: 'CRIMSON_FURY',
@@ -81,6 +97,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
           startFrame: 200,
           endFrame: 300,
           narrativeIntent: 'Grid horizon sprint',
+          emotionalTone: 'reflective',
+          lyricMotifs: ['horizon'],
           environmentKitId: 'synth_grid',
           kitParams: { gridSpacing: 40 },
           colorThemeId: 'SUNSET_GOLD',
@@ -364,4 +382,157 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
     assert.equal(result.attempts[0].retryClass, 'schema_repair');
     assert.equal(result.attempts[1].attempt, 2);
   });
+
+  await t.test(
+    'Multi-factor genre classifier and lyric conditioning across 5 distinct track profiles',
+    () => {
+      // 1. Rock Metal (174 BPM, dense onsets, defiant lyrics)
+      const rockManifest = createSyntheticRockManifest();
+      const rockClass = classifyGenreProfile(rockManifest);
+      assert.equal(rockClass.genre, 'rock_metal');
+      const rockSpec = buildDeterministicStorySpec(rockManifest, 'rock-film');
+      assert.equal(rockSpec.genreProfile, 'rock_metal');
+      assert.equal(rockSpec.overallMood, 'High-Octane Kinetic Action');
+      assert.ok(rockSpec.sections.some((s) => s.emotionalTone === 'defiant' || s.emotionalTone === 'chaotic'));
+      assert.ok(rockSpec.sections.some((s) => s.colorThemeId === 'CRIMSON_FURY' || s.colorThemeId === 'VOLTAGE_ORANGE'));
+      assert.ok(rockSpec.sections.some((s) => s.cameraIntensity >= 0.8));
+
+      // 2. Pop Dance (124 BPM, euphoric vocals)
+      const popManifest = createSyntheticPopDanceManifest();
+      const popClass = classifyGenreProfile(popManifest);
+      assert.equal(popClass.genre, 'pop_dance');
+      const popSpec = buildDeterministicStorySpec(popManifest, 'pop-film');
+      assert.equal(popSpec.genreProfile, 'pop_dance');
+      assert.equal(popSpec.overallMood, 'Euphoric Neon Rhythm');
+      assert.ok(popSpec.sections.some((s) => s.emotionalTone === 'euphoric'));
+      assert.ok(popSpec.sections.some((s) => s.colorThemeId === 'SUNSET_GOLD' || s.colorThemeId === 'CYBERPUNK_CYAN'));
+
+      // 3. Electronic Synth (110 BPM, bass heavy)
+      const elecManifest = createSyntheticElectronicManifest();
+      const elecClass = classifyGenreProfile(elecManifest);
+      assert.equal(elecClass.genre, 'electronic_synth');
+      const elecSpec = buildDeterministicStorySpec(elecManifest, 'elec-film');
+      assert.equal(elecSpec.genreProfile, 'electronic_synth');
+      assert.equal(elecSpec.overallMood, 'Futuristic Cybernetic Odyssey');
+      assert.ok(elecSpec.cast.some((c) => c.archetypeId === 'quadruped_beast'));
+      assert.ok(elecSpec.sections.some((s) => s.environmentKitId === 'synth_grid'));
+
+      // 4. Ballad Acoustic (74 BPM, melancholic/reflective)
+      const balladManifest = createSyntheticBalladManifest();
+      const balladClass = classifyGenreProfile(balladManifest);
+      assert.equal(balladClass.genre, 'ballad_acoustic');
+      const balladSpec = buildDeterministicStorySpec(balladManifest, 'ballad-film');
+      assert.equal(balladSpec.genreProfile, 'ballad_acoustic');
+      assert.equal(balladSpec.overallMood, 'Atmospheric Meditative Nocturne');
+      assert.ok(balladSpec.sections.some((s) => s.emotionalTone === 'melancholic' || s.emotionalTone === 'reflective'));
+      assert.ok(balladSpec.sections.every((s) => s.cameraIntensity <= 0.6));
+
+      // 5. Instrumental (130 BPM, zero lyrics)
+      const instManifest = createSyntheticInstrumentalManifest();
+      const instClass = classifyGenreProfile(instManifest);
+      assert.equal(instClass.genre, 'electronic_synth');
+      const instSpec = buildDeterministicStorySpec(instManifest, 'inst-film');
+      assert.equal(instSpec.genreProfile, 'electronic_synth');
+      assert.equal(instSpec.overallMood, 'Futuristic Cybernetic Odyssey');
+
+      // Verify all genres produce distinct profiles
+      const moods = new Set([rockSpec.overallMood, popSpec.overallMood, elecSpec.overallMood, balladSpec.overallMood]);
+      assert.equal(moods.size, 4, 'All 4 vocal genres must produce distinct overall moods');
+    }
+  );
+
+  await t.test(
+    'Act partitioning across section counts up to 32 never emits SHOT_OUTSIDE_ACT_BOUNDARY',
+    () => {
+      const testCounts = [3, 4, 7, 12, 18, 32];
+
+      for (const count of testCounts) {
+        const totalFrames = 2400;
+        const span = Math.floor(totalFrames / count);
+        const sections = [];
+        for (let i = 0; i < count; i++) {
+          const sStart = i * span;
+          const sEnd = i === count - 1 ? totalFrames : (i + 1) * span;
+          sections.push({
+            id: `sec-${i + 1}`,
+            startFrame: sStart,
+            endFrame: sEnd,
+            relativeEnergy: 0.5 + 0.4 * Math.sin(i),
+            hasVocals: i % 2 === 1,
+            dominantBand: (i % 3 === 0 ? 'presence' : i % 3 === 1 ? 'bass' : 'mid') as any
+          });
+        }
+
+        const manifest = createSyntheticAudioManifest({
+          totalFrames,
+          sections
+        });
+
+        const spec = buildDeterministicStorySpec(manifest, `partition-test-${count}`);
+        assert.equal(spec.sections.length, count);
+
+        const storyboard = compileStorySpecToStoryboard(spec, manifest);
+        const config = createRenderConfig({
+          pixelFormat: 'rgba',
+          width: 1920,
+          height: 1080,
+          fps: 30,
+          totalFrames
+        });
+
+        const validation = validateProjectContracts(
+          manifest,
+          storyboard,
+          config,
+          new Map()
+        );
+
+        const actErrors = validation.errors.filter((e) => e.code === 'SHOT_OUTSIDE_ACT_BOUNDARY');
+        assert.equal(
+          actErrors.length,
+          0,
+          `Section count ${count} produced ${actErrors.length} SHOT_OUTSIDE_ACT_BOUNDARY errors: ${actErrors.map((e) => e.message).join('; ')}`
+        );
+      }
+    }
+  );
+
+  await t.test(
+    'StorySpecAgent formats per-section lyrics into prompt and respects opt-out flags',
+    async () => {
+      const rockManifest = createSyntheticRockManifest();
+      let capturedPrompt = '';
+
+      const mockProvider = new DeterministicMockLlmProvider({
+        interceptor: (prompt) => {
+          capturedPrompt = prompt;
+          return undefined; // Fall back to buildDeterministicStorySpec
+        }
+      });
+
+      const agent = new StorySpecAgent(mockProvider);
+
+      // Default: lyrics included
+      await agent.generateStorySpec({ audioManifest: rockManifest });
+      assert.ok(capturedPrompt.includes('Lyrics Timeline:'));
+      assert.ok(capturedPrompt.includes('Thunder in the city'));
+
+      // Opt-out via noLyricsInPrompt input flag
+      capturedPrompt = '';
+      await agent.generateStorySpec({ audioManifest: rockManifest, noLyricsInPrompt: true });
+      assert.ok(!capturedPrompt.includes('Thunder in the city'));
+      assert.ok(capturedPrompt.includes('Lyrics Timestamps:'));
+
+      // Opt-out via ANIMATION_STUDIO_NO_LYRICS=1 env var
+      process.env.ANIMATION_STUDIO_NO_LYRICS = '1';
+      capturedPrompt = '';
+      try {
+        await agent.generateStorySpec({ audioManifest: rockManifest });
+        assert.ok(!capturedPrompt.includes('Thunder in the city'));
+        assert.ok(capturedPrompt.includes('Lyrics Timestamps:'));
+      } finally {
+        delete process.env.ANIMATION_STUDIO_NO_LYRICS;
+      }
+    }
+  );
 });

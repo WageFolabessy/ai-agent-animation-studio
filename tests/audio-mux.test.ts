@@ -14,6 +14,7 @@ import {
   runPythonAudioAnalyzer,
   synthesizeMusicalWavBuffer
 } from '../src/engine/audio/index.js';
+import { optionalAsset } from './helpers/optional-asset.js';
 
 test('AudioMux: buildFfmpegArgs preserves video-only args when audio is omitted and adds AAC muxing when configured', () => {
   const videoOnlyConfig = createTestRenderConfig({
@@ -35,7 +36,7 @@ test('AudioMux: buildFfmpegArgs preserves video-only args when audio is omitted 
     pixelFormat: 'rgba',
     totalFrames: 30,
     audio: {
-      filePath: 'assets/audio/trashed-and-scattered.flac',
+      filePath: 'synthetic-track.flac',
       startSeconds: 49.0,
       durationSeconds: 6.0,
       bitrateKbps: 256
@@ -126,10 +127,11 @@ test('AudioMux: Synthesizes WAV, extracts .features.bin, renders video + AAC aud
   }
 });
 
-test('AudioMux: Analyzes and muxes real Trashed And Scattered FLAC + LRC chorus slice when present', async () => {
-  const flacPath = path.resolve(process.cwd(), 'assets/audio/trashed-and-scattered.flac');
-  const lrcPath = path.resolve(process.cwd(), 'assets/audio/trashed-and-scattered.lrc');
-  if (!fs.existsSync(flacPath) || !fs.existsSync(lrcPath)) {
+test('AudioMux: Analyzes and muxes real Trashed And Scattered FLAC + LRC chorus slice when present', async (t) => {
+  const flacPath = optionalAsset('trashed-and-scattered.flac');
+  const lrcPath = optionalAsset('trashed-and-scattered.lrc');
+  if (!flacPath || !lrcPath) {
+    t.skip('Optional real asset not found: ' + (flacPath ? 'trashed-and-scattered.lrc' : 'trashed-and-scattered.flac'));
     return;
   }
 
@@ -197,10 +199,11 @@ test('AudioMux: Analyzes and muxes real Trashed And Scattered FLAC + LRC chorus 
   }
 });
 
-test('AudioMux: Python offline analyzer bridge (python/analyze_audio.py) produces valid .features.bin and manifest', () => {
-  const flacPath = path.resolve(process.cwd(), 'assets/audio/trashed-and-scattered.flac');
-  const lrcPath = path.resolve(process.cwd(), 'assets/audio/trashed-and-scattered.lrc');
-  if (!fs.existsSync(flacPath) || !fs.existsSync(lrcPath)) {
+test('AudioMux: Python offline analyzer bridge (python/analyze_audio.py) produces valid .features.bin and manifest', (t) => {
+  const flacPath = optionalAsset('trashed-and-scattered.flac');
+  const lrcPath = optionalAsset('trashed-and-scattered.lrc');
+  if (!flacPath || !lrcPath) {
+    t.skip('Optional real asset not found: ' + (flacPath ? 'trashed-and-scattered.lrc' : 'trashed-and-scattered.flac'));
     return;
   }
 

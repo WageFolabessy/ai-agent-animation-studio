@@ -29,6 +29,7 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
   stalk_crouch: {
     interpolationMode: 'linear',
     loopFrames: 36,
+    strideLengthUnits: 60.11,
     keyframes: [
       {
         frame: 0,
@@ -86,6 +87,7 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
   sprint_frenzy: {
     interpolationMode: 'linear',
     loopFrames: 18,
+    strideLengthUnits: 112.27,
     keyframes: [
       {
         frame: 0,
@@ -143,6 +145,7 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
   evade_leap: {
     interpolationMode: 'linear',
     loopFrames: 24,
+    strideLengthUnits: 46.93,
     keyframes: [
       {
         frame: 0,
@@ -314,6 +317,7 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
   exhausted_walk: {
     interpolationMode: 'linear',
     loopFrames: 42,
+    strideLengthUnits: 72.98,
     keyframes: [
       {
         frame: 0,

@@ -8,6 +8,32 @@ import type {
   EnvironmentZoneType
 } from '../../schemas/storyboard.contract.js';
 import { shadeHexColor } from '../math/color.js';
+import { THEMATIC_PALETTES } from './acoustic-segmenter.js';
+
+export { THEMATIC_PALETTES };
+
+export const CANONICAL_RIG_IDS = {
+  SKYLINE: 'rig-skyline',
+  FACTORIES: 'rig-factories',
+  SMOKE_CHIMNEY: 'rig-smoke-chimney',
+  RUNNER: 'rig-runner',
+  RUNNER_AURA: 'rig-runner-aura',
+  FG_PIPES: 'rig-fg-pipes',
+  PURSUIT_DRONE: 'rig-pursuit-drone',
+  HIGHWAY_GANTRY: 'rig-highway-gantry',
+  NEON_BILLBOARD: 'rig-neon-billboard',
+  BRIDGE_PYLON: 'rig-bridge-pylon',
+  REACTOR_CORE: 'rig-reactor-core'
+} as const;
+
+export const RUNNER_BASE_SPEED = 80; // World units per second at 30 FPS
+
+/**
+ * Computes the continuous X world coordinate of the runner at a given frame.
+ */
+export function computeRunnerTrajectoryX(frame: number, fps = 30): number {
+  return Number(((frame / fps) * RUNNER_BASE_SPEED).toFixed(2));
+}
 
 export interface EnvironmentGeneratorOptions {
   shotId?: string;
@@ -409,4 +435,56 @@ export function buildDynamicEnvironment(
     default:
       return buildRooftopEnvironment(centerX, palette);
   }
+}
+
+/**
+ * Provides continuous 3D ground plane and perspective grid environment across all shots,
+ * using a localized ground grid in close-up shots to keep drawable counts low while
+ * preserving the horizon floor.
+ */
+export function getOrchestratedEnvironment(
+  shotId: string,
+  centerX = 0,
+  zone: EnvironmentZoneType = 'ROOFTOP',
+  palette?: ColorLightingPalette
+): SceneEnvironment {
+  if (shotId === 'shot-3' && Math.abs(centerX) < 400 && zone === 'ROOFTOP') {
+    return {
+      polygons: [
+        {
+          vertices: [
+            [-400, 0, 300],
+            [700, 0, 300],
+            [700, 0, -500],
+            [-400, 0, -500]
+          ],
+          fill: '#0c101d',
+          opacity: 0.95,
+          tier: 0
+        }
+      ],
+      lines: [
+        { p0: [-400, 0, 0], p1: [700, 0, 0], stroke: '#1b2438', strokeWidth: 1.5, opacity: 0.8, tier: 2 },
+        { p0: [300, 0, -500], p1: [300, 0, 300], stroke: '#1b2438', strokeWidth: 1.5, opacity: 0.8, tier: 2 }
+      ]
+    };
+  }
+
+  const effectivePalette: ColorLightingPalette = palette ?? {
+    background: '#090b16',
+    primary: '#00f0ff',
+    secondary: '#3a506b',
+    accent: '#ff0055',
+    ambientLightColor: '#1a243b',
+    ambientIntensity: 0.72,
+    keyLightDirection: [-0.5, -0.8, -0.3],
+    audioReactiveGain: 0.65
+  };
+
+  return buildDynamicEnvironment({
+    shotId,
+    centerX,
+    zone,
+    palette: effectivePalette
+  });
 }

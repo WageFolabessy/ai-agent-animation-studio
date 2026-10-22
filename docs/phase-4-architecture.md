@@ -1,5 +1,8 @@
 # Phase 4 Architecture: Multi-Agent LLM Orchestration & Self-Healing Pipeline
 
+> [!NOTE]
+> **Pipeline Deprecation Notice**: The 3-stage legacy multi-agent architecture (`director-agent.ts`, `rig-agent.ts`, `choreographer-agent.ts`) described below has been superseded by the unified "Spec-Then-Compile" architecture (`StorySpecAgent`, `ArchetypeFactory`, `ShotPlanner`, `ChoreographySolver`, and `production-pipeline.ts`). The self-healing invariant retry principles documented here remain active in `StudioAgentOrchestrator`.
+
 ## 1. Overview & Architectural Objectives
 
 Phase 4 completes the **AI-Agent Animation Studio** by bridging the **Phase 3 Offline Audio Intelligence & LRC Alignment Pipeline** (`AudioAnalysisManifest` + `.features.bin`) and the **Phase 2 2.5D Procedural Cinema & Scene Compositor Engine** (`FrameStateBuilder` + `SceneCompositor` + `RenderPipeline`) through a deterministic, contract-validated **Multi-Agent LLM Orchestration Architecture** (`src/agents/`).

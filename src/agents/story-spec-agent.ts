@@ -4,11 +4,15 @@ import {
   StorySpecContractSchema,
   type StorySpecContract,
   type CastSpecItem,
-  type SectionStagingSpec
+  type SectionStagingSpec,
+  type GenreProfile,
+  type EmotionalTone
 } from '../schemas/story-spec.contract.js';
 import type { LlmCallMetadata, LlmProvider } from './types.js';
 import { formatRepairFeedbackPrompt } from './repair-helper.js';
 import type { ValidationErrorItem } from '../schemas/invariants.js';
+import { analyzeSectionLyrics, extractLyricKeywords } from '../engine/audio/lyric-profile.js';
+import { classifyGenreProfile } from '../engine/audio/genre-classifier.js';
 
 export const STORY_SPEC_JSON_SCHEMA = JSON.stringify(
   z.toJSONSchema(StorySpecContractSchema, { target: 'draft-07' })
@@ -23,31 +27,45 @@ export interface StorySpecAgentInput {
   readonly maxTokens?: number;
   readonly timeoutMs?: number;
   readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
+  readonly noLyricsInPrompt?: boolean;
 }
 
 /**
  * Deterministically synthesizes a StorySpecContract conditioned directly on the
- * audio manifest features (tempo, energy novelty, dominant spectral bands, lyrics).
- * High-energy rock/metal -> industrial_city / neon_chasm with biped_runner + aerial_drone.
- * Electronic / synth -> synth_grid / orbital_station with quadruped_beast.
- * Ambient / quiet -> orbital_station with aerial_drone and MIDNIGHT_VOID.
+ * audio manifest features (multi-factor genre classifier, tempo, spectral bands, lyrics).
  */
 export function buildDeterministicStorySpec(
   manifest: AudioAnalysisManifest,
   projectId = 'autonomous-cinema'
 ): StorySpecContract {
   const { durationSeconds, totalFrames } = manifest.metadata;
-  const tempo = manifest.metadata.tempoBpm ?? manifest.beatGrid?.tempoBpm ?? 120;
   const rawSections = manifest.sections ?? [];
   const lyricCount = manifest.lyrics.length;
 
-  // Classify song acoustic profile
-  const isHighEnergy = tempo >= 140 || lyricCount > 30;
-  const isElectronic = !isHighEnergy && tempo >= 110;
+  // 1. Multi-factor Genre Classification
+  const genreResult = classifyGenreProfile(manifest);
+  const genre: GenreProfile = genreResult.genre;
 
-  // 1. Determine Cast Archetypes
+  // 2. Global Lyric Themes & Tone
+  const allLyricText = manifest.lyrics.map((l) => l.text).join(' ');
+  const globalLyricAnalysis = analyzeSectionLyrics(allLyricText);
+  const rawThemes = extractLyricKeywords(allLyricText, 6);
+  const themes =
+    rawThemes.length > 0
+      ? rawThemes
+      : genre === 'rock_metal'
+        ? ['rebellion', 'survival', 'velocity']
+        : genre === 'electronic_synth'
+          ? ['transcendence', 'cybernetics', 'speed']
+          : genre === 'pop_dance'
+            ? ['celebration', 'radiance', 'connection']
+            : genre === 'ballad_acoustic'
+              ? ['memory', 'solitude', 'healing']
+              : ['journey', 'discovery'];
+
+  // 3. Determine Cast Archetypes
   let cast: CastSpecItem[];
-  if (isHighEnergy) {
+  if (genre === 'rock_metal') {
     cast = [
       {
         instanceId: 'lead_runner',
@@ -71,7 +89,7 @@ export function buildDeterministicStorySpec(
         accessories: ['scanner_turret']
       }
     ];
-  } else if (isElectronic) {
+  } else if (genre === 'electronic_synth') {
     cast = [
       {
         instanceId: 'cyber_hound',
@@ -88,7 +106,25 @@ export function buildDeterministicStorySpec(
         accessories: ['searchlight']
       }
     ];
+  } else if (genre === 'pop_dance') {
+    cast = [
+      {
+        instanceId: 'lead_runner',
+        archetypeId: 'biped_runner',
+        scale: 1.0,
+        paletteOverrides: { primary: '#ffe600', accent: '#00f0ff' },
+        accessories: ['hazard_coat']
+      },
+      {
+        instanceId: 'patrol_drone',
+        archetypeId: 'aerial_drone',
+        scale: 0.9,
+        paletteOverrides: { primary: '#00f0ff', accent: '#ff007f' },
+        accessories: ['searchlight']
+      }
+    ];
   } else {
+    // ballad_acoustic or neutral
     cast = [
       {
         instanceId: 'solo_runner',
@@ -100,7 +136,7 @@ export function buildDeterministicStorySpec(
     ];
   }
 
-  // 2. Synthesize or partition >= 3 contiguous section spans (Safeguard 1)
+  // 4. Synthesize or partition >= 3 contiguous section spans
   interface CleanSectionSpan {
     id: string;
     startFrame: number;
@@ -149,7 +185,7 @@ export function buildDeterministicStorySpec(
         id: 'sec-1',
         startFrame: 0,
         endFrame: b1,
-        relativeEnergy: 0.35,
+        relativeEnergy: genre === 'ballad_acoustic' ? 0.25 : 0.35,
         hasVocals: false,
         dominantBand: 'lowMid'
       },
@@ -157,7 +193,7 @@ export function buildDeterministicStorySpec(
         id: 'sec-2',
         startFrame: b1,
         endFrame: b2,
-        relativeEnergy: isHighEnergy ? 0.88 : 0.65,
+        relativeEnergy: genre === 'rock_metal' ? 0.90 : genre === 'pop_dance' ? 0.78 : 0.65,
         hasVocals: lyricCount > 0,
         dominantBand: 'presence'
       },
@@ -165,14 +201,14 @@ export function buildDeterministicStorySpec(
         id: 'sec-3',
         startFrame: b2,
         endFrame: totalFrames,
-        relativeEnergy: 0.45,
+        relativeEnergy: genre === 'ballad_acoustic' ? 0.30 : 0.45,
         hasVocals: false,
         dominantBand: 'bass'
       }
     );
   }
 
-  // 3. Staging and Dynamic Acting
+  // 5. Staging and Dynamic Acting
   const sectionSpecs: SectionStagingSpec[] = [];
   const numSections = sections.length;
 
@@ -183,6 +219,17 @@ export function buildDeterministicStorySpec(
     const isLast = i === numSections - 1;
     const isSoloClimax = !isFirst && !isLast && (energy >= 0.75 && !sec.hasVocals || i === Math.floor(numSections * 0.65));
     const isChorus = !isFirst && !isLast && !isSoloClimax && (sec.hasVocals || energy >= 0.68);
+
+    // Section-level lyric analysis
+    const sectionLyrics = manifest.lyrics.filter(
+      (l) =>
+        l.frameRange.startFrameInclusive >= sec.startFrame &&
+        l.frameRange.startFrameInclusive < sec.endFrame
+    );
+    const secText = sectionLyrics.map((l) => l.text).join(' ');
+    const secLyricAnalysis = analyzeSectionLyrics(secText, globalLyricAnalysis.emotionalTone);
+    const emotionalTone: EmotionalTone = secLyricAnalysis.emotionalTone;
+    const lyricMotifs = secLyricAnalysis.lyricMotifs;
 
     // Dynamic Biped Motion Preset
     let bipedPreset:
@@ -196,31 +243,37 @@ export function buildDeterministicStorySpec(
 
     if (isFirst) {
       bipedPreset = 'stalk_crouch';
-      narrativeIntent = `Act I: Suspenseful Infiltration & Awakening (${energy > 0.5 ? 'Alert' : 'Stealth'})`;
+      narrativeIntent = `Act I: Suspenseful Awakening & Staging (${emotionalTone})`;
     } else if (isLast) {
       bipedPreset = 'exhausted_walk';
-      narrativeIntent = `Act III: Deceleration & Exhausted Resolution (${sec.id})`;
+      narrativeIntent = `Act III: Deceleration & Resolution (${emotionalTone})`;
     } else if (isSoloClimax) {
       bipedPreset = 'combat_clash';
-      narrativeIntent = `Virtuosic Climax & Combat Clash (${sec.dominantBand} Peak)`;
+      narrativeIntent = `Virtuosic Climax & Combat Encounter (${emotionalTone})`;
     } else if (isChorus) {
       bipedPreset = i % 2 === 0 ? 'defiant_scream' : 'evade_leap';
-      narrativeIntent = `Chorus Hook (${bipedPreset === 'defiant_scream' ? 'Defiant Scream' : 'Acrobatic Leap'})`;
+      narrativeIntent = `Chorus Hook (${bipedPreset === 'defiant_scream' ? 'Defiant Scream' : 'Dynamic Leap'}, ${emotionalTone})`;
     } else {
       bipedPreset = 'sprint_frenzy';
-      narrativeIntent = `Driving Progression & Kinetic Sprint (${sec.id})`;
+      narrativeIntent = `Driving Progression & Kinetic Traversal (${emotionalTone})`;
     }
 
     // Dynamic Biome & Color
     let kitId: 'industrial_city' | 'orbital_station' | 'neon_chasm' | 'synth_grid';
     let colorTheme: 'CYBERPUNK_CYAN' | 'VOLTAGE_ORANGE' | 'SUNSET_GOLD' | 'CRIMSON_FURY' | 'MIDNIGHT_VOID';
 
-    if (isHighEnergy) {
+    if (genre === 'rock_metal') {
       kitId = isSoloClimax ? 'neon_chasm' : isChorus ? 'orbital_station' : 'industrial_city';
       colorTheme = isSoloClimax ? 'CRIMSON_FURY' : isChorus ? 'VOLTAGE_ORANGE' : isFirst ? 'CYBERPUNK_CYAN' : 'MIDNIGHT_VOID';
-    } else if (isElectronic) {
+    } else if (genre === 'electronic_synth') {
       kitId = i % 2 === 0 ? 'synth_grid' : 'orbital_station';
       colorTheme = energy > 0.7 ? 'SUNSET_GOLD' : 'CYBERPUNK_CYAN';
+    } else if (genre === 'pop_dance') {
+      kitId = i % 2 === 0 ? 'neon_chasm' : 'synth_grid';
+      colorTheme = energy > 0.65 ? 'SUNSET_GOLD' : isChorus ? 'VOLTAGE_ORANGE' : 'CYBERPUNK_CYAN';
+    } else if (genre === 'ballad_acoustic') {
+      kitId = 'orbital_station';
+      colorTheme = emotionalTone === 'melancholic' ? 'MIDNIGHT_VOID' : 'CYBERPUNK_CYAN';
     } else {
       kitId = 'orbital_station';
       colorTheme = 'MIDNIGHT_VOID';
@@ -237,7 +290,7 @@ export function buildDeterministicStorySpec(
       kitParams = { gridSpacing: 40, horizonSun: true, wireframeMountains: true };
     }
 
-    // Directives with C0 continuity across boundaries (Safeguard 2)
+    // Directives with C0 continuity across boundaries
     const castDirectives = cast.map((c, cIdx) => {
       let motionPreset: any = bipedPreset;
       if (c.archetypeId === 'aerial_drone') {
@@ -246,7 +299,6 @@ export function buildDeterministicStorySpec(
         motionPreset = isFirst ? 'stalk' : isSoloClashOrLeap(bipedPreset) ? 'pounce' : 'gallop';
       }
 
-      // Continuous lateral stage offset
       const stageOffsetX = cIdx === 0 ? 0 : cIdx === 1 ? -0.3 : 0.3;
       const stageOffsetY = c.archetypeId === 'aerial_drone' ? 0.6 : 0;
 
@@ -266,27 +318,40 @@ export function buildDeterministicStorySpec(
       };
     });
 
+    const cameraIntensity =
+      genre === 'ballad_acoustic'
+        ? Number(Math.max(0.2, Math.min(0.6, energy * 0.7)).toFixed(2))
+        : Number(energy.toFixed(2));
+
     sectionSpecs.push({
       sectionId: sec.id,
       startFrame: sec.startFrame,
       endFrame: sec.endFrame,
       narrativeIntent,
+      emotionalTone,
+      lyricMotifs,
       environmentKitId: kitId,
       kitParams,
       colorThemeId: colorTheme,
-      cameraIntensity: Number(energy.toFixed(2)),
+      cameraIntensity,
       castDirectives
     });
   }
 
+  const moodMap: Record<GenreProfile, string> = {
+    rock_metal: 'High-Octane Kinetic Action',
+    electronic_synth: 'Futuristic Cybernetic Odyssey',
+    pop_dance: 'Euphoric Neon Rhythm',
+    ballad_acoustic: 'Atmospheric Meditative Nocturne',
+    neutral: 'Cinematic Visual Exploration'
+  };
+
   return {
     projectId,
-    title: `Autonomous Song Film (${durationSeconds.toFixed(1)}s, ${tempo} BPM)`,
-    overallMood: isHighEnergy
-      ? 'High-Octane Kinetic Action'
-      : isElectronic
-        ? 'Futuristic Cybernetic Odyssey'
-        : 'Atmospheric Meditative Nocturne',
+    title: `Autonomous Song Film (${durationSeconds.toFixed(1)}s, ${genreResult.metrics.tempoBpm} BPM)`,
+    overallMood: moodMap[genre],
+    themes,
+    genreProfile: genre,
     cast,
     sections: sectionSpecs
   };
@@ -315,13 +380,39 @@ export class StorySpecAgent {
   }
 
   public async generateStorySpec(input: StorySpecAgentInput): Promise<StorySpecContract> {
-    // If mock provider is used or offline, DeterministicMockLlmProvider handles via context or fallback
-    const prompt = [
+    const noLyrics =
+      input.noLyricsInPrompt ||
+      process.argv.includes('--no-lyrics-in-prompt') ||
+      process.env.ANIMATION_STUDIO_NO_LYRICS === '1';
+
+    // Format lyrics per section with token budget clamp (<= 1500 tokens / ~6000 chars)
+    let lyricsContext = '';
+    if (!noLyrics && input.audioManifest.lyrics.length > 0) {
+      const lines: string[] = [];
+      let charBudget = 6000;
+      for (const line of input.audioManifest.lyrics) {
+        const item = `[f:${line.frameRange.startFrameInclusive}] "${line.text}"`;
+        if (charBudget - item.length < 0) break;
+        lines.push(item);
+        charBudget -= item.length;
+      }
+      lyricsContext = `Lyrics Timeline:\n${lines.join('\n')}`;
+    } else if (noLyrics && input.audioManifest.lyrics.length > 0) {
+      lyricsContext = `Lyrics Timestamps: ${input.audioManifest.lyrics.map((l) => l.frameRange.startFrameInclusive).join(', ')}`;
+    }
+
+    const promptParts = [
       `Generate a StorySpecContract for project "${input.projectId ?? 'autonomous-film'}".`,
       `Song Duration: ${input.audioManifest.metadata.durationSeconds}s, Total Frames: ${input.audioManifest.metadata.totalFrames}, Tempo: ${input.audioManifest.metadata.tempoBpm ?? input.audioManifest.beatGrid?.tempoBpm ?? 'unknown'} BPM.`,
       `Sections: ${JSON.stringify(input.audioManifest.sections ?? [])}`,
       `Lyrics Count: ${input.audioManifest.lyrics.length}`
-    ].join('\n');
+    ];
+
+    if (lyricsContext) {
+      promptParts.push(lyricsContext);
+    }
+
+    const prompt = promptParts.join('\n');
 
     const repairSection = formatRepairFeedbackPrompt(
       input.repairErrors ?? [],
@@ -349,3 +440,4 @@ export class StorySpecAgent {
     );
   }
 }
+

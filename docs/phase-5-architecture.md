@@ -1,5 +1,8 @@
 # Phase 5 Architecture: Full-Length Song Production & Extended Narrative Cinema Engine
 
+> [!NOTE]
+> **Pipeline Deprecation Notice**: Legacy `macro-planner.ts` and separate CLI scripts have been unified into `src/engine/director/production-pipeline.ts` and the canonical `scripts/studio.ts --produce` CLI under the Spec-Then-Compile architecture. Checkpointing, streaming chunk rendering, and lossless concat demuxing documented here remain fully operational in `production-pipeline.ts`.
+
 ## 1. Overview & Architectural Objectives
 
 Phase 5 elevates `ai-agent-animation-studio` from rendering short cinematic demo slices (~6.0s / 180 frames) into a **production-grade, autonomous full-length music video generation studio** capable of handling full songs (such as Avenged Sevenfold's *"Trashed And Scattered"*, duration 353.27s / 10,598 frames @ 30 FPS).

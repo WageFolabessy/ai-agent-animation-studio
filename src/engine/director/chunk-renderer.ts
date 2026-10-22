@@ -12,7 +12,11 @@ import type {
 } from '../compositor/scene-compositor.js';
 import type { AssetRigContract } from '../../schemas/rig.contract.js';
 import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
-import type { ChunkDescriptor } from './checkpoint-manager.js';
+import {
+  type ChunkDescriptor,
+  writeChunkMetadataAtomic
+} from './checkpoint-manager.js';
+import { ENGINE_RENDER_VERSION } from '../../config/render-version.js';
 
 export interface GlobalFrameGeneratorOptions {
   frameStateBuilder: FrameStateBuilder;
@@ -74,6 +78,8 @@ export interface ChunkRenderOptions {
   ) => void;
   /** Optional abort signal to cancel rendering cleanly. */
   abortSignal?: AbortSignal;
+  /** Optional SHA-256 fingerprint for content-addressed caching (.meta.json). */
+  fingerprint?: string;
 }
 
 /**
@@ -116,5 +122,19 @@ export async function renderChunk(options: ChunkRenderOptions): Promise<RenderPi
     abortSignal
   });
 
-  return pipeline.run();
+  const res = await pipeline.run();
+
+  if (res.committed && options.fingerprint) {
+    writeChunkMetadataAtomic(chunk.filePath, {
+      chunkIndex: chunk.chunkIndex,
+      startFrame: chunk.startFrame,
+      endFrame: chunk.endFrame,
+      frameCount: chunk.frameCount,
+      fingerprint: options.fingerprint,
+      engineRenderVersion: ENGINE_RENDER_VERSION,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  return res;
 }

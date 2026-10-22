@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import { parseLrcContent, parseLrcFile } from '../src/engine/audio/lrc-parser.js';
+import { optionalAsset } from './helpers/optional-asset.js';
 import { validateProjectContracts } from '../src/schemas/invariants.js';
 import { createRenderConfig } from '../src/config/render-config.js';
 import { demoStoryboard, demoRigsMap } from '../src/demo/phase2-cinema/index.js';
@@ -170,10 +169,10 @@ test('LrcParser: Computes deterministic acoustic emphasis and passes all project
   assert.equal(report.isValid, true);
 });
 
-test('LrcParser: Parses real full-length assets/audio/trashed-and-scattered.lrc with zero overlap or sort errors', (t) => {
-  const lrcPath = path.resolve(process.cwd(), 'assets/audio/trashed-and-scattered.lrc');
-  if (!fs.existsSync(lrcPath)) {
-    t.skip('Skipping: assets/audio/trashed-and-scattered.lrc is absent on disk');
+test('LrcParser: Parses real full-length sample LRC when present with zero overlap or sort errors', (t) => {
+  const lrcPath = optionalAsset('trashed-and-scattered.lrc');
+  if (!lrcPath) {
+    t.skip('Optional real asset not found: trashed-and-scattered.lrc');
     return;
   }
   const songDurationSeconds = 353.2667;
