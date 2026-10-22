@@ -117,15 +117,24 @@ To replace repetitive treadmill running with dramatic character choreography, Ph
 
 ---
 
-### 2.4 Anti-Moonwalk Tracking Solver (`src/engine/director/choreography-solver.ts`)
-During tracking shots, foot-slipping ("moonwalking") occurs when camera horizontal velocity $\dot{X}_{\text{cam}}$ drifts relative to character root velocity $\dot{X}_{\text{runner}}$.
+### 2.4 Contact-Based Stride, Musical Motion Planner & Unified Trajectory Solver (`src/engine/director/trajectory-solver.ts`, `src/engine/director/choreography-solver.ts`)
+Foot-slipping ("moonwalking") occurs when character root displacement does not match physical ground contact kinematics. Rather than using an arbitrary hardcoded root speed, the engine computes:
 
-Phase 6 enforces an exact **velocity lock**:
-$$\dot{X}_{\text{cam}}(t) \equiv \dot{X}_{\text{runner}}(t) = v_{\text{stride}}$$
-$$X_{\text{cam}}(t) = X_{\text{runner}}(t) + \Delta X_{\text{offset}}$$
+1. **Forward Kinematics Stride Analysis (`analyzeClipContactStride`):**  
+   Evaluates foot contact frames ($y_{\text{foot}} \le y_{\text{ground}} + \epsilon$, with $\epsilon = 0.05 \cdot \text{legLength}$ and $v_{\text{req}} = -d(x_{\text{foot}} - x_{\text{root}})/df > 0$). Physical stride length is:
+   $$S = \text{mean}(v_{\text{req}}) \cdot \text{loopFrames}$$
+   During ground contact, keyframes are tuned so that max relative slip velocity $|v_{\text{req}} - \text{mean}| / \text{mean} \le 2.0\%$ for bipeds and $\le 4.0\%$ for quadrupeds.
 
-- During continuous tracking, $\Delta X_{\text{offset}}$ is held strictly constant ($\dot{\Delta X} = 0$).
-- When transitioning across camera cuts, the stride phase clock is unwrapped continuously to prevent discontinuous foot snaps.
+2. **Musical TimeScale Alignment (`computeMusicalMotionParameters`):**  
+   Locks character gait to the song's musical beat grid by selecting integer beats-per-loop $k \in \{1, 2, 4, 8\}$ that minimizes $|\ln(\text{timeScale}_k)|$:
+   $$\text{timeScale}_k = \frac{\text{loopFrames}}{k \cdot \text{framesPerBeat}}$$
+   $$\text{rootSpeed} = \frac{S}{\text{loopFrames}} \cdot \text{timeScale}$$
+   This guarantees character footfalls land on the beat while keeping $\text{timeScale} \in [0.6, 1.6]$. Non-locomotion clips set $\text{rootSpeed} = 0$.
+
+3. **Unified Continuous Trajectory & Zero Tracking Drift:**  
+   `buildUnifiedMotionPlan` integrates character position $X(t)$ across shot boundaries with $C^0$ continuity. TRACKING cameras read directly from the exact same unified motion plan:
+   $$X_{\text{cam}}(t) = X_{\text{char}}(t) + \Delta X_{\text{offset}}$$
+   Because both camera and character derive from the identical motion plan, relative offset drift is identically zero ($\Delta \dot{X} = 0$). Quadruped pursuers follow at constant $-120$ offset and stop when the lead stops.
 
 ---
 

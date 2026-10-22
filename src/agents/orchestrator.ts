@@ -251,7 +251,8 @@ export class StudioAgentOrchestrator {
               attempt,
               repairErrors: errors,
               previousDraft: draft,
-              onAttemptComplete: onComplete
+              onAttemptComplete: onComplete,
+              noLyricsInPrompt: options.noLyricsInPrompt
             }),
           validate: (candidateSpec) => {
             try {

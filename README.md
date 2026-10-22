@@ -358,8 +358,8 @@ Executes 7-band STFT audio analysis, columnar `.features.bin` encoding, determin
 npm run demo:phase3
 ```
 
-### 7. Phase 4 Multi-Agent LLM Orchestration Demo
-Executes the complete autonomous multi-agent pipeline (`DirectorAgent` $\to$ `RigAgent` $\to$ `ChoreographerAgent` $\to$ `StudioAgentOrchestrator`) with automated self-healing repair loops:
+### 7. Spec-Then-Compile Autonomous Narrative Orchestration Demo
+Executes the unified Spec-Then-Compile pipeline (`StorySpecAgent` $\to$ `compileStorySpecToStoryboard` $\to$ `ArchetypeFactory` $\to$ `solveChoreography` $\to$ `StudioAgentOrchestrator`) with automated self-healing contract repair loops:
 ```bash
 # Default deterministic mock mode (100% offline, reproducible):
 npm run demo:phase4
@@ -372,13 +372,13 @@ npm run demo:phase4 -- --provider openai
 npm run demo:phase4 -- --audio "assets/audio/trashed-and-scattered.flac" --lrc "assets/audio/trashed-and-scattered.lrc" --start 49.0 --duration 6.0 --out "my_cinema.mp4"
 ```
 
-### 8. Phase 5 Full-Length Music Video Production
-Executes the production pipeline across full-length songs (~6 minutes / 10,598 frames) using chunked streaming, fault-tolerant checkpointing, and lossless FFmpeg concat stitching:
+### 8. Full-Length Music Video Production Engine
+Executes the streaming production pipeline across full-length songs (~6 minutes / 10,598 frames) using chunked streaming rendering, content-addressed fingerprinting (`.meta.json` sidecars), and lossless FFmpeg concat stitching:
 ```bash
-# Full-length production of Trashed And Scattered (default 1500f chunks, continuous AAC master audio):
+# Full-length production (default 1500f chunks, continuous AAC master audio):
 npm run produce:video
 
-# Custom chunk sizing and automated instant resume:
+# Custom chunk sizing and automated content-addressed resume:
 npm run produce:video -- --chunk-frames 1500 --resume
 
 # Quick multi-chunk test run (e.g. 2 chunks of 60 frames):
@@ -549,13 +549,13 @@ Every production build and smoke benchmark must satisfy these quantitative gates
   Procedural cinema director (`ShotSequencer`, DOLLY/TRACKING/ORBIT, trauma camera shake), 2.5D articulated character rigging (FK, joint limits, secondary spring motion), shape morphing with $C^0$ continuity, strict Painter's algorithm depth sorting, and audio-reactive scene compositor.
 - **Phase 3 (Completed):**  
   Offline audio signal feature extraction (7-band STFT, RMS envelopes, spectral flux, onset detection), `.features.bin` v1 $O(1)$ columnar reader, deterministic `.lrc` alignment, and FFmpeg AAC audio-video muxing.
-- **Phase 4 (Completed):**  
-  Multi-agent LLM orchestration: `DirectorAgent`, `RigAgent`, `ChoreographerAgent`, and `StudioAgentOrchestrator` with automated self-healing contract validation and repair loops.
-- **Phase 5 (Completed):**  
-  Full-length music video production engine (`produce:video`, `scripts/produce-music-video.ts`) supporting 10,598 frames (~6.0 minutes @ 30 FPS), chunked streaming rendering, fault-tolerant checkpoint management with instant resume, sub-second lossless FFmpeg concat stitching with uncompressed continuous master FLAC $\to$ AAC 256k audio, hierarchical macro-to-micro storyboard planning across 7 musical sections, and secondary articulated pursuit enforcer drone kinematics.
-- **Phase 6 (Completed):**  
-  Mathematical safe-framing invariant verification suite ($10,598 / 10,598$ frames verified with zero near-plane or decapitation violations in 41ms), motion state machine with 6 named looping motion presets, velocity-locked anti-moonwalk tracking, and continuous 4-tier parallax skyline background generation.
-- **Phase 7 (Active / In Progress):**  
+- **Spec-Then-Compile Narrative Architecture:**  
+  Single-agent narrative specification (`StorySpecAgent`) compiled deterministically to camera shots (`compileStorySpecToStoryboard`), 2.5D character rigs (`ArchetypeFactory`), and choreography (`solveChoreography`), coordinated by `StudioAgentOrchestrator` with automated self-healing contract validation and repair loops.
+- **Production Streaming & Resume Pipeline:**  
+  Full-length music video production engine (`npm run studio --produce`, `scripts/studio.ts`) supporting 10,598+ frames (~6.0 minutes @ 30 FPS), chunked streaming rendering, content-addressed fingerprinting with `.meta.json` sidecars, instant skip-rendering resume, sub-second lossless FFmpeg concat stitching with uncompressed continuous master FLAC $\to$ AAC 256k audio, and secondary articulated pursuit enforcer drone kinematics.
+- **Continuous Trajectory & Musical Stride Engine:**  
+  Mathematical safe-framing invariant verification suite ($z_c \ge 135$, horizontal and cranial bounds), motion state machine with 6 named looping motion presets, physically grounded stride length via forward kinematics foot contact analysis ($\le 2\%$ slip velocity), musical `timeScale` locked to the musical beat grid ($\in [0.6, 1.6]$), unified continuous character trajectory solver with zero camera tracking drift, and continuous 4-tier parallax skyline background generation.
+- **Next Evolution (Active / In Progress):**  
   Theatrical Narrative Staging & Universal Genre Evolution: Transition from single-axis treadmill running to discrete theatrical sets (`SetStageContract`), multi-character casting and interpersonal relational blocking (Protagonist, Partner, Antagonist), multi-angle rigs (Frontal $0^\circ$, $3/4$ perspective) with lyric-synced singing phonemes, narrative vector props, and universal genre-aware directing matrices (Pop, Ballad, Rock, Metal, Acoustic, Electronic). See [Theatrical Narrative Architecture](docs/theatrical-narrative-architecture.md).
 
 ---

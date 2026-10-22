@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRenderConfig } from '../../config/render-config.js';
 import { OUTPUT_DIR } from '../../config/paths.js';
+import { ENGINE_RENDER_VERSION } from '../../config/render-version.js';
 import { PipelineMemorySampler } from '../../diagnostics/memory-sampler.js';
 import { probeVideo, assertBt709Tv } from '../../diagnostics/ffprobe.js';
 import { findTemporaryImageFiles } from '../../diagnostics/artifact-hygiene.js';
@@ -14,9 +15,15 @@ import {
   analyzeWavFileToArtifacts,
   runPythonAudioAnalyzer,
   synthesizeMusicalWavBuffer,
-  stitchChunksWithMasterAudio
+  stitchChunksWithMasterAudio,
+  AUDIO_ANALYZER_VERSION
 } from '../audio/index.js';
-import { CheckpointManager } from './checkpoint-manager.js';
+import {
+  CheckpointManager,
+  computeChunkFingerprint,
+  canonicalJsonStringify,
+  partitionSongIntoChunks
+} from './checkpoint-manager.js';
 import { renderChunk } from './chunk-renderer.js';
 import {
   DeterministicMockLlmProvider,
@@ -56,6 +63,7 @@ export interface ProductionPipelineOptions {
   readonly usePythonAudio?: boolean;
   readonly useSpecPipeline?: boolean;
   readonly storySpec?: StorySpecContract;
+  readonly noLyricsInPrompt?: boolean;
   readonly chunkFrames?: number;
   readonly maxChunks?: number;
   readonly startFrame?: number;
@@ -130,7 +138,8 @@ export async function runProductionPipeline(
     finalOutputPath = path.join(OUTPUT_DIR, 'production-output.mp4');
   }
 
-  const chunksDir = path.join(OUTPUT_DIR, 'chunks', path.basename(finalOutputPath, '.mp4'));
+  const outputDir = path.dirname(finalOutputPath);
+  const chunksDir = path.join(outputDir, 'chunks', path.basename(finalOutputPath, '.mp4'));
   fs.mkdirSync(chunksDir, { recursive: true });
 
   // 1. Resolve Audio Master & Optional LRC
@@ -142,7 +151,7 @@ export async function runProductionPipeline(
     activeLrcPath = options.lrcPath ? resolveCrossPlatformPath(options.lrcPath) : undefined;
   } else {
     // Synthetic fallback when no audio source is supplied
-    const fallbackDir = path.join(OUTPUT_DIR, 'synthetic-fallback');
+    const fallbackDir = path.join(outputDir, 'synthetic-fallback');
     fs.mkdirSync(fallbackDir, { recursive: true });
     activeAudioPath = path.join(fallbackDir, 'synth_song.wav');
     activeLrcPath = path.join(fallbackDir, 'synth_song.lrc');
@@ -163,15 +172,31 @@ export async function runProductionPipeline(
 
   // 2. Resolve Artifacts Directory
   let artifactsDir: string;
+  const audioContent = fs.readFileSync(activeAudioPath);
+  const audioContentHash = crypto.createHash('sha256').update(audioContent).digest('hex');
+  const lrcContentHash = activeLrcPath && fs.existsSync(activeLrcPath)
+    ? crypto.createHash('sha256').update(fs.readFileSync(activeLrcPath)).digest('hex')
+    : '';
+  const audioKey = crypto
+    .createHash('sha256')
+    .update(
+      canonicalJsonStringify({
+        audioContentHash,
+        lrcContentHash,
+        fps,
+        start: options.startFrame ?? 0,
+        duration: options.frameCount ?? 0,
+        analyzerVersion: AUDIO_ANALYZER_VERSION
+      })
+    )
+    .digest('hex');
+
   if (options.fromArtifactsDir) {
     artifactsDir = path.resolve(options.fromArtifactsDir);
   } else if (options.artifactsDir) {
     artifactsDir = path.resolve(options.artifactsDir);
   } else {
-    const audioStat = fs.statSync(activeAudioPath);
-    const audioKey = `${path.basename(activeAudioPath)}_${audioStat.size}_${audioStat.mtimeMs}`;
-    const hash = crypto.createHash('sha256').update(audioKey).digest('hex').slice(0, 12);
-    artifactsDir = path.join(OUTPUT_DIR, 'artifacts', hash);
+    artifactsDir = path.join(outputDir, 'artifacts', audioKey.slice(0, 16));
   }
   fs.mkdirSync(artifactsDir, { recursive: true });
 
@@ -225,15 +250,53 @@ export async function runProductionPipeline(
   // 3. Narrative Orchestration
   let orchestration: OrchestrationResult;
 
-  if (options.fromArtifactsDir) {
-    if (!quiet) {
-      console.log(`\n[Stage 2/5] Ingesting Pre-Synthesized Narrative from: "${artifactsDir}"`);
-    }
-    const storyboardFile = path.join(artifactsDir, 'storyboard.json');
-    const rigsFile = path.join(artifactsDir, 'rigs.json');
-    const choreoFile = path.join(artifactsDir, 'choreography.json');
-    const specFile = path.join(artifactsDir, 'story-spec.json');
+  const agentMetaPath = path.join(artifactsDir, 'agent-meta.json');
+  const storyboardFile = path.join(artifactsDir, 'storyboard.json');
+  const rigsFile = path.join(artifactsDir, 'rigs.json');
+  const choreoFile = path.join(artifactsDir, 'choreography.json');
+  const specFile = path.join(artifactsDir, 'story-spec.json');
 
+  const providerName =
+    options.providerName ??
+    (options.provider ? (options.provider as { name?: string }).name ?? 'custom' : 'mock');
+  const modelId =
+    (options.provider as { model?: string })?.model ??
+    (providerName === 'openai' ? 'gpt-4o-mini' : 'deterministic-mock-v1');
+  const lyricsInPromptFlag =
+    (options as { noLyricsInPrompt?: boolean }).noLyricsInPrompt === true ? false : true;
+
+  const expectedAgentKey = {
+    audioKey,
+    promptVersion: 1,
+    provider: providerName,
+    modelId,
+    storySpecContractVersion: 1,
+    lyricsInPromptFlag
+  };
+
+  let canReuseAgentArtifacts = false;
+  if (
+    !options.fromArtifactsDir &&
+    fs.existsSync(agentMetaPath) &&
+    fs.existsSync(storyboardFile) &&
+    fs.existsSync(rigsFile) &&
+    fs.existsSync(choreoFile)
+  ) {
+    try {
+      const existingMeta = JSON.parse(fs.readFileSync(agentMetaPath, 'utf8'));
+      if (canonicalJsonStringify(existingMeta) === canonicalJsonStringify(expectedAgentKey)) {
+        canReuseAgentArtifacts = true;
+      }
+    } catch {
+      canReuseAgentArtifacts = false;
+    }
+  }
+
+  if (options.fromArtifactsDir || canReuseAgentArtifacts) {
+    if (!quiet) {
+      const reason = options.fromArtifactsDir ? 'explicit fromArtifactsDir' : 'matching agent-meta';
+      console.log(`\n[Stage 2/5] Ingesting Pre-Synthesized Narrative from: "${artifactsDir}" (${reason})`);
+    }
     const storyboard = DirectorStoryboardContractSchema.parse(
       JSON.parse(fs.readFileSync(storyboardFile, 'utf8'))
     );
@@ -299,20 +362,21 @@ export async function runProductionPipeline(
       height,
       maxRetries: 3,
       useSpecPipeline: true,
+      noLyricsInPrompt: options.noLyricsInPrompt,
       ...(options.storySpec ? { storySpec: options.storySpec } : {})
     });
 
     // Persist artifacts
     fs.writeFileSync(
-      path.join(artifactsDir, 'storyboard.json'),
+      storyboardFile,
       JSON.stringify(orchestration.storyboard, null, 2)
     );
     fs.writeFileSync(
-      path.join(artifactsDir, 'rigs.json'),
+      rigsFile,
       JSON.stringify({ rigs: Array.from(orchestration.rigs.values()) }, null, 2)
     );
     fs.writeFileSync(
-      path.join(artifactsDir, 'choreography.json'),
+      choreoFile,
       JSON.stringify(orchestration.choreography, null, 2)
     );
     fs.writeFileSync(
@@ -321,10 +385,14 @@ export async function runProductionPipeline(
     );
     if (orchestration.storySpec) {
       fs.writeFileSync(
-        path.join(artifactsDir, 'story-spec.json'),
+        specFile,
         JSON.stringify(orchestration.storySpec, null, 2)
       );
     }
+    fs.writeFileSync(
+      agentMetaPath,
+      JSON.stringify(expectedAgentKey, null, 2)
+    );
 
     if (!quiet) {
       console.log(
@@ -346,15 +414,71 @@ export async function runProductionPipeline(
       ? Math.min(requestedFrames, options.maxChunks * chunkFrames)
       : requestedFrames;
 
+  const renderConfig = createRenderConfig({
+    width,
+    height,
+    fps,
+    pixelFormat: 'rgba',
+    preset: options.preset ?? 'veryfast',
+    crf: options.crf ?? 18,
+    threads: options.threads ?? 2,
+    totalFrames: chunkFrames
+  });
+
+  const initialDescriptors = partitionSongIntoChunks(
+    effectiveTotalFrames,
+    chunkFrames,
+    chunksDir,
+    startFrame
+  );
+
+  const audioManifestContent = fs.readFileSync(manifestPath, 'utf8');
+  const audioManifestHash = crypto.createHash('sha256').update(audioManifestContent).digest('hex');
+  const featuresBinBuffer = fs.readFileSync(binaryPath);
+  const featuresBinSha256 = crypto.createHash('sha256').update(featuresBinBuffer).digest('hex');
+
+  const expectedFingerprintsMap = new Map<number, string>();
+  for (const chunk of initialDescriptors) {
+    const overlappingShots = orchestration.storyboard.shots.filter(
+      (s) =>
+        s.frameRange.startFrameInclusive < chunk.endFrame &&
+        s.frameRange.endFrameExclusive > chunk.startFrame
+    );
+    const environmentParams = overlappingShots.map((s) => ({
+      shotId: s.id,
+      framing: s.framing,
+      cameraStart: s.cameraStart,
+      cameraEnd: s.cameraEnd,
+      environmentZone: s.environmentZone,
+      palette: s.palette,
+      env: orchestration.getEnvironmentForShot(s.id)
+    }));
+
+    const fp = computeChunkFingerprint({
+      renderConfig,
+      audioManifestHash,
+      featuresBinSha256,
+      storyboard: orchestration.storyboard,
+      rigs: orchestration.rigs,
+      choreography: orchestration.choreography,
+      storySpec: orchestration.storySpec,
+      environmentParams,
+      chunkRange: { startFrame: chunk.startFrame, endFrame: chunk.endFrame },
+      engineRenderVersion: ENGINE_RENDER_VERSION
+    });
+    expectedFingerprintsMap.set(chunk.chunkIndex, fp);
+  }
+
   const checkpointManager = new CheckpointManager({
     totalFrames: effectiveTotalFrames,
     chunkFrames,
     chunksDir,
     startFrame,
-    autoCleanCorrupted: true
+    autoCleanCorrupted: true,
+    expectedFingerprints: expectedFingerprintsMap
   });
 
-  const checkpointStatus = checkpointManager.evaluateStatus();
+  const checkpointStatus = checkpointManager.evaluateStatus(expectedFingerprintsMap);
 
   if (!quiet) {
     console.log(`\n[Stage 3/5] Evaluating Production Checkpoints & Chunks...`);
@@ -375,17 +499,6 @@ export async function runProductionPipeline(
     getAudioFeatureAtFrame: (f) => audioReader.getFrameFeature(f)
   });
   const compositor = new SceneCompositor({ width, height, fps });
-
-  const renderConfig = createRenderConfig({
-    width,
-    height,
-    fps,
-    pixelFormat: 'rgba',
-    preset: options.preset ?? 'veryfast',
-    crf: options.crf ?? 18,
-    threads: options.threads ?? 2,
-    totalFrames: chunkFrames
-  });
 
   const globalFrameGenerator = (globalIndex: number): string => {
     const clampedIndex = Math.max(0, Math.min(totalFrames - 1, globalIndex));
@@ -416,6 +529,7 @@ export async function runProductionPipeline(
   for (let c = 0; c < checkpointStatus.totalChunks; c++) {
     const chunk = checkpointManager.descriptors[c];
     const inspection = checkpointStatus.chunks[c];
+    const fingerprint = expectedFingerprintsMap.get(chunk.chunkIndex);
 
     if (resume && inspection.status === 'COMPLETED') {
       if (!quiet) {
@@ -436,6 +550,7 @@ export async function runProductionPipeline(
       chunk,
       renderConfig,
       frameGenerator: globalFrameGenerator,
+      fingerprint,
       onChunkFrameRendered: (localIndex, globalIndex) => {
         renderedFramesInSession++;
         const now = performance.now();
@@ -488,6 +603,15 @@ export async function runProductionPipeline(
     console.log(`\n\n[Stage 5/5] Losslessly Stitching Chunks with Master Audio...`);
   }
 
+  const finalStatus = checkpointManager.evaluateStatus(expectedFingerprintsMap);
+  const incompleteChunks = finalStatus.chunks.filter((ch) => ch.status !== 'COMPLETED');
+  if (incompleteChunks.length > 0) {
+    const reasons = incompleteChunks
+      .map((c) => `chunk ${c.chunk.chunkIndex}: ${c.status} (${c.reason ?? 'not completed'})`)
+      .join(', ');
+    throw new Error(`Cannot stitch chunks: Not all chunks are COMPLETED. ${reasons}`);
+  }
+
   const finalChunkPaths = checkpointManager.getOrderedChunkPaths();
 
   const stitchResult = await stitchChunksWithMasterAudio({
@@ -497,7 +621,10 @@ export async function runProductionPipeline(
     audioStartSeconds: startFrame / fps,
     audioBitrateKbps: bitrateKbps,
     totalExpectedFrames: effectiveTotalFrames,
-    tempDir: OUTPUT_DIR
+    tempDir: outputDir,
+    expectedFingerprints: expectedFingerprintsMap,
+    descriptors: checkpointManager.descriptors,
+    checkChunkIntegrity: true
   });
 
   const probe = probeVideo(stitchResult.finalOutputPath);

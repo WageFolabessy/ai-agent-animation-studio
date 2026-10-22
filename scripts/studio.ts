@@ -26,6 +26,7 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
   let frameCount: number | undefined;
   let usePythonAudio = false;
   let isProduceMode = false;
+  let noLyricsInPrompt = process.env.ANIMATION_STUDIO_NO_LYRICS === '1';
   let fps: 30 | 60 = DEMO_FPS as 30;
   let width = 1920;
   let height = 1080;
@@ -80,6 +81,8 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
       resume = false;
     } else if (arg === '--resume') {
       resume = true;
+    } else if (arg === '--no-lyrics-in-prompt') {
+      noLyricsInPrompt = true;
     } else if (arg === '--bitrate' && i + 1 < argv.length) {
       bitrateKbps = Number.parseInt(argv[++i], 10) || 256;
     } else if (arg === '--help' || arg === '-h') {
@@ -105,6 +108,7 @@ Options:
   --threads <num>          Encoding threads for FFmpeg (default: 2)
   --python / --no-python   Use Python audio analyzer instead of TypeScript (default: --no-python)
   --resume / --no-resume   Resume rendering using valid existing chunk files (default: enabled)
+  --no-lyrics-in-prompt    Omit lyric text from LLM prompts (timestamps are preserved)
   --bitrate <kbps>         Master continuous audio AAC bitrate in kbps (default: 256)
   --help, -h               Show this help message and exit
 `);
@@ -150,6 +154,7 @@ Options:
     height,
     fps,
     threads,
+    noLyricsInPrompt,
     isProduceMode
   };
 }

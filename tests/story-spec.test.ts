@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript';
+import type { LlmProvider } from '../src/agents/types.js';
 import {
   StorySpecContractSchema,
   type StorySpecContract
@@ -498,7 +502,7 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
   );
 
   await t.test(
-    'StorySpecAgent formats per-section lyrics into prompt and respects opt-out flags',
+    'Lyric text removal: noLyricsInPrompt: true omits all lyric text lines from LLM prompts',
     async () => {
       const rockManifest = createSyntheticRockManifest();
       let capturedPrompt = '';
@@ -522,16 +526,100 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
       await agent.generateStorySpec({ audioManifest: rockManifest, noLyricsInPrompt: true });
       assert.ok(!capturedPrompt.includes('Thunder in the city'));
       assert.ok(capturedPrompt.includes('Lyrics Timestamps:'));
+    }
+  );
 
-      // Opt-out via ANIMATION_STUDIO_NO_LYRICS=1 env var
-      process.env.ANIMATION_STUDIO_NO_LYRICS = '1';
-      capturedPrompt = '';
+  await t.test(
+    'Notice test: prints single notice when remote host is configured and lyrics present; omitted for local or opt-out',
+    async () => {
+      class FakeRemoteProvider implements LlmProvider {
+        public readonly name = 'fake-remote';
+        describeEndpoint() {
+          return {
+            provider: 'fake-remote',
+            modelId: 'remote-model',
+            host: 'api.remote-llm.com',
+            isLocal: false
+          };
+        }
+        async generateStructuredJson<T>(_prompt: string, _schema: any, options: any): Promise<T> {
+          return buildDeterministicStorySpec(
+            (options.context?.audioManifest as any) ?? createSyntheticRockManifest()
+          ) as any;
+        }
+      }
+
+      const rockManifest = createSyntheticRockManifest();
+      const originalLog = console.log;
+      let capturedLog = '';
+      console.log = (...args: unknown[]) => {
+        capturedLog += args.join(' ') + '\n';
+      };
+
       try {
+        StorySpecAgent.resetNoticeFlag();
+        const remoteProvider = new FakeRemoteProvider();
+        const agent = new StorySpecAgent(remoteProvider);
+
+        // 1. Notice printed for remote host with lyrics
         await agent.generateStorySpec({ audioManifest: rockManifest });
-        assert.ok(!capturedPrompt.includes('Thunder in the city'));
-        assert.ok(capturedPrompt.includes('Lyrics Timestamps:'));
+        assert.ok(
+          capturedLog.includes(
+            '[story-spec] Notice: lyric text is being sent to api.remote-llm.com (fake-remote/remote-model). Use --no-lyrics-in-prompt to omit lyrics from LLM prompts.'
+          ),
+          `Notice must be printed for remote endpoint (got: ${capturedLog})`
+        );
+
+        // 2. Calling a second time in same session prints at most once
+        capturedLog = '';
+        await agent.generateStorySpec({ audioManifest: rockManifest });
+        assert.equal(capturedLog, '', 'Notice must be printed at most once per session');
+
+        // 3. When noLyricsInPrompt is true, notice is never printed
+        StorySpecAgent.resetNoticeFlag();
+        capturedLog = '';
+        await agent.generateStorySpec({ audioManifest: rockManifest, noLyricsInPrompt: true });
+        assert.equal(capturedLog, '', 'Notice must not be printed when noLyricsInPrompt is true');
+
+        // 4. When provider isLocal is true (e.g. DeterministicMockLlmProvider), notice is never printed
+        StorySpecAgent.resetNoticeFlag();
+        capturedLog = '';
+        const localAgent = new StorySpecAgent(new DeterministicMockLlmProvider());
+        await localAgent.generateStorySpec({ audioManifest: rockManifest });
+        assert.equal(capturedLog, '', 'Notice must not be printed for local provider');
       } finally {
-        delete process.env.ANIMATION_STUDIO_NO_LYRICS;
+        console.log = originalLog;
+      }
+    }
+  );
+
+  await t.test(
+    'Static AST check: src/agents/story-spec-agent.ts and src/agents/orchestrator.ts contain zero references to process.argv or process.env',
+    () => {
+      const filesToCheck = [
+        path.join(process.cwd(), 'src/agents/story-spec-agent.ts'),
+        path.join(process.cwd(), 'src/agents/orchestrator.ts')
+      ];
+
+      for (const filePath of filesToCheck) {
+        assert.ok(fs.existsSync(filePath), `File ${filePath} must exist`);
+        const code = fs.readFileSync(filePath, 'utf8');
+        const sourceFile = ts.createSourceFile(filePath, code, ts.ScriptTarget.Latest, true);
+
+        function visit(node: ts.Node) {
+          if (ts.isPropertyAccessExpression(node)) {
+            const expr = node.expression;
+            const prop = node.name.text;
+            if (ts.isIdentifier(expr) && expr.text === 'process' && (prop === 'argv' || prop === 'env')) {
+              assert.fail(
+                `Forbidden access: process.${prop} found in ${path.basename(filePath)} at position ${node.getStart()}`
+              );
+            }
+          }
+          ts.forEachChild(node, visit);
+        }
+
+        visit(sourceFile);
       }
     }
   );

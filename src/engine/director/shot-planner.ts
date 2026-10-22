@@ -15,7 +15,8 @@ import type {
 import type { Vec3 } from '../../schemas/primitives.schema.js';
 import type { StorySpecContract, SectionStagingSpec } from '../../schemas/story-spec.contract.js';
 import { THEME_PALETTES } from '../library/environment-kit.js';
-import { globalTrajectorySolver } from './trajectory-solver.js';
+import { ArchetypeFactory } from '../library/archetype-factory.js';
+import { globalTrajectorySolver, buildUnifiedMotionPlan } from './trajectory-solver.js';
 
 export interface CinematicAngleFormula {
   readonly name: string;
@@ -201,8 +202,20 @@ export function compileStorySpecToStoryboard(
   const k1 = Math.max(1, Math.min(sectionCount - 2, Math.round(sectionCount / 3)));
   const k2 = Math.max(k1 + 1, Math.min(sectionCount - 1, Math.round((2 * sectionCount) / 3)));
 
-  // 2. Map sections to frame spans and assemble shots
-  const shots: CinematicShot[] = [];
+  // 2. Phase A: Build Shot Skeletons
+  interface ShotSkeleton {
+    id: string;
+    shotIndex: number;
+    actNumber: 1 | 2 | 3;
+    frameRange: { startFrameInclusive: number; endFrameExclusive: number };
+    angle: CinematicAngleFormula;
+    secSpec: SectionStagingSpec;
+    palette: (typeof THEME_PALETTES)[keyof typeof THEME_PALETTES];
+    environmentZone: EnvironmentZoneType;
+    activeRigIds: string[];
+  }
+
+  const skeletons: ShotSkeleton[] = [];
   let currentFrame = 0;
   let shotIndex = 0;
 
@@ -226,55 +239,21 @@ export function compileStorySpecToStoryboard(
 
     const { snappedFrames } = snapShotBoundariesToBeats(rawCuts, manifest.beatGrid);
     const cutPoints = [sectionStart, ...snappedFrames, sectionEnd];
-
-    // Determine Act Number for all shots in this section
     const actNumber: 1 | 2 | 3 = sIdx < k1 ? 1 : sIdx < k2 ? 2 : 3;
 
-    // Build shots for this section
+    // Build shot skeletons for this section
     for (let i = 0; i < cutPoints.length - 1; i++) {
       const fStart = i === 0 && sIdx === 0 ? 0 : currentFrame;
       const fEnd = cutPoints[i + 1];
       if (fEnd <= fStart) continue;
 
-      // 6-Angle cinematic state machine
       const angle = CINEMATIC_ANGLES[shotIndex % CINEMATIC_ANGLES.length];
       const framing = angle.framing;
-      const movement = angle.movement;
-      const viewpoint = angle.viewpoint;
-      const cameraFov = angle.fov;
 
-      // Character horizontal progress via shared pure trajectory solver
-      const leadRigId = castRigIds[0];
-      const fEndLast = Math.max(fStart, fEnd - 1);
-      const charStartPos = computeLeadCharacterWorldPos(fStart, secSpec, leadRigId);
-      const charEndPos = computeLeadCharacterWorldPos(fEndLast, secSpec, leadRigId);
-
-      const camStartPos: Vec3 = [
-        Number((charStartPos[0] + angle.camOffsetStart[0]).toFixed(2)),
-        Number((charStartPos[1] + angle.camOffsetStart[1]).toFixed(2)),
-        Number((charStartPos[2] + angle.camOffsetStart[2]).toFixed(2))
-      ];
-      const camStartTarget: Vec3 = [
-        Number((charStartPos[0] + angle.targetOffsetStart[0]).toFixed(2)),
-        Number((charStartPos[1] + angle.targetOffsetStart[1]).toFixed(2)),
-        Number((charStartPos[2] + angle.targetOffsetStart[2]).toFixed(2))
-      ];
-
-      const camEndPos: Vec3 = [
-        Number((charEndPos[0] + angle.camOffsetEnd[0]).toFixed(2)),
-        Number((charEndPos[1] + angle.camOffsetEnd[1]).toFixed(2)),
-        Number((charEndPos[2] + angle.camOffsetEnd[2]).toFixed(2))
-      ];
-      const camEndTarget: Vec3 = [
-        Number((charEndPos[0] + angle.targetOffsetEnd[0]).toFixed(2)),
-        Number((charEndPos[1] + angle.targetOffsetEnd[1]).toFixed(2)),
-        Number((charEndPos[2] + angle.targetOffsetEnd[2]).toFixed(2))
-      ];
-
-      // Exclude foreground parallax rigs on CLOSE_UP shots (Gap 2)
-      const activeRigIds = framing === 'CLOSE_UP'
-        ? castRigIds.filter((id) => !id.includes('foreground') && !id.includes('fg_'))
-        : castRigIds;
+      const activeRigIds =
+        framing === 'CLOSE_UP'
+          ? castRigIds.filter((id) => !id.includes('foreground') && !id.includes('fg_'))
+          : castRigIds;
 
       const palette = THEME_PALETTES[secSpec.colorThemeId] ?? THEME_PALETTES.CYBERPUNK_CYAN;
 
@@ -286,51 +265,126 @@ export function compileStorySpecToStoryboard(
       };
       const environmentZone = zoneMap[secSpec.environmentKitId] ?? 'ROOFTOP';
 
-      const shot: CinematicShot = {
+      skeletons.push({
         id: `shot_${shotIndex.toString().padStart(2, '0')}`,
         shotIndex,
         actNumber,
         frameRange: { startFrameInclusive: fStart, endFrameExclusive: fEnd },
-        framing,
-        movement,
-        viewpoint,
-        cameraStart: {
-          position: camStartPos,
-          target: camStartTarget,
-          up: [0, 1, 0],
-          nearPlane: 0.1,
-          farPlane: 2000,
-          rollDegrees: angle.rollDegrees,
-          verticalFovDegrees: cameraFov,
-          projectionMode: 'perspective'
-        },
-        cameraEnd: {
-          position: camEndPos,
-          target: camEndTarget,
-          up: [0, 1, 0],
-          nearPlane: 0.1,
-          farPlane: 2000,
-          rollDegrees: angle.rollDegrees,
-          verticalFovDegrees: cameraFov,
-          projectionMode: 'perspective'
-        },
-        cameraEasing: angle.easing,
+        angle,
+        secSpec,
         palette,
-        narrativeAction: `${secSpec.narrativeIntent} (${angle.name})`,
-        activeRigIds: activeRigIds.length > 0 ? activeRigIds : castRigIds,
-        environmentZone
-      };
+        environmentZone,
+        activeRigIds: activeRigIds.length > 0 ? activeRigIds : castRigIds
+      });
 
-      shots.push(shot);
       currentFrame = fEnd;
       shotIndex++;
     }
   }
 
-  // Final sanity check: Contiguity enforcement
-  if (shots.length > 0 && shots[shots.length - 1].frameRange.endFrameExclusive !== totalFrames) {
-    (shots[shots.length - 1].frameRange as { endFrameExclusive: number }).endFrameExclusive = totalFrames;
+  // Final sanity check: Contiguity enforcement on skeletons
+  if (
+    skeletons.length > 0 &&
+    skeletons[skeletons.length - 1].frameRange.endFrameExclusive !== totalFrames
+  ) {
+    (skeletons[skeletons.length - 1].frameRange as { endFrameExclusive: number }).endFrameExclusive =
+      totalFrames;
   }
+
+  // Phase B: Compute Per-Shot Unified Motion Plan
+  const leadRigId = castRigIds[0] ?? 'lead';
+  const leadRig = ArchetypeFactory.build({
+    instanceId: leadRigId,
+    spec: {
+      instanceId: leadRigId,
+      archetypeId: 'biped_runner',
+      scale: 1.0,
+      accessories: []
+    }
+  });
+
+  const motionPlan = buildUnifiedMotionPlan({
+    storyboardShots: skeletons.map((s) => ({
+      id: s.id,
+      frameRange: s.frameRange,
+      framing: s.angle.framing,
+      actNumber: s.actNumber
+    })),
+    storySpec: spec,
+    rig: leadRig,
+    framesPerBeat:
+      manifest.beatGrid?.framesPerBeat && manifest.beatGrid.framesPerBeat > 0
+        ? manifest.beatGrid.framesPerBeat
+        : (60 / (manifest.metadata.tempoBpm ?? 120)) * (manifest.metadata.fps ?? 30)
+  });
+
+  globalTrajectorySolver.setMotionPlan(motionPlan);
+
+  // Phase C: Camera Assignment from Motion Plan
+  const shots: CinematicShot[] = skeletons.map((skel) => {
+    const fStart = skel.frameRange.startFrameInclusive;
+    const fEndLast = Math.max(fStart, skel.frameRange.endFrameExclusive - 1);
+
+    const charStartPos = globalTrajectorySolver.computeWorldPos(fStart, skel.secSpec, leadRigId);
+    const charEndPos = globalTrajectorySolver.computeWorldPos(fEndLast, skel.secSpec, leadRigId);
+
+    const camStartPos: Vec3 = [
+      Number((charStartPos[0] + skel.angle.camOffsetStart[0]).toFixed(2)),
+      Number((charStartPos[1] + skel.angle.camOffsetStart[1]).toFixed(2)),
+      Number((charStartPos[2] + skel.angle.camOffsetStart[2]).toFixed(2))
+    ];
+    const camStartTarget: Vec3 = [
+      Number((charStartPos[0] + skel.angle.targetOffsetStart[0]).toFixed(2)),
+      Number((charStartPos[1] + skel.angle.targetOffsetStart[1]).toFixed(2)),
+      Number((charStartPos[2] + skel.angle.targetOffsetStart[2]).toFixed(2))
+    ];
+
+    const camEndPos: Vec3 = [
+      Number((charEndPos[0] + skel.angle.camOffsetEnd[0]).toFixed(2)),
+      Number((charEndPos[1] + skel.angle.camOffsetEnd[1]).toFixed(2)),
+      Number((charEndPos[2] + skel.angle.camOffsetEnd[2]).toFixed(2))
+    ];
+    const camEndTarget: Vec3 = [
+      Number((charEndPos[0] + skel.angle.targetOffsetEnd[0]).toFixed(2)),
+      Number((charEndPos[1] + skel.angle.targetOffsetEnd[1]).toFixed(2)),
+      Number((charEndPos[2] + skel.angle.targetOffsetEnd[2]).toFixed(2))
+    ];
+
+    return {
+      id: skel.id,
+      shotIndex: skel.shotIndex,
+      actNumber: skel.actNumber,
+      frameRange: skel.frameRange,
+      framing: skel.angle.framing,
+      movement: skel.angle.movement,
+      viewpoint: skel.angle.viewpoint,
+      cameraStart: {
+        position: camStartPos,
+        target: camStartTarget,
+        up: [0, 1, 0],
+        nearPlane: 0.1,
+        farPlane: 2000,
+        rollDegrees: skel.angle.rollDegrees,
+        verticalFovDegrees: skel.angle.fov,
+        projectionMode: 'perspective'
+      },
+      cameraEnd: {
+        position: camEndPos,
+        target: camEndTarget,
+        up: [0, 1, 0],
+        nearPlane: 0.1,
+        farPlane: 2000,
+        rollDegrees: skel.angle.rollDegrees,
+        verticalFovDegrees: skel.angle.fov,
+        projectionMode: 'perspective'
+      },
+      cameraEasing: skel.angle.easing,
+      palette: skel.palette,
+      narrativeAction: `${skel.secSpec.narrativeIntent} (${skel.angle.name})`,
+      activeRigIds: skel.activeRigIds,
+      environmentZone: skel.environmentZone
+    };
+  });
 
   // If spec had < 3 sections, partition acts across compiled shots if possible
   if (sectionCount < 3 && shots.length >= 3) {

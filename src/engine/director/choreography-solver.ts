@@ -8,10 +8,12 @@ import type {
   MorphKeyframeItem
 } from '../../schemas/choreography.contract.js';
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
-import { computeLeadCharacterWorldPos } from './shot-planner.js';
+import { ArchetypeFactory } from '../library/archetype-factory.js';
 import {
   computeClipStrideLength,
-  calculatePhysicalTimeScaleAndSpeed
+  computeMusicalMotionParameters,
+  buildUnifiedMotionPlan,
+  globalTrajectorySolver
 } from './trajectory-solver.js';
 
 function resolveClipIdForSection(
@@ -36,16 +38,50 @@ function resolveClipIdForSection(
 export function solveChoreography(
   spec: StorySpecContract,
   storyboard: DirectorStoryboardContract,
-  rigs: Map<string, AssetRigContract>
+  rigs: Map<string, AssetRigContract>,
+  framesPerBeat = 15
 ): ChoreographyContract {
   const tracks: EntityTrack[] = [];
   const shots = storyboard.shots;
   const castMap = new Map(spec.cast.map((c) => [c.instanceId, c]));
 
+  const leadRigId = spec.cast[0]?.instanceId ?? Array.from(rigs.keys())[0] ?? 'lead';
+  const leadRig =
+    rigs.get(leadRigId) ??
+    ArchetypeFactory.build({
+      instanceId: leadRigId,
+      spec: {
+        instanceId: leadRigId,
+        archetypeId: 'biped_runner',
+        scale: 1.0,
+        accessories: []
+      }
+    });
+
+  const existingPlan = globalTrajectorySolver.getMotionPlan();
+  const motionPlan =
+    existingPlan.length === storyboard.shots.length &&
+    existingPlan.every((p, idx) => p.shotId === storyboard.shots[idx]?.id)
+      ? existingPlan
+      : buildUnifiedMotionPlan({
+          storyboardShots: storyboard.shots.map((s) => ({
+            id: s.id,
+            frameRange: s.frameRange,
+            framing: s.framing,
+            actNumber: s.actNumber
+          })),
+          storySpec: spec,
+          rig: leadRig,
+          framesPerBeat
+        });
+
+  globalTrajectorySolver.setMotionPlan(motionPlan);
+  const shotPlanMap = new Map(motionPlan.map((p) => [p.shotId, p]));
+  const effectiveFramesPerBeat = globalTrajectorySolver.getFramesPerBeat();
+
   // Independent per-character pose clocks and last clip tracking
   const entityPoseClocks = new Map<string, number>();
   const entityLastClips = new Map<string, { clipId: string; loopFrames: number }>();
-
 
   for (let i = 0; i < shots.length; i++) {
     const shot = shots[i];
@@ -54,10 +90,14 @@ export function solveChoreography(
     const lastFrame = Math.max(startFrame, endFrame - 1);
     const duration = Math.max(1, endFrame - startFrame);
 
-    // Find section corresponding to shot via exact boundary lookup
-    const sectionSpec = spec.sections.find(
-      (s) => startFrame >= s.startFrame && startFrame < s.endFrame
-    ) ?? spec.sections[spec.sections.length - 1];
+    const sectionSpec =
+      spec.sections.find((s) => startFrame >= s.startFrame && startFrame < s.endFrame) ??
+      spec.sections[spec.sections.length - 1];
+
+    const leadPlan = shotPlanMap.get(shot.id);
+    const leadStartX = leadPlan ? leadPlan.startX : 0;
+    const leadSpeed = leadPlan ? leadPlan.rootSpeed : 0;
+    const leadEndX = leadStartX + leadSpeed * (lastFrame - startFrame);
 
     for (const rigId of shot.activeRigIds) {
       const rig = rigs.get(rigId);
@@ -74,11 +114,12 @@ export function solveChoreography(
               : 'biped_runner');
 
         if (archetype === 'aerial_drone') {
-          // Active Sinusoidal Dive & Swoop Pursuit Drone (Z = -40)
+          // Free flight pursuit path defined relative to lead character's actual trajectory
           const droneKeyframes: EntityTrackKeyframe[] = [];
           const step = Math.max(12, Math.floor(duration / 4));
           for (let f = startFrame; f < endFrame; f += step) {
-            const x = f * 0.45 + 110 + 10 * Math.sin(0.04 * f);
+            const leadXAtF = leadStartX + leadSpeed * (f - startFrame);
+            const x = leadXAtF + 110;
             const y = 175 + 45 * Math.cos(0.06 * f);
             const rotZ = Math.sin(0.04 * f) * 8;
             droneKeyframes.push({
@@ -90,7 +131,8 @@ export function solveChoreography(
               easing: 'linear'
             });
           }
-          const lastX = lastFrame * 0.45 + 110 + 10 * Math.sin(0.04 * lastFrame);
+          const leadXLast = leadStartX + leadSpeed * (lastFrame - startFrame);
+          const lastX = leadXLast + 110;
           const lastY = 175 + 45 * Math.cos(0.06 * lastFrame);
           const lastRotZ = Math.sin(0.04 * lastFrame) * 8;
           if (
@@ -117,14 +159,48 @@ export function solveChoreography(
           continue;
         }
 
+        const isLead = rigId === leadRigId;
+
         if (archetype === 'quadruped_beast') {
-          // Active Ground Pursuit Hound (Z = 0, Y = 50)
-          const beastStartX = startFrame * 0.45 - 140;
-          const beastEndX = lastFrame * 0.45 - 60;
+          const isLeadMoving = leadSpeed > 0;
+          const quadClipId = isLeadMoving ? 'beast_gallop' : 'beast_idle';
+          const quadActiveClip =
+            (rig.poseClips && rig.poseClips[quadClipId]) ?? rig.poseInterpolation;
+          const quadLoopFrames = quadActiveClip?.loopFrames ?? 24;
+
+          const quadStride = computeClipStrideLength(
+            rig,
+            quadActiveClip ?? { keyframes: [], interpolationMode: 'linear' },
+            quadClipId
+          );
+          const quadMotion = computeMusicalMotionParameters(
+            quadActiveClip ?? { keyframes: [], interpolationMode: 'linear' },
+            quadStride,
+            effectiveFramesPerBeat,
+            quadClipId
+          );
+
+          let quadStartX: number;
+          let quadEndX: number;
+          let quadTimeScale: number;
+
+          if (isLead) {
+            quadStartX = leadPlan ? leadPlan.startX : 0;
+            quadTimeScale = leadPlan ? leadPlan.timeScale : quadMotion.timeScale;
+            const quadSpeed = leadPlan ? leadPlan.rootSpeed : quadMotion.rootSpeed;
+            quadEndX = quadStartX + quadSpeed * (lastFrame - startFrame);
+          } else {
+            // Quadruped pursuer: follows lead at -120 offset, stops when lead stops
+            const quadOffsetX = -120;
+            quadStartX = leadStartX + quadOffsetX;
+            quadEndX = isLeadMoving ? leadEndX + quadOffsetX : quadStartX;
+            quadTimeScale = quadMotion.timeScale;
+          }
+
           const beastKeyframes: EntityTrackKeyframe[] = [
             {
               frame: startFrame,
-              position: [Number(beastStartX.toFixed(2)), 50, 0],
+              position: [Number(quadStartX.toFixed(2)), 50, 0],
               rotationZDegrees: 0,
               scale: [1, 1],
               opacity: 1,
@@ -132,7 +208,7 @@ export function solveChoreography(
             },
             {
               frame: lastFrame,
-              position: [Number(beastEndX.toFixed(2)), 50, 0],
+              position: [Number(quadEndX.toFixed(2)), 50, 0],
               rotationZDegrees: 0,
               scale: [1, 1],
               opacity: 1,
@@ -140,17 +216,32 @@ export function solveChoreography(
             }
           ];
 
-          // Independent pose clock for quadruped
+          // Independent pose clock for quadruped with per-clip loopFrames
           const quadLastClock = entityPoseClocks.get(rigId) ?? 0;
-          const quadStartPoseFrame = Number((((quadLastClock % 24) + 24) % 24).toFixed(4));
-          const quadTimeScale = 1.4;
-          entityPoseClocks.set(rigId, quadLastClock + duration * quadTimeScale);
+          const quadLastClipInfo = entityLastClips.get(rigId);
+          let quadStartPoseFrame: number;
+
+          if (quadLastClipInfo && quadLastClipInfo.clipId !== quadClipId) {
+            const normalizedPhase =
+              (((quadLastClock % quadLastClipInfo.loopFrames) + quadLastClipInfo.loopFrames) %
+                quadLastClipInfo.loopFrames) /
+              quadLastClipInfo.loopFrames;
+            quadStartPoseFrame = Number((normalizedPhase * quadLoopFrames).toFixed(4));
+          } else {
+            quadStartPoseFrame = Number(
+              (((quadLastClock % quadLoopFrames) + quadLoopFrames) % quadLoopFrames).toFixed(4)
+            );
+          }
+
+          entityPoseClocks.set(rigId, quadStartPoseFrame + duration * quadTimeScale);
+          entityLastClips.set(rigId, { clipId: quadClipId, loopFrames: quadLoopFrames });
 
           tracks.push({
             shotId: shot.id,
             rigId,
             transform: { keyframes: beastKeyframes },
             pose: {
+              clipId: quadClipId,
               timeScale: quadTimeScale,
               startPoseFrame: quadStartPoseFrame
             },
@@ -160,87 +251,83 @@ export function solveChoreography(
           continue;
         }
 
-        // Biped Humanoid Runner
-        const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);
-
-        // 1. Resolve active motion preset clip
-        const canonicalBipedPresets = new Set([
-          'stalk_crouch',
-          'sprint_frenzy',
-          'evade_leap',
-          'defiant_scream',
-          'combat_clash',
-          'exhausted_walk'
-        ]);
-
+        // Biped Character (Lead or Companion)
         let clipId: string;
-        const rawPreset = directive?.motionPreset;
+        let timeScale: number;
+        let rootSpeed: number;
+        let startPos: [number, number, number];
+        let endPos: [number, number, number];
 
-        if (rawPreset && canonicalBipedPresets.has(rawPreset)) {
-          clipId = rawPreset;
-        } else if (rawPreset === 'sprint' || rawPreset === 'stride') {
-          clipId = 'sprint_frenzy';
-        } else if (rawPreset === 'stalk' || rawPreset === 'idle') {
-          clipId = 'stalk_crouch';
-        } else if (rawPreset === 'evade') {
-          clipId = 'evade_leap';
+        if (isLead && leadPlan) {
+          clipId = leadPlan.clipId;
+          timeScale = leadPlan.timeScale;
+          rootSpeed = leadPlan.rootSpeed;
+          startPos = [leadPlan.startX, 75, 0];
+          endPos = [leadPlan.startX + leadPlan.rootSpeed * (lastFrame - startFrame), 75, 0];
         } else {
-          clipId = resolveClipIdForSection(
-            shot.actNumber === 1 ? 'INTRO' : shot.actNumber === 3 ? 'SOLO' : 'VERSE',
-            undefined,
-            sectionSpec?.narrativeIntent
-          );
-        }
+          // Companion biped runner
+          const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);
+          const rawPreset = directive?.motionPreset;
+          const canonicalBipedPresets = new Set([
+            'stalk_crouch',
+            'sprint_frenzy',
+            'evade_leap',
+            'defiant_scream',
+            'combat_clash',
+            'exhausted_walk'
+          ]);
 
-        // Shot-framing nuance: On CLOSE_UP shots during vocal or peak sections, trigger 'defiant_scream'
-        if (
-          shot.framing === 'CLOSE_UP' &&
-          (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') ||
-            sectionSpec?.narrativeIntent?.toLowerCase().includes('scream') ||
-            shot.actNumber >= 2)
-        ) {
-          clipId = 'defiant_scream';
-        } else if (shot.framing === 'WIDE' && clipId === 'defiant_scream') {
-          clipId = 'evade_leap';
+          if (rawPreset && canonicalBipedPresets.has(rawPreset)) {
+            clipId = rawPreset;
+          } else if (rawPreset === 'sprint' || rawPreset === 'stride') {
+            clipId = 'sprint_frenzy';
+          } else if (rawPreset === 'stalk' || rawPreset === 'idle') {
+            clipId = 'stalk_crouch';
+          } else if (rawPreset === 'evade') {
+            clipId = 'evade_leap';
+          } else {
+            clipId = resolveClipIdForSection(
+              shot.actNumber === 1 ? 'INTRO' : shot.actNumber === 3 ? 'SOLO' : 'VERSE',
+              undefined,
+              sectionSpec?.narrativeIntent
+            );
+          }
+
+          const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;
+          const fallbackClip = { keyframes: [], interpolationMode: 'linear' as const };
+          const strideLength = computeClipStrideLength(rig, activeClip ?? fallbackClip, clipId);
+          const motion = computeMusicalMotionParameters(
+            activeClip ?? fallbackClip,
+            strideLength,
+            effectiveFramesPerBeat,
+            clipId
+          );
+          timeScale = motion.timeScale;
+          rootSpeed = motion.rootSpeed;
+
+          const companionOffset = -40;
+          startPos = [leadStartX + companionOffset, 75, 0];
+          endPos = [leadStartX + companionOffset + rootSpeed * (lastFrame - startFrame), 75, 0];
         }
 
         const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;
         const loopFrames = activeClip?.loopFrames ?? 24;
 
-        // 2. Compute Physical Stride Length & Physical Playback Speed (Anti-Moonwalk)
-        const fallbackClip = { keyframes: [], interpolationMode: 'linear' as const };
-        const strideLength = computeClipStrideLength(rig, activeClip ?? fallbackClip, clipId);
-
-        // Calculate positions from single source of truth trajectory solver
-        const startPos = computeLeadCharacterWorldPos(startFrame, sectionSpec, rigId);
-        const endPos = computeLeadCharacterWorldPos(lastFrame, sectionSpec, rigId);
-
-        const targetSpeed = Math.max(0, (endPos[0] - startPos[0]) / duration);
-        const motion = calculatePhysicalTimeScaleAndSpeed(
-          targetSpeed,
-          activeClip ?? fallbackClip,
-          strideLength,
-          clipId
-        );
-
-        const timeScale = motion.timeScale;
-
-        // 3. Independent Per-Character Pose Clock with Continuous Phase Carry-Over
+        // Independent Per-Character Pose Clock with Continuous Phase Carry-Over
         const lastClock = entityPoseClocks.get(rigId) ?? 0;
         const lastClipInfo = entityLastClips.get(rigId);
         let startPoseFrame: number;
 
         if (lastClipInfo && lastClipInfo.clipId !== clipId) {
-          // Transitioning between clips: carry over continuous normalized phase
-          // normalizedPhase = clock / currentClip.loopFrames
-          // newClock = normalizedPhase * newClip.loopFrames
           const normalizedPhase =
             (((lastClock % lastClipInfo.loopFrames) + lastClipInfo.loopFrames) %
               lastClipInfo.loopFrames) /
             lastClipInfo.loopFrames;
           startPoseFrame = Number((normalizedPhase * loopFrames).toFixed(4));
         } else {
-          startPoseFrame = Number((((lastClock % loopFrames) + loopFrames) % loopFrames).toFixed(4));
+          startPoseFrame = Number(
+            (((lastClock % loopFrames) + loopFrames) % loopFrames).toFixed(4)
+          );
         }
 
         const nextClock = startPoseFrame + duration * timeScale;

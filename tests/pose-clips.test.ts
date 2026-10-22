@@ -5,7 +5,9 @@ import { samplePoseTrack } from '../src/engine/rigging/deformer.js';
 import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinematics.js';
 import {
   computeClipStrideLength,
-  calculatePhysicalTimeScaleAndSpeed
+  analyzeClipContactStride,
+  computeMusicalMotionParameters,
+  NON_LOCOMOTION_CLIPS
 } from '../src/engine/director/trajectory-solver.js';
 import { solveChoreography } from '../src/engine/director/choreography-solver.js';
 import type { StorySpecContract } from '../src/schemas/story-spec.contract.js';
@@ -121,20 +123,17 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
 
       for (const clipId of locomotionClips) {
         const clip = runner.poseClips![clipId];
-        const stride = computeClipStrideLength(runner, clip, clipId);
-        assert.ok(stride > 0, `Clip ${clipId} must have non-zero stride length`);
-
-        const motion = calculatePhysicalTimeScaleAndSpeed(1.0, clip, stride, clipId);
-        assert.ok(motion.timeScale > 0 && motion.speedPerFrame > 0);
+        const analysis = analyzeClipContactStride(runner, clip, clipId);
+        const { groundLevelY, epsilon, strideLengthUnits, maxRelativeDeviation } = analysis;
+        assert.ok(strideLengthUnits > 0, `Clip ${clipId} must have non-zero stride length`);
+        assert.ok(
+          maxRelativeDeviation <= 0.02,
+          `Clip ${clipId} max relative deviation ${(maxRelativeDeviation * 100).toFixed(2)}% must be <= 2%`
+        );
 
         const loopFrames = clip.loopFrames!;
         const timeScale = 1.0;
-        const vRoot = (timeScale * stride) / loopFrames;
-
-        let leftNetWorldDx = 0;
-        let leftStanceRootDx = 0;
-        let rightNetWorldDx = 0;
-        let rightStanceRootDx = 0;
+        const vRoot = (timeScale * strideLengthUnits) / loopFrames;
 
         for (let f = 0; f < loopFrames; f++) {
           const poseA = samplePoseTrack(runner, f, 0, timeScale, 0, clipId);
@@ -154,28 +153,24 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
           const dL = (footL_B[0] - pelvisB[0]) - (footL_A[0] - pelvisA[0]);
           const dR = (footR_B[0] - pelvisB[0]) - (footR_A[0] - pelvisA[0]);
 
-          // Stance phase: foot moves backward relative to root
-          if (dL < 0) {
-            leftNetWorldDx += vRoot + dL;
-            leftStanceRootDx += vRoot;
+          // Contact phase: foot tip Y <= groundLevelY + epsilon and foot moves backward relative to root (dL < 0)
+          if (footL_A[1] <= groundLevelY + epsilon && dL < 0) {
+            const vContactWorld = vRoot + dL;
+            const slipRatio = Math.abs(vContactWorld) / vRoot;
+            assert.ok(
+              slipRatio <= 0.02,
+              `Left foot slip for ${clipId} at frame ${f}: slip ratio ${(slipRatio * 100).toFixed(2)}% must be <= 2%`
+            );
           }
-          if (dR < 0) {
-            rightNetWorldDx += vRoot + dR;
-            rightStanceRootDx += vRoot;
+          if (footR_A[1] <= groundLevelY + epsilon && dR < 0) {
+            const vContactWorld = vRoot + dR;
+            const slipRatio = Math.abs(vContactWorld) / vRoot;
+            assert.ok(
+              slipRatio <= 0.02,
+              `Right foot slip for ${clipId} at frame ${f}: slip ratio ${(slipRatio * 100).toFixed(2)}% must be <= 2%`
+            );
           }
         }
-
-        const leftSlip = Math.abs(leftNetWorldDx) / leftStanceRootDx;
-        const rightSlip = Math.abs(rightNetWorldDx) / rightStanceRootDx;
-
-        assert.ok(
-          leftSlip <= 0.02,
-          `Left foot slip for ${clipId}: slip ratio ${leftSlip.toFixed(4)} must be <= 0.02 (2%)`
-        );
-        assert.ok(
-          rightSlip <= 0.02,
-          `Right foot slip for ${clipId}: slip ratio ${rightSlip.toFixed(4)} must be <= 0.02 (2%)`
-        );
       }
     }
   );
@@ -317,7 +312,8 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
       const trackB_s0 = choreo.tracks.find((t) => t.shotId === shot0.id && t.rigId === 'companion_runner')!;
 
       assert.ok(trackA_s0 && trackB_s0);
-      assert.notEqual(trackA_s0.pose?.timeScale, trackB_s0.pose?.timeScale);
+      assert.ok(trackA_s0.pose?.timeScale && trackA_s0.pose.timeScale >= 0.6 && trackA_s0.pose.timeScale <= 1.6);
+      assert.ok(trackB_s0.pose?.timeScale && trackB_s0.pose.timeScale >= 0.6 && trackB_s0.pose.timeScale <= 1.6);
       assert.equal(trackA_s0.pose?.clipId, 'sprint_frenzy');
       assert.equal(trackB_s0.pose?.clipId, 'stalk_crouch');
 
@@ -327,6 +323,80 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
         if (trackB_s1) {
           assert.equal(trackB_s1.pose?.clipId, 'stalk_crouch');
         }
+      }
+    }
+  );
+
+  await t.test(
+    'Quadruped beast motion: beast_gallop contact relative deviation is <= 4% and beast_idle root speed = 0',
+    () => {
+      const beast = ArchetypeFactory.build({
+        instanceId: 'test_beast',
+        spec: { instanceId: 'test_beast', archetypeId: 'quadruped_beast', scale: 1.0, accessories: [] }
+      });
+
+      assert.ok(beast.poseClips?.beast_gallop, 'beast_gallop clip must exist');
+      assert.ok(beast.poseClips?.beast_idle, 'beast_idle clip must exist');
+
+      const gallopAnalysis = analyzeClipContactStride(beast, beast.poseClips.beast_gallop, 'beast_gallop');
+      assert.ok(gallopAnalysis.strideLengthUnits > 0);
+      assert.ok(
+        gallopAnalysis.maxRelativeDeviation <= 0.04,
+        `beast_gallop maxRelativeDeviation ${(gallopAnalysis.maxRelativeDeviation * 100).toFixed(2)}% must be <= 4%`
+      );
+
+      const idleStride = computeClipStrideLength(beast, beast.poseClips.beast_idle, 'beast_idle');
+      const idleMotion = computeMusicalMotionParameters(beast.poseClips.beast_idle, idleStride, 15, 'beast_idle');
+      assert.equal(idleMotion.rootSpeed, 0);
+      assert.equal(idleMotion.timeScale, 1.0);
+    }
+  );
+
+  await t.test(
+    'Musical timeScale is strictly in [0.6, 1.6] across rock (174 bpm), electronic (110 bpm) and ballad (74 bpm)',
+    () => {
+      const tempos = [174, 110, 74];
+      const clipsToTest = ['sprint_frenzy', 'stalk_crouch', 'exhausted_walk', 'beast_gallop'];
+
+      const biped = ArchetypeFactory.build({
+        instanceId: 'test_biped',
+        spec: { instanceId: 'test_biped', archetypeId: 'biped_runner', scale: 1.0, accessories: [] }
+      });
+      const quad = ArchetypeFactory.build({
+        instanceId: 'test_quad',
+        spec: { instanceId: 'test_quad', archetypeId: 'quadruped_beast', scale: 1.0, accessories: [] }
+      });
+
+      for (const bpm of tempos) {
+        const fpb = (60 / bpm) * 30; // 30 fps
+        for (const clipId of clipsToTest) {
+          const rig = clipId.startsWith('beast') ? quad : biped;
+          const clip = rig.poseClips![clipId];
+          const stride = computeClipStrideLength(rig, clip, clipId);
+          const motion = computeMusicalMotionParameters(clip, stride, fpb, clipId);
+
+          assert.ok(
+            motion.timeScale >= 0.6 && motion.timeScale <= 1.6,
+            `Clip ${clipId} at ${bpm} BPM produced timeScale ${motion.timeScale} outside [0.6, 1.6]`
+          );
+          assert.ok(motion.rootSpeed > 0, `Clip ${clipId} at ${bpm} BPM must have positive root speed`);
+        }
+      }
+    }
+  );
+
+  await t.test(
+    'Non-locomotion clips set character root velocity = 0 and preserve position',
+    () => {
+      for (const clipId of Array.from(NON_LOCOMOTION_CLIPS)) {
+        const motion = computeMusicalMotionParameters(
+          { keyframes: [], interpolationMode: 'linear', loopFrames: 24 },
+          100, // even with dummy positive stride
+          15,
+          clipId
+        );
+        assert.equal(motion.rootSpeed, 0, `Non-locomotion clip ${clipId} must have rootSpeed = 0`);
+        assert.equal(motion.timeScale, 1.0, `Non-locomotion clip ${clipId} must have timeScale = 1.0`);
       }
     }
   );

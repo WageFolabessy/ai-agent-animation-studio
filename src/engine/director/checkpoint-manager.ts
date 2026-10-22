@@ -262,8 +262,9 @@ export function inspectChunk(
 
     const probe = probeVideo(chunk.filePath);
     const actualFrames = probe.frameCount ?? 0;
+    const targetFrames = chunk.frameCount > 0 ? chunk.frameCount : (meta.frameCount ?? 0);
 
-    if (actualFrames === chunk.frameCount) {
+    if (actualFrames === targetFrames && actualFrames > 0) {
       return {
         chunk,
         status: 'COMPLETED',
@@ -276,7 +277,7 @@ export function inspectChunk(
       chunk,
       status: 'CORRUPTED',
       actualFrames,
-      reason: `Frame count mismatch: expected ${chunk.frameCount}, found ${actualFrames}`
+      reason: `Frame count mismatch: expected ${targetFrames}, found ${actualFrames}`
     };
   } catch (err) {
     return {

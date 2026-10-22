@@ -363,6 +363,11 @@ function isSoloClashOrLeap(preset: string): boolean {
 
 export class StorySpecAgent {
   private readonly provider: LlmProvider;
+  private static noticePrinted = false;
+
+  public static resetNoticeFlag(): void {
+    StorySpecAgent.noticePrinted = false;
+  }
 
   constructor(provider: LlmProvider) {
     this.provider = provider;
@@ -380,10 +385,17 @@ export class StorySpecAgent {
   }
 
   public async generateStorySpec(input: StorySpecAgentInput): Promise<StorySpecContract> {
-    const noLyrics =
-      input.noLyricsInPrompt ||
-      process.argv.includes('--no-lyrics-in-prompt') ||
-      process.env.ANIMATION_STUDIO_NO_LYRICS === '1';
+    const noLyrics = Boolean(input.noLyricsInPrompt);
+
+    if (!noLyrics && input.audioManifest.lyrics.length > 0 && typeof this.provider.describeEndpoint === 'function') {
+      const ep = this.provider.describeEndpoint();
+      if (!ep.isLocal && !StorySpecAgent.noticePrinted) {
+        StorySpecAgent.noticePrinted = true;
+        console.log(
+          `[story-spec] Notice: lyric text is being sent to ${ep.host} (${ep.provider}/${ep.modelId}). Use --no-lyrics-in-prompt to omit lyrics from LLM prompts.`
+        );
+      }
+    }
 
     // Format lyrics per section with token budget clamp (<= 1500 tokens / ~6000 chars)
     let lyricsContext = '';

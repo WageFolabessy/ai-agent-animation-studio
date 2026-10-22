@@ -49,13 +49,17 @@ flowchart TD
 - **Pure In-Memory Streaming**: Renders in-memory SVG $\to$ Rust `@resvg/resvg-js` $\to$ FFmpeg `stdin` pipe with zero intermediate `.svg` or `.png` files written to disk.
 - **Process Memory Reset**: Each chunk executes as a bounded lifecycle, preventing heap fragmentation and ensuring Node.js RSS and FFmpeg memory reset cleanly after every chunk.
 
-### 2.2 Fault-Tolerant Checkpoint Manager (`src/engine/director/checkpoint-manager.ts`)
+### 2.2 Fault-Tolerant Checkpoint Manager & Content-Addressed Invalidation (`src/engine/director/checkpoint-manager.ts`)
 - **Deterministic Partitioning**: Divides the total frame timeline into sequential, contiguous chunk segments of at most `chunkFrames` (default: 1500 frames / ~50.0s).
-- **Deep Inspection via `ffprobe`**: Evaluates each chunk on disk:
-  - Verifies exact frame count equality (`probe.frameCount === chunk.frameCount`).
-  - Verifies H.264 video codec and BT.709 `tv` limited-range metadata.
-  - Automatically identifies, purges, and marks partial or interrupted chunks for re-rendering (`autoCleanCorrupted: true`).
-- **Instant Resume**: When restarted with `--resume`, skips already validated chunks with zero overhead, picking up immediately at the next incomplete segment.
+- **Content-Addressed SHA-256 Fingerprinting**: Computes a canonical, deep-sorted hash over all inputs that affect the rendered output:
+  $$\text{fingerprint} = \text{SHA256}(\text{renderConfig}, \text{manifestSha256}, \text{binarySha256}, \text{storyboard}, \text{rigs}, \text{choreo}, \text{spec}, \text{env})$$
+- **Sidecar Metadata Validation (`.meta.json`)**: Each rendered chunk writes a companion `.meta.json` recording `engineRenderVersion`, `fingerprint`, and `frameCount`. On resume:
+  - Verifies `meta.engineRenderVersion === ENGINE_RENDER_VERSION`.
+  - Verifies `meta.fingerprint === expectedFingerprint`.
+  - Performs `ffprobe` video validation: exact frame count equality, H.264 codec, BT.709 `tv` range.
+  - Returns `STALE` and purges any chunk if metadata is missing, tampered, or invalidated by parameter changes (e.g. CRF or storyboard edits).
+- **Instant Resume**: When restarted with `--resume`, skips valid existing chunks with zero re-rendering overhead, proceeding directly to pending chunks.
+- **Stitcher Integrity Guard**: `ConcatStitcher` independently verifies all chunks against expected fingerprints and rejects concatenation if any chunk is stale.
 
 ### 2.3 Lossless Concat Demuxer & Master Audio Muxing (`src/engine/audio/concat-stitcher.ts`)
 - **Zero-Transcoding Stitching**: Because all chunks are rendered with uniform resolution (`1920x1080`), framerate (`30fps`), pixel format (`yuv420p`), colorspace (`bt709`), and closed GOP structure, FFmpeg's `concat` demuxer concatenates them losslessly:
@@ -71,29 +75,25 @@ flowchart TD
 - **Continuous Master Audio Guarantee**: Rather than slicing audio per-chunk (which introduces micro-silence or seam clicks), the uncompressed master FLAC is muxed continuously across the full timeline.
 - **Sub-Second Assembly**: Assembly of 10,598 frames across ~7 chunks takes less than **2.0 seconds** of wall-clock time.
 
-### 2.4 Hierarchical Macro Song Planner (`src/engine/director/macro-planner.ts`)
-- **Musical Section Decomposition**: Maps the acoustic energy curve and LRC lyrics into 7 dramatic sections:
-  1. *Intro / Cold Horizon* (`00:00 - 00:05`): Cold industrial stealth, establishing run.
-  2. *Verse 1 / Rapid Fire* (`00:05 - 00:46`): Low-angle tracking matching rapid vocal cadence.
-  3. *Chorus 1 / Trashed & Scattered* (`00:46 - 01:22`): Soaring melody, wide orbital sweeps.
-  4. *Verse 2 / Rising Conflict* (`01:22 - 02:20`): High-speed pursuit, warning strobes.
-  5. *Dual Guitar Solo / Virtuoso* (`02:20 - 02:54`): Golden sunset glow, twin guitar harmonies, pursuit drone appearance.
-  6. *Chorus 2 & Breakdown Climax* (`02:54 - 03:55`): Peak acoustic energy, blood crimson lighting, maximum trauma shake.
-  7. *Extended Epic Outro* (`03:55 - 05:53`): Melodic deceleration, expanding perspective dolly out, fading into midnight void.
-- **Dynamic Palette Themes**: Cycles through 5 cohesive palettes:
+### 2.4 Unified Musical & Narrative Planning (`StorySpecAgent`, `AcousticSegmenter`, & `ShotPlanner`)
+- **Musical Section Decomposition**: `AcousticSegmenter` maps the acoustic energy curve and LRC lyrics into dynamic narrative sections with 4-bar or 8-bar measure snapping and lyric-gap awareness.
+- **Spec-Then-Compile Pipeline**: `StorySpecAgent` synthesizes a high-level `StorySpecContract` capturing genre, emotional arc, character cast, and environment progression. `ShotPlanner` then compiles this spec deterministically into a `DirectorStoryboardContract`.
+- **Dynamic Palette Themes**: Cycles through cohesive palettes across narrative acts:
   - `CYBERPUNK_CYAN` (`#090b16`, `#00f0ff`, `#3a506b`, `#ff0055`)
   - `VOLTAGE_ORANGE` (`#14080a`, `#ff5500`, `#ffdd00`, `#ff0055`)
   - `SUNSET_GOLD` (`#1a0520`, `#ffd700`, `#ff007f`, `#3a0ca3`)
   - `CRIMSON_FURY` (`#080204`, `#ff0033`, `#ffffff`, `#ff5500`)
   - `MIDNIGHT_VOID` (`#050210`, `#7928ca`, `#00ffff`, `#3a506b`)
 
-### 2.5 Multi-Entity Pursuit Rig & Choreography (`src/agents/rig-agent.ts` & `choreographer-agent.ts`)
-- **Pursuit Enforcer Drone (`rig-pursuit-drone`)**:
-  - 4-joint Forward Kinematics hierarchy (`chassis_core`, `left_thruster`, `right_thruster`, `scanner_turret`).
-  - 7 stylized vector parts (hull, cockpit visor, dual thruster nacelles, exhaust plumes, searchlight scanner).
-  - Looping Hermite spline kinematics (`loopFrames: 30`) simulating hovering inertia.
-  - Zero-offset invariant compliance (`localOffset2D: [0, 0]`).
-- **Autonomous Pursuit Flight Track**:
+### 2.5 Procedural Archetype Library & Choreography Solver (`ArchetypeFactory` & `ChoreographySolver`)
+- **Archetype Rig Library (`ArchetypeFactory`)**:
+  - `biped_humanoid`: Anatomical forward kinematics runner/stalker/sprinter with FK-verified stride contacts.
+  - `quadruped_beast`: Multi-joint quadruped predator gallop and idle cycles with zero ground slippage.
+  - `aerial_drone`: Pursuit enforcer drone with 4-joint Forward Kinematics hierarchy (`chassis_core`, `left_thruster`, `right_thruster`, `scanner_turret`), vector hull, and looping Hermite spline kinematics.
+- **Continuous World Trajectory Solving (`TrajectorySolver` & `ChoreographySolver`)**:
+  - Continuous $C^0$ position integration: Characters and pursuers follow seamless world-coordinate trajectories across shot boundaries without jump cuts or moonwalking.
+  - Contact-derived stride length and beat-locked musical time scale: Root speed and gait time scale are synchronized strictly to song tempo and FK foot plant contact kinematics.
+  - Pursuer drones and beasts dynamically maintain safe tracking distances behind the lead character ($x_{\text{pursuer}} = x_{\text{lead}} - 120$) and stop when the lead stops.
   - Tracks behind and above the runner during high-tempo thrash and solo sections ($x_{\text{drone}} = x_{\text{runner}} - 80$, $y = 185$, $z = 20$).
   - Seamlessly depth-sorted against background parallax layers and foreground pipes by `SceneCompositor`.
 

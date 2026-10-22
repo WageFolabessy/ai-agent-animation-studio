@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { resolveCrossPlatformPath } from './lrc-parser.js';
 import { probeVideo, type VideoProbeResult } from '../../diagnostics/ffprobe.js';
+import { inspectChunk, type ChunkDescriptor } from '../director/checkpoint-manager.js';
 
 export interface ConcatStitcherOptions {
   /** Ordered list of chunk MP4 file paths to concatenate. */
@@ -21,6 +22,16 @@ export interface ConcatStitcherOptions {
   tempDir?: string;
   /** Optional abort signal to cancel FFmpeg execution. */
   abortSignal?: AbortSignal;
+  /** Optional map or function providing expected chunk fingerprints for validation. */
+  expectedFingerprints?:
+    | Map<number, string>
+    | Map<string, string>
+    | Record<string | number, string>
+    | ((desc: ChunkDescriptor) => string | undefined);
+  /** Optional chunk descriptors corresponding to chunkPaths. */
+  descriptors?: ChunkDescriptor[];
+  /** Whether to strictly enforce chunk completion and metadata integrity (default: true). */
+  checkChunkIntegrity?: boolean;
 }
 
 export interface ConcatStitcherResult {
@@ -80,6 +91,39 @@ export async function stitchChunksWithMasterAudio(
 
   if (chunkPaths.length === 0) {
     throw new Error('stitchChunksWithMasterAudio requires at least one chunk path');
+  }
+
+  // Strictly enforce that all chunk files are COMPLETED and not STALE or CORRUPTED
+  if (options.checkChunkIntegrity !== false) {
+    for (let i = 0; i < chunkPaths.length; i++) {
+      const chunkPath = chunkPaths[i];
+      const desc: ChunkDescriptor = options.descriptors?.[i] ?? {
+        chunkIndex: i,
+        startFrame: 0,
+        endFrame: 0,
+        frameCount: 0,
+        filename: path.basename(chunkPath),
+        filePath: chunkPath
+      };
+
+      const fpSource = options.expectedFingerprints;
+      let expectedFp: string | undefined;
+      if (typeof fpSource === 'function') {
+        expectedFp = fpSource(desc);
+      } else if (fpSource instanceof Map) {
+        const map = fpSource as Map<unknown, string>;
+        expectedFp = map.get(i) ?? map.get(chunkPath);
+      } else if (fpSource) {
+        expectedFp = fpSource[i] ?? fpSource[chunkPath];
+      }
+
+      const inspection = inspectChunk(desc, expectedFp);
+      if (inspection.status !== 'COMPLETED') {
+        throw new Error(
+          `Stitcher refused chunk "${path.basename(chunkPath)}" with status ${inspection.status}: ${inspection.reason ?? 'Chunk is not valid'}`
+        );
+      }
+    }
   }
 
   const resolvedOutput = path.resolve(outputPath);

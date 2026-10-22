@@ -15,7 +15,8 @@ import {
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
 import {
   createSyntheticRockManifest,
-  createSyntheticElectronicManifest
+  createSyntheticElectronicManifest,
+  createSyntheticBalladManifest
 } from './helpers/manifest-factory.js';
 import type { AudioAnalysisManifest } from '../src/schemas/audio.contract.js';
 
@@ -28,6 +29,10 @@ test('Mathematical Safe Framing Verification Suite', async (t) => {
     {
       name: '110 BPM 3-Section Electronic (Cyber Hound + Patrol Drone)',
       manifest: createSyntheticElectronicManifest({ totalFrames: 1800 })
+    },
+    {
+      name: '74 BPM 3-Section Ballad (Solo Runner)',
+      manifest: createSyntheticBalladManifest({ totalFrames: 1800 })
     }
   ];
 

@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { ZodError, z } from 'zod';
 import type {
   LlmCallMetadata,
+  LlmEndpointDescription,
   LlmExecutionResult,
   LlmJsonMode,
   LlmOptions,
@@ -327,6 +328,31 @@ export class OpenAiCompatibleProvider implements LlmProvider {
 
   private sanitize(message: string): string {
     return sanitizeSecrets(message, [this.apiKey]);
+  }
+
+  public describeEndpoint(): LlmEndpointDescription {
+    try {
+      const parsed = new URL(this.baseUrl);
+      const host = parsed.hostname;
+      const isLocal =
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '::1' ||
+        /localhost/.test(host);
+      return {
+        provider: this.name,
+        modelId: this.model,
+        host,
+        isLocal
+      };
+    } catch {
+      return {
+        provider: this.name,
+        modelId: this.model,
+        host: 'unknown',
+        isLocal: false
+      };
+    }
   }
 
   public async generateStructuredJson<T>(
@@ -656,6 +682,15 @@ export class DeterministicMockLlmProvider implements LlmProvider {
 
   public getCallCount(): number {
     return this.callCount;
+  }
+
+  public describeEndpoint(): LlmEndpointDescription {
+    return {
+      provider: this.name,
+      modelId: 'mock-deterministic',
+      host: 'localhost',
+      isLocal: true
+    };
   }
 
   public async generateStructuredJson<T>(

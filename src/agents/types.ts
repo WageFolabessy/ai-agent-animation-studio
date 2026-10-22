@@ -46,11 +46,19 @@ export interface LlmExecutionResult<T> {
   readonly networkRetryCount: number;
 }
 
+export interface LlmEndpointDescription {
+  readonly provider: string;
+  readonly modelId: string;
+  readonly host: string;
+  readonly isLocal: boolean;
+}
+
 /**
  * Provider-agnostic interface for structured JSON generation from an LLM.
  */
 export interface LlmProvider {
   readonly name: string;
+  describeEndpoint(): LlmEndpointDescription;
   generateStructuredJson<T>(
     prompt: string,
     schema: z.ZodType<T>,
@@ -155,6 +163,7 @@ export interface OrchestrationOptions {
   readonly maxRetries?: number;
   readonly useSpecPipeline?: boolean;
   readonly storySpec?: any;
+  readonly noLyricsInPrompt?: boolean;
 }
 
 export interface OrchestrationResult {
