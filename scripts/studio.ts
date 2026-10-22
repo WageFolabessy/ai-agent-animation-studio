@@ -31,6 +31,7 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
   let width = 1920;
   let height = 1080;
   let threads = 2;
+  let stagingMode: 'runner' | 'theatrical' = 'runner';
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -42,6 +43,13 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
       outputPath = path.resolve(argv[++i]);
     } else if (arg === '--produce') {
       isProduceMode = true;
+    } else if (arg === '--theatrical') {
+      stagingMode = 'theatrical';
+    } else if (arg === '--runner') {
+      stagingMode = 'runner';
+    } else if (arg === '--mode' && i + 1 < argv.length) {
+      const m = argv[++i].toLowerCase();
+      stagingMode = m === 'theatrical' ? 'theatrical' : 'runner';
     } else if (arg === '--artifacts' && i + 1 < argv.length) {
       artifactsDir = path.resolve(argv[++i]);
     } else if (arg === '--from-artifacts' && i + 1 < argv.length) {
@@ -96,6 +104,9 @@ Options:
   --lrc <file>             Path to synchronized lyrics file (.lrc)
   --out <file>             Target path for stitched MP4 output
   --produce                Run full production mode (defaults output to trashed_and_scattered_final.mp4)
+  --theatrical             Enable Theatrical Narrative 2.5D discrete stage cinema
+  --runner                 Use continuous infinite parallax runner mode (default)
+  --mode <theatrical|runner> Staging mode (default: runner)
   --artifacts <dir>        Directory to store intermediate artifacts
   --from-artifacts <dir>   Render directly from previously synthesized artifacts (skips LLM)
   --provider <name>        LLM backend provider: 'mock' or 'openai' (default: 'mock')
@@ -154,6 +165,7 @@ Options:
     height,
     fps,
     threads,
+    stagingMode,
     noLyricsInPrompt,
     isProduceMode
   };

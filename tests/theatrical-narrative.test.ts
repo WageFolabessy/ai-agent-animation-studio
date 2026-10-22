@@ -37,6 +37,8 @@ import { solveChoreography } from '../src/engine/director/choreography-solver.js
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
 import { SceneCompositor } from '../src/engine/compositor/scene-compositor.js';
 import { buildTheatricalStorySpec, buildDeterministicStorySpec } from '../src/agents/story-spec-agent.js';
+import { StudioAgentOrchestrator } from '../src/agents/orchestrator.js';
+import { DeterministicMockLlmProvider } from '../src/agents/llm-provider.js';
 
 function createSyntheticAudioManifest(options: {
   durationSeconds: number;
@@ -612,6 +614,34 @@ describe('Theatrical Narrative 2.5D Procedural Cinema Architecture', () => {
           );
         }
       }
+    });
+
+    it('End-to-End Orchestrator: StudioAgentOrchestrator orchestrates theatrical narrative when stagingMode is "theatrical"', async () => {
+      const manifest = createSyntheticAudioManifest({
+        durationSeconds: 30,
+        fps: 30,
+        tempoBpm: 90,
+        withLyrics: true
+      });
+      const provider = new DeterministicMockLlmProvider();
+      const orchestrator = new StudioAgentOrchestrator(provider);
+      const result = await orchestrator.orchestrate({
+        projectId: 'theatrical-orchestrator-test',
+        audioManifest: manifest,
+        stagingMode: 'theatrical'
+      });
+
+      assert.equal(result.projectValidation.isValid, true);
+      assert.equal(result.choreographyValidation.isValid, true);
+      assert.ok(result.storySpec.sections.some((s: any) => s.stagingMode === 'theatrical'));
+      assert.ok(result.storyboard.shots.length > 0);
+      assert.ok(result.storyboard.shots[0].theatricalSetId !== undefined);
+
+      // Verify memoized environment resolver produces 2.5D discrete set geometry
+      const env = result.getEnvironmentForShot(result.storyboard.shots[0].id);
+      const drawablesCount = (env.polygons?.length ?? 0) + (env.lines?.length ?? 0);
+      assert.ok(drawablesCount > 0);
+      assert.ok(drawablesCount <= 65);
     });
   });
 });

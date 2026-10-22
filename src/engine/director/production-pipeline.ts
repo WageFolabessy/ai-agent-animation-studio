@@ -64,6 +64,7 @@ export interface ProductionPipelineOptions {
   readonly providerName?: 'mock' | 'openai';
   readonly usePythonAudio?: boolean;
   readonly useSpecPipeline?: boolean;
+  readonly stagingMode?: 'runner' | 'theatrical';
   readonly storySpec?: StorySpecContract;
   readonly noLyricsInPrompt?: boolean;
   readonly chunkFrames?: number;
@@ -310,7 +311,8 @@ export async function runProductionPipeline(
     provider: providerName,
     modelId,
     storySpecContractVersion: 1,
-    lyricsInPromptFlag
+    lyricsInPromptFlag,
+    stagingMode: options.stagingMode ?? 'runner'
   };
 
   let canReuseAgentArtifacts = false;
@@ -418,6 +420,7 @@ export async function runProductionPipeline(
       height,
       maxRetries: 3,
       useSpecPipeline: true,
+      stagingMode: options.stagingMode,
       noLyricsInPrompt: options.noLyricsInPrompt,
       ...(options.storySpec ? { storySpec: options.storySpec } : {})
     });

@@ -32,6 +32,7 @@ export interface StorySpecAgentInput {
   readonly timeoutMs?: number;
   readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
   readonly noLyricsInPrompt?: boolean;
+  readonly stagingMode?: 'runner' | 'theatrical';
 }
 
 export interface DeterministicStorySpecOptions {

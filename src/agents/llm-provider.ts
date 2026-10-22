@@ -744,7 +744,9 @@ export class DeterministicMockLlmProvider implements LlmProvider {
           'DeterministicMockLlmProvider requires context.storySpecInput for story_spec role.'
         );
       }
-      payload = buildDeterministicStorySpec(storyInput.audioManifest, storyInput.projectId);
+      payload = buildDeterministicStorySpec(storyInput.audioManifest, storyInput.projectId, {
+        mode: storyInput.stagingMode
+      });
     } else {
       throw new LlmProviderError(
         `DeterministicMockLlmProvider received unsupported agentRole "${String(role)}" without an interceptor.`

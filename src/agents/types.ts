@@ -164,6 +164,7 @@ export interface OrchestrationOptions {
   readonly useSpecPipeline?: boolean;
   readonly storySpec?: any;
   readonly noLyricsInPrompt?: boolean;
+  readonly stagingMode?: 'runner' | 'theatrical';
 }
 
 export interface OrchestrationResult {

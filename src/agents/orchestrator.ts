@@ -249,6 +249,7 @@ export class StudioAgentOrchestrator {
             this.storySpecAgent.generateStorySpec({
               projectId: options.projectId,
               audioManifest: options.audioManifest,
+              stagingMode: options.stagingMode,
               attempt,
               repairErrors: errors,
               previousDraft: draft,
