@@ -6,6 +6,7 @@ import {
   runProductionPipeline,
   type ProductionPipelineOptions
 } from '../src/engine/director/production-pipeline.js';
+import type { CanonicalGenreName } from '../src/engine/director/genre-directing-matrix.js';
 
 interface StudioCliOptions extends ProductionPipelineOptions {
   readonly isProduceMode?: boolean;
@@ -32,6 +33,7 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
   let height = 1080;
   let threads = 2;
   let stagingMode: 'runner' | 'theatrical' = 'runner';
+  let genreOverride: CanonicalGenreName | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -50,6 +52,11 @@ function parseCliArgs(argv: string[]): StudioCliOptions {
     } else if (arg === '--mode' && i + 1 < argv.length) {
       const m = argv[++i].toLowerCase();
       stagingMode = m === 'theatrical' ? 'theatrical' : 'runner';
+    } else if (arg === '--genre' && i + 1 < argv.length) {
+      const g = argv[++i].toUpperCase();
+      if (['POP', 'BALLAD', 'ROCK', 'METAL', 'ELECTRONIC', 'ACOUSTIC'].includes(g)) {
+        genreOverride = g as CanonicalGenreName;
+      }
     } else if (arg === '--artifacts' && i + 1 < argv.length) {
       artifactsDir = path.resolve(argv[++i]);
     } else if (arg === '--from-artifacts' && i + 1 < argv.length) {
@@ -107,6 +114,7 @@ Options:
   --theatrical             Enable Theatrical Narrative 2.5D discrete stage cinema
   --runner                 Use continuous infinite parallax runner mode (default)
   --mode <theatrical|runner> Staging mode (default: runner)
+  --genre <name>           Directing genre override ('POP'|'BALLAD'|'ROCK'|'METAL'|'ELECTRONIC'|'ACOUSTIC')
   --artifacts <dir>        Directory to store intermediate artifacts
   --from-artifacts <dir>   Render directly from previously synthesized artifacts (skips LLM)
   --provider <name>        LLM backend provider: 'mock' or 'openai' (default: 'mock')
@@ -166,6 +174,7 @@ Options:
     fps,
     threads,
     stagingMode,
+    ...(genreOverride ? { genreOverride } : {}),
     noLyricsInPrompt,
     isProduceMode
   };

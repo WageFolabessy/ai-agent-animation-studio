@@ -250,6 +250,7 @@ export class StudioAgentOrchestrator {
               projectId: options.projectId,
               audioManifest: options.audioManifest,
               stagingMode: options.stagingMode,
+              genreOverride: options.genreOverride,
               attempt,
               repairErrors: errors,
               previousDraft: draft,

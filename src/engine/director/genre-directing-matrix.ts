@@ -50,6 +50,10 @@ export interface GenreDirectingProfile {
     readonly act2: InteractionBehavior;
     readonly act3: InteractionBehavior;
   };
+  readonly characterPalettes: {
+    readonly lead: { primary: string; accent: string };
+    readonly partner: { primary: string; accent: string };
+  };
 }
 
 /**
@@ -85,6 +89,10 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       act1: 'SOLO',
       act2: 'DUET_PERFORMANCE',
       act3: 'DUET_PERFORMANCE'
+    },
+    characterPalettes: {
+      lead: { primary: '#00f0ff', accent: '#ff0055' },
+      partner: { primary: '#ffe600', accent: '#7c4dff' }
     }
   },
   BALLAD: {
@@ -114,6 +122,10 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       act1: 'SOLO',
       act2: 'FACE_TO_FACE',
       act3: 'PARALLEL_WALK'
+    },
+    characterPalettes: {
+      lead: { primary: '#1e293b', accent: '#94a3b8' },
+      partner: { primary: '#334155', accent: '#38bdf8' }
     }
   },
   ACOUSTIC: {
@@ -143,6 +155,10 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       act1: 'SOLO',
       act2: 'DUET_PERFORMANCE',
       act3: 'FACE_TO_FACE'
+    },
+    characterPalettes: {
+      lead: { primary: '#451a03', accent: '#d97706' },
+      partner: { primary: '#78350f', accent: '#fbbf24' }
     }
   },
   ROCK: {
@@ -172,6 +188,10 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       act1: 'SOLO',
       act2: 'FACE_TO_FACE',
       act3: 'PURSUIT_AND_CONFRONTATION'
+    },
+    characterPalettes: {
+      lead: { primary: '#212121', accent: '#ff5722' },
+      partner: { primary: '#37474f', accent: '#00e5ff' }
     }
   },
   METAL: {
@@ -190,7 +210,7 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       spotlightFocus: true
     },
     preferredSets: ['GOTHIC_CATHEDRAL', 'RAINY_STREET', 'CONCERT_STAGE'],
-    defaultProps: ['electric_guitar', 'crown', 'rose'],
+    defaultProps: ['electric_guitar', 'microphone', 'rose'],
     actingPresets: {
       act1: 'stalk_crouch',
       act2: 'headbang_riff',
@@ -201,6 +221,10 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       act1: 'SOLO',
       act2: 'PURSUIT_AND_CONFRONTATION',
       act3: 'FACE_TO_FACE'
+    },
+    characterPalettes: {
+      lead: { primary: '#1a1a24', accent: '#b3001b' },
+      partner: { primary: '#2a0808', accent: '#ff1744' }
     }
   },
   ELECTRONIC: {
@@ -230,6 +254,10 @@ export const GENRE_DIRECTING_MATRIX: Record<CanonicalGenreName, GenreDirectingPr
       act1: 'SOLO',
       act2: 'PARALLEL_WALK',
       act3: 'DUET_PERFORMANCE'
+    },
+    characterPalettes: {
+      lead: { primary: '#00e5ff', accent: '#76ff03' },
+      partner: { primary: '#7c4dff', accent: '#ff007f' }
     }
   }
 };

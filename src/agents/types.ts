@@ -5,6 +5,7 @@ import type { AssetRigContract } from '../schemas/rig.contract.js';
 import type { ChoreographyContract } from '../schemas/choreography.contract.js';
 import type { ValidationErrorItem, ValidationReport } from '../schemas/invariants.js';
 import type { SceneEnvironment } from '../engine/compositor/scene-compositor.js';
+import type { CanonicalGenreName } from '../engine/director/genre-directing-matrix.js';
 
 export type StudioAgentRole = 'story_spec' | 'director' | 'rig' | 'choreographer';
 
@@ -165,6 +166,7 @@ export interface OrchestrationOptions {
   readonly storySpec?: any;
   readonly noLyricsInPrompt?: boolean;
   readonly stagingMode?: 'runner' | 'theatrical';
+  readonly genreOverride?: CanonicalGenreName;
 }
 
 export interface OrchestrationResult {

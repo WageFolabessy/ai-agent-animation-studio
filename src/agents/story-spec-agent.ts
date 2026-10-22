@@ -33,6 +33,7 @@ export interface StorySpecAgentInput {
   readonly onAttemptComplete?: (meta: LlmCallMetadata) => void;
   readonly noLyricsInPrompt?: boolean;
   readonly stagingMode?: 'runner' | 'theatrical';
+  readonly genreOverride?: CanonicalGenreName;
 }
 
 export interface DeterministicStorySpecOptions {
@@ -414,7 +415,7 @@ export function buildTheatricalStorySpec(
       role: 'PROTAGONIST',
       viewAngle: genre === 'pop_dance' ? 'front' : 'three_quarter',
       scale: 1.0,
-      paletteOverrides: { primary: '#00f0ff', accent: '#ff0055' },
+      paletteOverrides: directingProfile.characterPalettes.lead,
       accessories: [leadProp]
     },
     {
@@ -423,7 +424,7 @@ export function buildTheatricalStorySpec(
       role: genre === 'rock_metal' ? 'ANTAGONIST' : 'PARTNER',
       viewAngle: 'three_quarter',
       scale: 1.0,
-      paletteOverrides: { primary: '#ffaa00', accent: '#7c4dff' },
+      paletteOverrides: directingProfile.characterPalettes.partner,
       accessories: [partnerProp]
     }
   ];

@@ -40,6 +40,7 @@ import { StorySpecContractSchema, type SectionStagingSpec, type StorySpecContrac
 import { EnvironmentKit, computeShotEnvironmentBounds } from '../library/environment-kit.js';
 import type { SceneEnvironment } from '../compositor/scene-compositor.js';
 import { getOrchestratedEnvironment } from './environment-generator.js';
+import type { CanonicalGenreName } from './genre-directing-matrix.js';
 import { z } from 'zod';
 
 export interface ProductionProgress {
@@ -65,6 +66,7 @@ export interface ProductionPipelineOptions {
   readonly usePythonAudio?: boolean;
   readonly useSpecPipeline?: boolean;
   readonly stagingMode?: 'runner' | 'theatrical';
+  readonly genreOverride?: CanonicalGenreName;
   readonly storySpec?: StorySpecContract;
   readonly noLyricsInPrompt?: boolean;
   readonly chunkFrames?: number;
@@ -312,7 +314,8 @@ export async function runProductionPipeline(
     modelId,
     storySpecContractVersion: 1,
     lyricsInPromptFlag,
-    stagingMode: options.stagingMode ?? 'runner'
+    stagingMode: options.stagingMode ?? 'runner',
+    genreOverride: options.genreOverride ?? 'auto'
   };
 
   let canReuseAgentArtifacts = false;
@@ -421,6 +424,7 @@ export async function runProductionPipeline(
       maxRetries: 3,
       useSpecPipeline: true,
       stagingMode: options.stagingMode,
+      genreOverride: options.genreOverride,
       noLyricsInPrompt: options.noLyricsInPrompt,
       ...(options.storySpec ? { storySpec: options.storySpec } : {})
     });

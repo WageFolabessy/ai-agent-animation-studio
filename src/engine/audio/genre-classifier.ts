@@ -72,29 +72,48 @@ export function classifyGenreProfile(manifest: AudioAnalysisManifest): GenreClas
   const allLyricText = manifest.lyrics.map((l) => l.text).join(' ');
   const lyricAnalysis = analyzeSectionLyrics(allLyricText);
   const lyricTone = lyricAnalysis.emotionalTone;
+  const intensityScore = lyricAnalysis.intensityScore;
+  const valenceScore = lyricAnalysis.valenceScore;
+
+  // Half-time tempo resolution for aggressive music
+  const isAggressiveLyrics =
+    lyricTone === 'defiant' || lyricTone === 'chaotic' || lyricTone === 'menacing';
+  const hasTempo = manifest.metadata.tempoBpm !== undefined || manifest.beatGrid?.tempoBpm !== undefined;
+  const effectiveTempo =
+    tempo >= 70 && tempo <= 95 && (onsetDensity >= 1.5 || intensityScore >= 0.7 || isAggressiveLyrics)
+      ? tempo * 2
+      : tempo;
 
   // 5. Multi-factor Scoring
   // Candidate 1: rock_metal
-  const rockTempo = clamp01((tempo - 120) / 45);
-  const rockOnsets = clamp01((onsetDensity - 1.5) / 2.0);
-  const rockTreble = trebleRatio > 0 ? trebleRatio : tempo >= 140 ? 0.8 : 0.3;
+  const rockTempo = hasTempo
+    ? clamp01((effectiveTempo - 118) / 45)
+    : isAggressiveLyrics
+      ? 0.75
+      : 0.5;
+  const rockOnsets = clamp01((onsetDensity - 1.2) / 1.8);
+  const rockSpectral =
+    trebleRatio > 0 ? trebleRatio : bassRatio >= 0.4 ? 0.8 : tempo >= 140 ? 0.8 : 0.3;
   const rockVocals = hasVocals ? 0.9 : 0.5;
-  const rockLyrics =
-    lyricTone === 'defiant' || lyricTone === 'chaotic' || lyricTone === 'menacing' ? 1.0 : 0.4;
+  const rockLyrics = isAggressiveLyrics ? 1.0 : lyricTone === 'melancholic' ? 0.6 : 0.3;
   const rockScore =
-    0.30 * rockTempo +
-    0.25 * rockOnsets +
-    0.20 * rockTreble +
+    0.25 * rockTempo +
+    0.20 * rockOnsets +
+    0.20 * rockSpectral +
     0.15 * rockVocals +
-    0.10 * rockLyrics;
+    0.20 * rockLyrics;
 
   // Candidate 2: electronic_synth
   const electronicTempo = tempo >= 105 && tempo <= 145 ? 1.0 : clamp01(1 - Math.abs(tempo - 125) / 35);
   const electronicOnsets = clamp01((onsetDensity - 1.0) / 1.8);
   const electronicBass = bassRatio >= 0.4 ? 1.0 : bassRatio > 0 ? bassRatio * 1.5 : tempo >= 110 && tempo <= 135 ? 0.7 : 0.3;
-  const electronicVocals = !hasVocals ? 1.0 : 0.85;
+  const electronicVocals = !hasVocals ? 1.0 : isAggressiveLyrics ? 0.4 : 0.85;
   const electronicLyrics =
-    lyricTone === 'euphoric' || lyricTone === 'chaotic' || lyricTone === 'reflective' || manifest.lyrics.length === 0 ? 1.0 : 0.5;
+    isAggressiveLyrics
+      ? 0.2
+      : lyricTone === 'euphoric' || lyricTone === 'reflective' || manifest.lyrics.length === 0
+        ? 1.0
+        : 0.4;
   const electronicScore =
     0.30 * electronicTempo +
     0.25 * electronicOnsets +
@@ -103,18 +122,28 @@ export function classifyGenreProfile(manifest: AudioAnalysisManifest): GenreClas
     0.10 * electronicLyrics;
 
   // Candidate 3: pop_dance (typically 118 - 132 BPM with prominent vocals and mid/presence)
-  const popTempo = tempo >= 118 && tempo <= 132 ? 1.0 : clamp01(1 - Math.abs(tempo - 125) / 16);
+  const popTempo = hasTempo
+    ? tempo >= 118 && tempo <= 132
+      ? 1.0
+      : clamp01(1 - Math.abs(tempo - 125) / 16)
+    : 0.6;
   const popOnsets = onsetDensity >= 1.4 && onsetDensity <= 3.2 ? 1.0 : 0.5;
   const popMid = midRatio >= 0.35 && bassRatio < 0.5 ? 1.0 : midRatio > 0 ? midRatio : 0.4;
   const popVocals = hasVocals ? 1.0 : 0.2;
   const popLyrics =
-    lyricTone === 'euphoric' || lyricTone === 'tender' ? 1.0 : lyricTone === 'defiant' ? 0.7 : 0.3;
+    lyricTone === 'euphoric' || lyricTone === 'tender'
+      ? 1.0
+      : lyricTone === 'reflective'
+        ? 0.5
+        : 0.1;
+  const popValencePenalty = isAggressiveLyrics && valenceScore < 0.1 ? 0.35 : 1.0;
   const popScore =
-    0.30 * popTempo +
-    0.25 * popOnsets +
-    0.20 * popMid +
-    0.15 * popVocals +
-    0.10 * popLyrics;
+    (0.30 * popTempo +
+      0.25 * popOnsets +
+      0.20 * popMid +
+      0.15 * popVocals +
+      0.10 * popLyrics) *
+    popValencePenalty;
 
   // Candidate 4: ballad_acoustic
   const balladTempo = clamp01((105 - tempo) / 35);

@@ -745,7 +745,8 @@ export class DeterministicMockLlmProvider implements LlmProvider {
         );
       }
       payload = buildDeterministicStorySpec(storyInput.audioManifest, storyInput.projectId, {
-        mode: storyInput.stagingMode
+        mode: storyInput.stagingMode,
+        genreOverride: storyInput.genreOverride
       });
     } else {
       throw new LlmProviderError(
