@@ -12,6 +12,14 @@ export const NON_LOCOMOTION_CLIPS = new Set([
   'scream'
 ]);
 
+export interface LimbContactStats {
+  readonly limbId: string;
+  readonly contactFrames: number;
+  readonly backwardFrames: number;
+  readonly airborneBackwardFrames: number;
+  readonly maxSlipRatio: number;
+}
+
 export interface ClipContactAnalysis {
   readonly strideLengthUnits: number;
   readonly maxRelativeDeviation: number;
@@ -20,15 +28,21 @@ export interface ClipContactAnalysis {
   readonly groundLevelY: number;
   readonly epsilon: number;
   readonly hasBallisticPhase: boolean;
+  readonly perLimbStats: Record<string, LimbContactStats>;
 }
 
 /**
  * Performs contact-aware forward kinematics analysis on a clip to compute
  * the physically grounded stride length and maximum velocity deviation.
  *
- * Contact condition: A foot is in contact on frames where its tip is within
- * epsilon (0.05 * total leg length) of the clip's lowest ground level Y,
- * and the foot is in stance phase (moving backward relative to the pelvis: -dRelX > 0).
+ * On a periodic loop of N = loopFrames, there are N unique frame transitions
+ * f in {0, ..., N - 1}; the closure keyframe at f = N is identical to f = 0
+ * and is not double-counted.
+ *
+ * Contact condition: A foot is in stance contact on frame transition f -> f+1
+ * when its tip at both endpoints is within epsilon (0.02 * leg length) of the
+ * clip's lowest ground level Y, and the foot moves backward relative to the
+ * pelvis (-dRelX > 0).
  */
 export function analyzeClipContactStride(
   rig: AssetRigContract,
@@ -43,7 +57,8 @@ export function analyzeClipContactStride(
       contactFrameCount: 0,
       groundLevelY: 0,
       epsilon: 0,
-      hasBallisticPhase: false
+      hasBallisticPhase: false,
+      perLimbStats: {}
     };
   }
 
@@ -56,7 +71,8 @@ export function analyzeClipContactStride(
         contactFrameCount: clip.loopFrames ?? 24,
         groundLevelY: 0,
         epsilon: 0,
-        hasBallisticPhase: false
+        hasBallisticPhase: false,
+        perLimbStats: {}
       };
     }
     throw new Error(
@@ -87,7 +103,8 @@ export function analyzeClipContactStride(
         contactFrameCount: loopFrames,
         groundLevelY: 0,
         epsilon: 0,
-        hasBallisticPhase: false
+        hasBallisticPhase: false,
+        perLimbStats: {}
       };
     }
     throw new Error(
@@ -95,18 +112,19 @@ export function analyzeClipContactStride(
     );
   }
 
-  // Calculate total leg length: sum parent (upper) + child (lower)
-  let legLength = 46.0; // default for biped
-  const firstFoot = footJoints[0];
-  if (firstFoot.parentId) {
-    const parent = rig.skeleton.joints.find((j) => j.id === firstFoot.parentId);
-    if (parent) {
-      legLength = parent.length + firstFoot.length;
+  // Calculate per-limb leg length: sum parent (upper) + child (lower)
+  const limbEpsilons = footJoints.map((foot) => {
+    let len = 44.0;
+    if (foot.parentId) {
+      const parent = rig.skeleton!.joints.find((j) => j.id === foot.parentId);
+      if (parent) {
+        len = parent.length + foot.length;
+      }
     }
-  }
+    return 0.02 * len;
+  });
 
-  // Contact threshold: 5% of total leg length
-  const epsilon = 0.05 * legLength;
+  const epsilon = limbEpsilons[0] ?? 0.88;
 
   // Sample FK foot positions across the loop cycle [0..loopFrames]
   const rootId = rig.skeleton.rootJointId;
@@ -137,9 +155,13 @@ export function analyzeClipContactStride(
     frameSamples.push({ frame: f, pelvisX: pelvisPos[0], feet });
   }
 
-  // Extract contact frames and v_req(f) = -d(foot_x - pelvis_x) / df
+  // Extract contact frames and v_req(f) = -d(foot_x - pelvis_x) / df across f in [0, loopFrames)
   const vReqs: number[] = [];
   const framesWithContact = new Set<number>();
+  const limbVReqs: number[][] = footJoints.map(() => []);
+  const limbContactCounts: number[] = footJoints.map(() => 0);
+  const limbBackwardCounts: number[] = footJoints.map(() => 0);
+  const limbAirborneBackwardCounts: number[] = footJoints.map(() => 0);
 
   for (let f = 0; f < loopFrames; f++) {
     const curr = frameSamples[f];
@@ -148,15 +170,22 @@ export function analyzeClipContactStride(
     for (let j = 0; j < footJoints.length; j++) {
       const cFt = curr.feet[j];
       const nFt = next.feet[j];
+      const epsJ = limbEpsilons[j];
 
-      // Contact condition: tip Y is within epsilon of ground level and moving backward
-      const isContact = cFt.y <= groundLevelY + epsilon;
+      const isGroundedStep = cFt.y <= groundLevelY + epsJ && nFt.y <= groundLevelY + epsJ;
       const dRelX = nFt.relX - cFt.relX;
       const vReq = -dRelX;
 
-      if (isContact && vReq > 0) {
-        vReqs.push(vReq);
-        framesWithContact.add(f);
+      if (vReq > 1e-6) {
+        limbBackwardCounts[j]++;
+        if (isGroundedStep) {
+          vReqs.push(vReq);
+          limbVReqs[j].push(vReq);
+          limbContactCounts[j]++;
+          framesWithContact.add(f);
+        } else {
+          limbAirborneBackwardCounts[j]++;
+        }
       }
     }
   }
@@ -170,7 +199,8 @@ export function analyzeClipContactStride(
         contactFrameCount: 0,
         groundLevelY,
         epsilon,
-        hasBallisticPhase: true
+        hasBallisticPhase: true,
+        perLimbStats: {}
       };
     }
     throw new Error(
@@ -183,6 +213,21 @@ export function analyzeClipContactStride(
   const strideLengthUnits = Number((meanVReq * loopFrames).toFixed(2));
   const hasBallisticPhase = framesWithContact.size < loopFrames;
 
+  const perLimbStats: Record<string, LimbContactStats> = {};
+  for (let j = 0; j < footJoints.length; j++) {
+    const limbId = footJoints[j].id;
+    const lv = limbVReqs[j];
+    const maxSlipRatio =
+      lv.length > 0 ? Math.max(...lv.map((v) => Math.abs(v - meanVReq) / meanVReq)) : 0;
+    perLimbStats[limbId] = {
+      limbId,
+      contactFrames: limbContactCounts[j],
+      backwardFrames: limbBackwardCounts[j],
+      airborneBackwardFrames: limbAirborneBackwardCounts[j],
+      maxSlipRatio
+    };
+  }
+
   return {
     strideLengthUnits,
     maxRelativeDeviation,
@@ -190,7 +235,8 @@ export function analyzeClipContactStride(
     contactFrameCount: vReqs.length,
     groundLevelY,
     epsilon,
-    hasBallisticPhase
+    hasBallisticPhase,
+    perLimbStats
   };
 }
 
@@ -357,8 +403,10 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
 
     const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rig.id);
 
+    const isQuadrupedRig = Boolean(rig.poseClips && 'beast_gallop' in rig.poseClips);
+
     // Resolve clipId
-    let clipId = 'sprint_frenzy';
+    let clipId = isQuadrupedRig ? 'beast_gallop' : 'sprint_frenzy';
     const rawPreset = directive?.motionPreset;
 
     const canonicalPresets = new Set([
@@ -372,7 +420,9 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       'beast_idle'
     ]);
 
-    if (rawPreset && canonicalPresets.has(rawPreset)) {
+    if (isQuadrupedRig) {
+      clipId = rawPreset === 'idle' ? 'beast_idle' : 'beast_gallop';
+    } else if (rawPreset && canonicalPresets.has(rawPreset)) {
       clipId = rawPreset;
     } else if (rawPreset === 'sprint' || rawPreset === 'stride') {
       clipId = 'sprint_frenzy';
@@ -380,20 +430,24 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       clipId = 'stalk_crouch';
     } else if (rawPreset === 'evade') {
       clipId = 'evade_leap';
+    } else if (rawPreset === 'gallop' || rawPreset === 'pounce') {
+      clipId = 'beast_gallop';
     } else {
       const act = shot.actNumber ?? 1;
       clipId = act === 1 ? 'stalk_crouch' : act === 3 ? 'sprint_frenzy' : 'exhausted_walk';
     }
 
-    if (
-      shot.framing === 'CLOSE_UP' &&
-      (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') ||
-        sectionSpec?.narrativeIntent?.toLowerCase().includes('scream') ||
-        (shot.actNumber ?? 1) >= 2)
-    ) {
-      clipId = 'defiant_scream';
-    } else if (shot.framing === 'WIDE' && clipId === 'defiant_scream') {
-      clipId = 'evade_leap';
+    if (!isQuadrupedRig) {
+      if (
+        shot.framing === 'CLOSE_UP' &&
+        (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') ||
+          sectionSpec?.narrativeIntent?.toLowerCase().includes('scream') ||
+          (shot.actNumber ?? 1) >= 2)
+      ) {
+        clipId = 'defiant_scream';
+      } else if (shot.framing === 'WIDE' && clipId === 'defiant_scream') {
+        clipId = 'evade_leap';
+      }
     }
 
     const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;

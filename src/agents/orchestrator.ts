@@ -16,7 +16,7 @@ import type { StorySpecContract, SectionStagingSpec } from '../schemas/story-spe
 import { compileStorySpecToStoryboard } from '../engine/director/shot-planner.js';
 import { solveChoreography } from '../engine/director/choreography-solver.js';
 import { ArchetypeFactory } from '../engine/library/archetype-factory.js';
-import { EnvironmentKit } from '../engine/library/environment-kit.js';
+import { EnvironmentKit, computeShotEnvironmentBounds } from '../engine/library/environment-kit.js';
 import {
   LlmFatalError,
   LlmJsonParseError,
@@ -352,10 +352,14 @@ export class StudioAgentOrchestrator {
       throw new OrchestrationValidationError('story_spec', allErrors, attempts);
     }
 
-    // 4. Exact Section-Aligned Environment Resolver (Finding 1 fixed)
+    // 4. Exact Section-Aligned & Frustum-Bounded Environment Resolver (Memoized per shot)
     const shotMap = new Map(compiledStoryboard.shots.map((s) => [s.id, s]));
+    const envCache = new Map<string, SceneEnvironment>();
 
     const getEnvironmentForShot = (shotId: string): SceneEnvironment => {
+      const cached = envCache.get(shotId);
+      if (cached) return cached;
+
       const shot = shotMap.get(shotId);
       const centerX = shot
         ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
@@ -364,9 +368,22 @@ export class StudioAgentOrchestrator {
       const section = storySpec.sections.find(
         (s: SectionStagingSpec) => startFrame >= s.startFrame && startFrame < s.endFrame
       ) ?? storySpec.sections[storySpec.sections.length - 1];
-      const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
-      const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
-      return EnvironmentKit.build({ section, shotId, centerX, framing: shot?.framing, xMin, xMax });
+
+      const bounds = shot ? computeShotEnvironmentBounds(shot) : undefined;
+      const xMin = bounds ? bounds.xMin : centerX - 600;
+      const xMax = bounds ? bounds.xMax : centerX + 900;
+
+      const env = EnvironmentKit.build({
+        section,
+        shotId,
+        centerX,
+        framing: shot?.framing,
+        xMin,
+        xMax,
+        tierBounds: bounds?.tierBounds
+      });
+      envCache.set(shotId, env);
+      return env;
     };
 
     return {

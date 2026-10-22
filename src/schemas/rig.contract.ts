@@ -138,7 +138,8 @@ export const PoseInterpolationContractSchema = z.object({
   keyframes: z.array(PoseKeyframeSchema).min(1),
   interpolationMode: z.enum(['linear', 'cubic_spline', 'step']).default('linear'),
   loopFrames: z.number().int().min(2).optional(),
-  strideLengthUnits: FiniteNumberSchema.positive().optional()
+  strideLengthUnits: FiniteNumberSchema.positive().optional(),
+  contactFrames: z.number().int().min(0).optional()
 }).strict();
 export type PoseInterpolationContract = z.infer<typeof PoseInterpolationContractSchema>;
 

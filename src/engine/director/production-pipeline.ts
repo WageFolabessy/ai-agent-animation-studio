@@ -5,6 +5,7 @@ import { createRenderConfig } from '../../config/render-config.js';
 import { OUTPUT_DIR } from '../../config/paths.js';
 import { ENGINE_RENDER_VERSION } from '../../config/render-version.js';
 import { PipelineMemorySampler } from '../../diagnostics/memory-sampler.js';
+import { MEMORY_TARGET_MB, MEMORY_HARD_FAIL_MB } from '../../diagnostics/benchmark-gates.js';
 import { probeVideo, assertBt709Tv } from '../../diagnostics/ffprobe.js';
 import { findTemporaryImageFiles } from '../../diagnostics/artifact-hygiene.js';
 import { FrameStateBuilder } from './frame-state-builder.js';
@@ -36,7 +37,8 @@ import { DirectorStoryboardContractSchema } from '../../schemas/storyboard.contr
 import { AssetRigContractSchema } from '../../schemas/rig.contract.js';
 import { ChoreographyContractSchema } from '../../schemas/choreography.contract.js';
 import { StorySpecContractSchema, type SectionStagingSpec, type StorySpecContract } from '../../schemas/story-spec.contract.js';
-import { EnvironmentKit } from '../library/environment-kit.js';
+import { EnvironmentKit, computeShotEnvironmentBounds } from '../library/environment-kit.js';
+import type { SceneEnvironment } from '../compositor/scene-compositor.js';
 import { getOrchestratedEnvironment } from './environment-generator.js';
 import { z } from 'zod';
 
@@ -77,6 +79,7 @@ export interface ProductionPipelineOptions {
   readonly crf?: number;
   readonly threads?: number;
   readonly quiet?: boolean;
+  readonly hardFailMemoryMb?: number;
   readonly onProgress?: (progress: ProductionProgress) => void;
 }
 
@@ -89,9 +92,45 @@ export interface ProductionPipelineResult {
   readonly fps: number;
   readonly peakAggregateRssMb: number;
   readonly peakNodeRssMb: number;
+  readonly peakChildRssMb: number;
+  readonly memoryGateStatus: 'pass' | 'warning';
   readonly wallTimeSeconds: number;
   readonly effectiveFps: number;
   readonly artifactsDir: string;
+}
+
+export interface ProductionMemoryGateEvaluation {
+  readonly status: 'pass' | 'warning';
+  readonly warningMessage?: string;
+  readonly summaryLabel: string;
+}
+
+export function evaluateProductionMemoryGate(
+  stats: { peakAggregateRssMb: number; peakNodeRssMb: number; peakChildRssMb: number },
+  hardFailLimitMb = MEMORY_HARD_FAIL_MB,
+  targetWarningMb = MEMORY_TARGET_MB
+): ProductionMemoryGateEvaluation {
+  if (stats.peakAggregateRssMb > hardFailLimitMb) {
+    throw new Error(
+      `MEMORY GATE FAILED: Peak aggregate RSS ${stats.peakAggregateRssMb.toFixed(2)} MB ` +
+        `(Peak Node: ${stats.peakNodeRssMb.toFixed(2)} MB, Peak FFmpeg: ${stats.peakChildRssMb.toFixed(2)} MB) ` +
+        `exceeded hard limit of ${hardFailLimitMb} MB!`
+    );
+  }
+  if (stats.peakAggregateRssMb >= targetWarningMb) {
+    return {
+      status: 'warning',
+      warningMessage:
+        `MEMORY TARGET WARNING: Peak aggregate RSS ${stats.peakAggregateRssMb.toFixed(2)} MB ` +
+        `(Peak Node: ${stats.peakNodeRssMb.toFixed(2)} MB, Peak FFmpeg: ${stats.peakChildRssMb.toFixed(2)} MB) ` +
+        `is at or above the ${targetWarningMb} MB target (hard limit ${hardFailLimitMb} MB).`,
+      summaryLabel: `(>= ${targetWarningMb} MB target — WARNING, <= ${hardFailLimitMb} MB hard limit)`
+    };
+  }
+  return {
+    status: 'pass',
+    summaryLabel: `(< ${targetWarningMb} MB target — PASS)`
+  };
 }
 
 export function renderProgressBar(ratio: number, width = 24): string {
@@ -313,7 +352,11 @@ export async function runProductionPipeline(
     }
 
     const shotMap = new Map(storyboard.shots.map((s) => [s.id, s]));
-    const getEnvironmentForShot = (shotId: string) => {
+    const envCache = new Map<string, SceneEnvironment>();
+    const getEnvironmentForShot = (shotId: string): SceneEnvironment => {
+      const cached = envCache.get(shotId);
+      if (cached) return cached;
+
       const shot = shotMap.get(shotId);
       const centerX = shot
         ? (shot.cameraStart.position[0] + shot.cameraEnd.position[0]) / 2
@@ -323,13 +366,26 @@ export async function runProductionPipeline(
         const sec = storySpec.sections.find(
           (s: SectionStagingSpec) => startFrame >= s.startFrame && startFrame < s.endFrame
         ) ?? storySpec.sections[storySpec.sections.length - 1];
-        const xMin = shot ? Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]) - 600 : centerX - 600;
-        const xMax = shot ? Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]) + 900 : centerX + 900;
-        return EnvironmentKit.build({ section: sec, shotId, centerX, framing: shot?.framing, xMin, xMax });
+        const bounds = shot ? computeShotEnvironmentBounds(shot) : undefined;
+        const xMin = bounds ? bounds.xMin : centerX - 600;
+        const xMax = bounds ? bounds.xMax : centerX + 900;
+        const env = EnvironmentKit.build({
+          section: sec,
+          shotId,
+          centerX,
+          framing: shot?.framing,
+          xMin,
+          xMax,
+          tierBounds: bounds?.tierBounds
+        });
+        envCache.set(shotId, env);
+        return env;
       }
       const zone = shot?.environmentZone ?? 'ROOFTOP';
       const palette = shot?.palette;
-      return getOrchestratedEnvironment(shotId, centerX, zone, palette);
+      const env = getOrchestratedEnvironment(shotId, centerX, zone, palette);
+      envCache.set(shotId, env);
+      return env;
     };
 
     orchestration = {
@@ -519,82 +575,136 @@ export async function runProductionPipeline(
     console.log(`\n[Stage 4/5] Executing Chunked Streaming Renderer (Strictly Zero Disk I/O)...`);
   }
 
-  const sampler = new PipelineMemorySampler(100);
+  const hardFailLimitMb = options.hardFailMemoryMb ?? MEMORY_HARD_FAIL_MB;
+  const memoryAbortController = new AbortController();
+  let inFlightMemoryError: Error | null = null;
+
+  const sampler = new PipelineMemorySampler({
+    intervalMs: 100,
+    hardFailThresholdMb: hardFailLimitMb,
+    onHardFailExceeded: (snapshot) => {
+      inFlightMemoryError = new Error(
+        `MEMORY GATE FAILED (IN-FLIGHT): Aggregate RSS ${snapshot.aggregateRssMb.toFixed(2)} MB ` +
+          `(Node: ${snapshot.nodeRssMb.toFixed(2)} MB, FFmpeg: ${snapshot.childRssMb.toFixed(2)} MB) ` +
+          `exceeded hard limit of ${hardFailLimitMb} MB! Aborting active chunk while preserving completed chunks.`
+      );
+      memoryAbortController.abort(inFlightMemoryError);
+    }
+  });
   sampler.start();
 
   const productionStartWall = performance.now();
   let renderedFramesInSession = 0;
   let lastProgressUpdate = 0;
 
-  for (let c = 0; c < checkpointStatus.totalChunks; c++) {
-    const chunk = checkpointManager.descriptors[c];
-    const inspection = checkpointStatus.chunks[c];
-    const fingerprint = expectedFingerprintsMap.get(chunk.chunkIndex);
+  try {
+    for (let c = 0; c < checkpointStatus.totalChunks; c++) {
+      if (inFlightMemoryError) {
+        throw inFlightMemoryError;
+      }
 
-    if (resume && inspection.status === 'COMPLETED') {
+      const chunk = checkpointManager.descriptors[c];
+      const inspection = checkpointStatus.chunks[c];
+      const fingerprint = expectedFingerprintsMap.get(chunk.chunkIndex);
+
+      if (resume && inspection.status === 'COMPLETED') {
+        if (!quiet) {
+          console.log(
+            `✓ Chunk ${c + 1}/${checkpointStatus.totalChunks} [${chunk.startFrame}..${chunk.endFrame}) already valid. Skipped.`
+          );
+        }
+        continue;
+      }
+
       if (!quiet) {
         console.log(
-          `✓ Chunk ${c + 1}/${checkpointStatus.totalChunks} [${chunk.startFrame}..${chunk.endFrame}) already valid. Skipped.`
+          `\nRendering Chunk ${c + 1}/${checkpointStatus.totalChunks}: [frames ${chunk.startFrame}..${chunk.endFrame}) -> "${chunk.filename}"`
         );
       }
-      continue;
-    }
 
-    if (!quiet) {
-      console.log(
-        `\nRendering Chunk ${c + 1}/${checkpointStatus.totalChunks}: [frames ${chunk.startFrame}..${chunk.endFrame}) -> "${chunk.filename}"`
-      );
-    }
+      await renderChunk({
+        chunk,
+        renderConfig,
+        frameGenerator: globalFrameGenerator,
+        fingerprint,
+        abortSignal: memoryAbortController.signal,
+        onChildPidChange: (pid) => sampler.setChildPid(pid),
+        onChunkFrameRendered: (localIndex, globalIndex) => {
+          renderedFramesInSession++;
+          if (localIndex === Math.floor(chunk.frameCount / 2) || localIndex === chunk.frameCount - 1) {
+            sampler.sample();
+          }
+          const now = performance.now();
+          if (now - lastProgressUpdate > 200 || localIndex === chunk.frameCount - 1) {
+            lastProgressUpdate = now;
+            sampler.sample();
+            const tick = sampler.getLastTickSnapshot();
+            const currentProgressFrames = globalIndex - startFrame + 1;
+            const overallProgress = currentProgressFrames / effectiveTotalFrames;
+            const elapsedSec = (now - productionStartWall) / 1000;
+            const currentFpsNum =
+              renderedFramesInSession > 0 && elapsedSec > 0
+                ? renderedFramesInSession / elapsedSec
+                : 0;
+            const remainingFrames = effectiveTotalFrames - currentProgressFrames;
+            const etaSec = currentFpsNum > 0 ? remainingFrames / currentFpsNum : 0;
+            const rssMb = tick.aggregateRssMb;
 
-    await renderChunk({
-      chunk,
-      renderConfig,
-      frameGenerator: globalFrameGenerator,
-      fingerprint,
-      onChunkFrameRendered: (localIndex, globalIndex) => {
-        renderedFramesInSession++;
-        const now = performance.now();
-        if (now - lastProgressUpdate > 200 || localIndex === chunk.frameCount - 1) {
-          lastProgressUpdate = now;
-          const currentProgressFrames = globalIndex - startFrame + 1;
-          const overallProgress = currentProgressFrames / effectiveTotalFrames;
-          const elapsedSec = (now - productionStartWall) / 1000;
-          const currentFpsNum =
-            renderedFramesInSession > 0 && elapsedSec > 0
-              ? renderedFramesInSession / elapsedSec
-              : 0;
-          const remainingFrames = effectiveTotalFrames - currentProgressFrames;
-          const etaSec = currentFpsNum > 0 ? remainingFrames / currentFpsNum : 0;
-          const rssMb = process.memoryUsage().rss / 1024 / 1024;
+            options.onProgress?.({
+              chunkIndex: c,
+              totalChunks: checkpointStatus.totalChunks,
+              currentFrame: currentProgressFrames,
+              totalFrames: effectiveTotalFrames,
+              overallProgress,
+              currentFps: Number(currentFpsNum.toFixed(1)),
+              rssMb: Number(rssMb.toFixed(0)),
+              etaSeconds: Math.round(etaSec)
+            });
 
-          options.onProgress?.({
-            chunkIndex: c,
-            totalChunks: checkpointStatus.totalChunks,
-            currentFrame: currentProgressFrames,
-            totalFrames: effectiveTotalFrames,
-            overallProgress,
-            currentFps: Number(currentFpsNum.toFixed(1)),
-            rssMb: Number(rssMb.toFixed(0)),
-            etaSeconds: Math.round(etaSec)
-          });
-
-          if (!quiet) {
-            const progressBar = renderProgressBar(overallProgress, 20);
-            const pct = (overallProgress * 100).toFixed(1);
-            process.stdout.write(
-              `\r[${c + 1}/${checkpointStatus.totalChunks}] ${progressBar} ${currentProgressFrames}/${effectiveTotalFrames}f (${pct}%) | ${currentFpsNum.toFixed(1)} FPS | RSS: ${rssMb.toFixed(0)}MB | ETA: ${formatDuration(etaSec)} `
-            );
+            if (!quiet) {
+              const progressBar = renderProgressBar(overallProgress, 20);
+              const pct = (overallProgress * 100).toFixed(1);
+              process.stdout.write(
+                `\r[${c + 1}/${checkpointStatus.totalChunks}] ${progressBar} ${currentProgressFrames}/${effectiveTotalFrames}f (${pct}%) | ${currentFpsNum.toFixed(1)} FPS | RSS: ${rssMb.toFixed(0)}MB | ETA: ${formatDuration(etaSec)} `
+              );
+            }
           }
         }
-      }
-    });
+      });
 
-    if (global.gc) {
-      global.gc();
+      if (global.gc) {
+        global.gc();
+      }
     }
+  } catch (err) {
+    try {
+      sampler.stop();
+    } catch {}
+    if (inFlightMemoryError) {
+      throw inFlightMemoryError;
+    }
+    throw err;
   }
 
   const memoryStats = sampler.stop();
+  if (inFlightMemoryError) {
+    throw inFlightMemoryError;
+  }
+
+  const gateEval = evaluateProductionMemoryGate(
+    {
+      peakAggregateRssMb: memoryStats.peakAggregateRssMb,
+      peakNodeRssMb: memoryStats.peakNodeRssMb,
+      peakChildRssMb: memoryStats.peakChildRssMb
+    },
+    hardFailLimitMb,
+    MEMORY_TARGET_MB
+  );
+
+  if (gateEval.warningMessage && !quiet) {
+    console.warn(`\n[MemoryGate] ${gateEval.warningMessage}`);
+  }
+
   const totalElapsedSec = (performance.now() - productionStartWall) / 1000;
   const effectiveFps = effectiveTotalFrames / Math.max(0.001, totalElapsedSec);
 
@@ -647,8 +757,9 @@ export async function runProductionPipeline(
     console.log(` Resolution:          ${probe.stream.width}x${probe.stream.height} @ ${fps}fps`);
     console.log(` Color Metadata:      BT.709 tv limited-range (Verified)`);
     console.log(` Audio Stream:        AAC ${bitrateKbps}kbps stereo (Continuous Master)`);
-    console.log(` Peak Aggregate RSS:  ${memoryStats.peakAggregateRssMb.toFixed(2)} MB (< 400 MB target)`);
+    console.log(` Peak Aggregate RSS:  ${memoryStats.peakAggregateRssMb.toFixed(2)} MB ${gateEval.summaryLabel}`);
     console.log(` Peak Node RSS:       ${memoryStats.peakNodeRssMb.toFixed(2)} MB`);
+    console.log(` Peak FFmpeg RSS:     ${memoryStats.peakChildRssMb.toFixed(2)} MB`);
     console.log(` Effective FPS:       ${effectiveFps.toFixed(2)}`);
     console.log(` Wall Time:           ${formatDuration(totalElapsedSec)}`);
     console.log(` Intermediate Images: 0 bytes (Strictly Zero Per-Frame Disk I/O)`);
@@ -664,6 +775,8 @@ export async function runProductionPipeline(
     fps,
     peakAggregateRssMb: memoryStats.peakAggregateRssMb,
     peakNodeRssMb: memoryStats.peakNodeRssMb,
+    peakChildRssMb: memoryStats.peakChildRssMb,
+    memoryGateStatus: gateEval.status,
     wallTimeSeconds: totalElapsedSec,
     effectiveFps,
     artifactsDir

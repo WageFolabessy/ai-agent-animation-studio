@@ -14,6 +14,20 @@ export interface MemoryStatsResult {
   sampleCount: number;
 }
 
+export interface MemoryTickSnapshot {
+  aggregateRssMb: number;
+  nodeRssMb: number;
+  childRssMb: number;
+}
+
+export interface MemorySamplerOptions {
+  intervalMs?: number;
+  /** Optional hard-fail ceiling in MB; triggers `onHardFailExceeded` on the first tick strictly above this limit. */
+  hardFailThresholdMb?: number;
+  /** Invoked synchronously on the first sample tick where `aggregateRssMb > hardFailThresholdMb`. */
+  onHardFailExceeded?: (snapshot: MemoryTickSnapshot) => void;
+}
+
 const DEFAULT_PAGE_SIZE_BYTES = 4096;
 
 function toMb(bytes: number): number {
@@ -36,6 +50,9 @@ export class PipelineMemorySampler {
   private childPid: number | null = null;
   private readonly intervalMs: number;
   private readonly pageSizeBytes: number;
+  private readonly hardFailThresholdMb?: number;
+  private readonly onHardFailExceeded?: (snapshot: MemoryTickSnapshot) => void;
+  private hardFailTriggered = false;
   private samplingError: Error | null = null;
 
   private peakAggregateRss = 0;
@@ -45,13 +62,45 @@ export class PipelineMemorySampler {
   private peakExternal = 0;
   private peakArrayBuffers = 0;
 
+  private lastTickSnapshot: MemoryTickSnapshot = {
+    aggregateRssMb: 0,
+    nodeRssMb: 0,
+    childRssMb: 0
+  };
+
   private initialNodeRss = 0;
   private finalNodeRss = 0;
   private sampleCount = 0;
 
-  constructor(intervalMs = 50) {
-    this.intervalMs = intervalMs;
+  constructor(optionsOrInterval: number | MemorySamplerOptions = 50) {
+    if (typeof optionsOrInterval === 'number') {
+      this.intervalMs = optionsOrInterval;
+    } else {
+      this.intervalMs = optionsOrInterval.intervalMs ?? 50;
+      this.hardFailThresholdMb = optionsOrInterval.hardFailThresholdMb;
+      this.onHardFailExceeded = optionsOrInterval.onHardFailExceeded;
+    }
     this.pageSizeBytes = this.detectPageSize();
+  }
+
+  /**
+   * Dynamically sets or clears the active child process PID (e.g. per-chunk FFmpeg instance).
+   * When a non-null PID is attached, an immediate synchronous sample is taken so even
+   * short-lived child processes are guaranteed to be measured while alive.
+   */
+  public setChildPid(pid: number | null): void {
+    this.childPid = pid ?? null;
+    if (this.childPid !== null) {
+      this.sample();
+    }
+  }
+
+  public getChildPid(): number | null {
+    return this.childPid;
+  }
+
+  public getLastTickSnapshot(): MemoryTickSnapshot {
+    return this.lastTickSnapshot;
   }
 
   private detectPageSize(): number {
@@ -115,6 +164,22 @@ export class PipelineMemorySampler {
     this.peakExternal = Math.max(this.peakExternal, nodeUsage.external);
     this.peakArrayBuffers = Math.max(this.peakArrayBuffers, nodeUsage.arrayBuffers);
     this.sampleCount++;
+
+    const snapshot: MemoryTickSnapshot = {
+      aggregateRssMb: toMb(aggregateRss),
+      nodeRssMb: toMb(nodeRss),
+      childRssMb: toMb(childRss)
+    };
+    this.lastTickSnapshot = snapshot;
+
+    if (
+      !this.hardFailTriggered &&
+      this.hardFailThresholdMb !== undefined &&
+      snapshot.aggregateRssMb > this.hardFailThresholdMb
+    ) {
+      this.hardFailTriggered = true;
+      this.onHardFailExceeded?.(snapshot);
+    }
   }
 
   /** Stops sampling and returns peak statistics. Rethrows the first background sampling error. */

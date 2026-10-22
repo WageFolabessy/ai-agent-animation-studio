@@ -57,6 +57,17 @@ export interface ArchetypeBuildOptions {
 
 import type { CameraFraming } from '../../schemas/storyboard.contract.js';
 
+export type EnvironmentTierKey =
+  | 'tier1SkylineZ'
+  | 'tier2MidgroundZ'
+  | 'tier3RunwayZ'
+  | 'tier4ForegroundZ';
+
+export interface TierXSpan {
+  readonly xMin: number;
+  readonly xMax: number;
+}
+
 export interface EnvironmentBuildOptions {
   readonly section: SectionStagingSpec;
   readonly shotId: string;
@@ -64,4 +75,5 @@ export interface EnvironmentBuildOptions {
   readonly framing?: CameraFraming;
   readonly xMin?: number;
   readonly xMax?: number;
+  readonly tierBounds?: Partial<Record<EnvironmentTierKey, TierXSpan>>;
 }

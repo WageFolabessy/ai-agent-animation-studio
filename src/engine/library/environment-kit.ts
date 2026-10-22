@@ -3,16 +3,137 @@ import type {
   EnvironmentPolygon,
   EnvironmentLine
 } from '../compositor/scene-compositor.js';
-import type { ColorLightingPalette } from '../../schemas/storyboard.contract.js';
+import type { CinematicShot, ColorLightingPalette } from '../../schemas/storyboard.contract.js';
+import type { CameraTransform } from '../../schemas/primitives.schema.js';
+import { computeCameraBasis } from '../camera/camera-3d.js';
+import { ShotSequencer } from '../director/shot-sequencer.js';
 import { shadeHexColor } from '../math/color.js';
 import {
   type EnvironmentBuildOptions,
   type EnvironmentKitId,
+  type EnvironmentTierKey,
+  type TierXSpan,
   type IndustrialCityParams,
   type OrbitalStationParams,
   type NeonChasmParams,
   type SynthGridParams
 } from './types.js';
+
+export type { EnvironmentTierKey, TierXSpan };
+
+export const ENVIRONMENT_TIER_DEPTHS = {
+  tier1SkylineZ: -900,
+  tier2MidgroundZ: -450,
+  tier3RunwayZ: -120,
+  tier4ForegroundZ: 140
+} as const;
+
+export interface ShotEnvironmentBounds {
+  readonly xMin: number;
+  readonly xMax: number;
+  readonly tierBounds: Record<EnvironmentTierKey, TierXSpan>;
+}
+
+/**
+ * Computes the horizontal world-X span [xMin, xMax] visible to a 3D camera at a given Z plane
+ * by intersecting the 4 viewport corner rays with Z = zPlane.
+ */
+export function computeCameraFrustumXSpanAtZ(
+  cam: CameraTransform,
+  zPlane: number,
+  aspect = 16 / 9
+): TierXSpan {
+  const basis = computeCameraBasis(cam);
+  const { right: u, up: v, forward: w } = basis;
+  const fovDeg = cam.projectionMode === 'perspective' ? cam.verticalFovDegrees : 50;
+  const tanHalfV = Math.tan((fovDeg * Math.PI) / 360);
+  const tanHalfH = aspect * tanHalfV;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+
+  const signs: Array<[-1 | 1, -1 | 1]> = [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1]
+  ];
+
+  for (const [sx, sy] of signs) {
+    const rx = w[0] + sx * tanHalfH * u[0] + sy * tanHalfV * v[0];
+    const rz = w[2] + sx * tanHalfH * u[2] + sy * tanHalfV * v[2];
+    const dz = zPlane - cam.position[2];
+
+    if (Math.abs(rz) > 1e-6) {
+      const t = dz / rz;
+      if (t > 0) {
+        const hitX = cam.position[0] + t * rx;
+        if (hitX < minX) minX = hitX;
+        if (hitX > maxX) maxX = hitX;
+      }
+    }
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+    return {
+      xMin: cam.position[0] - 600,
+      xMax: cam.position[0] + 900
+    };
+  }
+
+  return { xMin: minX, xMax: maxX };
+}
+
+/**
+ * Computes frustum-derived horizontal bounds [xMin, xMax] across all environment depth tiers
+ * for a storyboard shot, sampling start, end, and intermediate camera poses (including ORBIT arcs)
+ * and adding safety padding for camera trauma shake.
+ */
+export function computeShotEnvironmentBounds(
+  shot: CinematicShot,
+  padding = 250,
+  aspect = 16 / 9
+): ShotEnvironmentBounds {
+  const sampleProgresses = [0, 0.25, 0.5, 0.75, 1.0];
+  const sampledCameras: CameraTransform[] = sampleProgresses.map((p) =>
+    ShotSequencer.prototype.interpolateCamera.call({ shots: [shot] }, shot, p)
+  );
+
+  const tierKeys = Object.keys(ENVIRONMENT_TIER_DEPTHS) as EnvironmentTierKey[];
+  const tierBounds = {} as Record<EnvironmentTierKey, TierXSpan>;
+
+  const camMinX = Math.min(shot.cameraStart.position[0], shot.cameraEnd.position[0]);
+  const camMaxX = Math.max(shot.cameraStart.position[0], shot.cameraEnd.position[0]);
+
+  let globalMinX = camMinX - 600;
+  let globalMaxX = camMaxX + 900;
+
+  for (const key of tierKeys) {
+    const zPlane = ENVIRONMENT_TIER_DEPTHS[key];
+    let tMin = camMinX - padding;
+    let tMax = camMaxX + padding;
+
+    for (const cam of sampledCameras) {
+      const span = computeCameraFrustumXSpanAtZ(cam, zPlane, aspect);
+      if (span.xMin - padding < tMin) tMin = span.xMin - padding;
+      if (span.xMax + padding > tMax) tMax = span.xMax + padding;
+    }
+
+    tierBounds[key] = {
+      xMin: Math.floor(tMin),
+      xMax: Math.ceil(tMax)
+    };
+
+    if (tierBounds[key].xMin < globalMinX) globalMinX = tierBounds[key].xMin;
+    if (tierBounds[key].xMax > globalMaxX) globalMaxX = tierBounds[key].xMax;
+  }
+
+  return {
+    xMin: Math.floor(globalMinX),
+    xMax: Math.ceil(globalMaxX),
+    tierBounds
+  };
+}
 
 export const THEME_PALETTES: Record<string, ColorLightingPalette> = {
   CYBERPUNK_CYAN: {
@@ -81,7 +202,7 @@ export const THEME_PALETTES: Record<string, ColorLightingPalette> = {
  */
 export class EnvironmentKit {
   public static build(options: EnvironmentBuildOptions): SceneEnvironment {
-    const { section, centerX, framing } = options;
+    const { section, centerX, framing, tierBounds } = options;
     const palette = THEME_PALETTES[section.colorThemeId] ?? THEME_PALETTES.CYBERPUNK_CYAN;
     const xMin = options.xMin ?? (centerX - 600);
     const xMax = options.xMax ?? (centerX + 900);
@@ -92,32 +213,41 @@ export class EnvironmentKit {
       xMax,
       palette,
       section.environmentKitId,
-      isCloseUp
+      isCloseUp,
+      tierBounds
     );
   }
 
   /**
    * Procedural 4-tier scrolling parallax environment generator.
-   * Generates continuous world geometry across [xMin, xMax]:
-   * - Tier 1 (Z = -900): Distant skyline (spires, megaliths, citadels)
-   * - Tier 2 (Z = -450): Midground industrial structures and trusses
-   * - Tier 3 (Z = -120 to +40): Continuous runway floor, expansion lines, streetlamps, tech barriers
-   * - Tier 4 (Z = +140): Foreground overhead conduits (strictly excluded on CLOSE_UP shots)
+   * Generates continuous world geometry across [xMin, xMax] (and per-tier frustum spans):
+   * - Tier 1 (Z = ENVIRONMENT_TIER_DEPTHS.tier1SkylineZ = -900): Distant skyline (spires, megaliths, citadels)
+   * - Tier 2 (Z = ENVIRONMENT_TIER_DEPTHS.tier2MidgroundZ = -450): Midground industrial structures and trusses
+   * - Tier 3 (Z = ENVIRONMENT_TIER_DEPTHS.tier3RunwayZ = -120): Continuous runway floor, expansion lines, streetlamps, tech barriers
+   * - Tier 4 (Z = ENVIRONMENT_TIER_DEPTHS.tier4ForegroundZ = +140): Foreground overhead conduits (strictly excluded on CLOSE_UP shots)
    */
   public static buildTiledParallaxEnvironment(
     xMin: number,
     xMax: number,
     palette: ColorLightingPalette,
     _kitId: EnvironmentKitId = 'industrial_city',
-    isCloseUp = false
+    isCloseUp = false,
+    tierBounds?: Partial<Record<EnvironmentTierKey, TierXSpan>>
   ): SceneEnvironment {
     const polygons: EnvironmentPolygon[] = [];
     const lines: EnvironmentLine[] = [];
 
-    // --- Tier 1 (Z = -900): Distant Skyline (Spacing = 450u) ---
-    const s1 = 450;
-    const k1Min = Math.floor(xMin / s1);
-    const k1Max = Math.ceil(xMax / s1);
+    const z1 = ENVIRONMENT_TIER_DEPTHS.tier1SkylineZ;
+    const z2 = ENVIRONMENT_TIER_DEPTHS.tier2MidgroundZ;
+    const z3 = ENVIRONMENT_TIER_DEPTHS.tier3RunwayZ;
+    const z4 = ENVIRONMENT_TIER_DEPTHS.tier4ForegroundZ;
+
+    // --- Tier 1 (Z = -900): Distant Skyline ---
+    const b1 = tierBounds?.tier1SkylineZ ?? { xMin, xMax };
+    const span1 = Math.max(1500, b1.xMax - b1.xMin);
+    const s1 = Math.max(450, Math.ceil(span1 / 3));
+    const k1Min = Math.floor(b1.xMin / s1);
+    const k1Max = Math.ceil(b1.xMax / s1);
 
     for (let k = k1Min; k <= k1Max; k++) {
       const bx = k * s1;
@@ -127,10 +257,10 @@ export class EnvironmentKit {
         // Gothic Spire
         polygons.push({
           vertices: [
-            [bx - 50, 0, -900],
-            [bx + 50, 0, -900],
-            [bx + 38, 320, -900],
-            [bx - 38, 320, -900]
+            [bx - 50, 0, z1],
+            [bx + 50, 0, z1],
+            [bx + 38, 320, z1],
+            [bx - 38, 320, z1]
           ],
           fill: shadeHexColor(palette.background, 0.45),
           opacity: 0.9,
@@ -138,17 +268,17 @@ export class EnvironmentKit {
         });
         polygons.push({
           vertices: [
-            [bx - 16, 320, -900],
-            [bx + 16, 320, -900],
-            [bx, 480, -900]
+            [bx - 16, 320, z1],
+            [bx + 16, 320, z1],
+            [bx, 480, z1]
           ],
           fill: shadeHexColor(palette.secondary, -0.2),
           opacity: 0.85,
           tier: 1
         });
         lines.push({
-          p0: [bx, 480, -900],
-          p1: [bx, 530, -900],
+          p0: [bx, 480, z1],
+          p1: [bx, 530, z1],
           stroke: palette.accent,
           strokeWidth: 2,
           opacity: 0.9,
@@ -158,18 +288,18 @@ export class EnvironmentKit {
         // Neon Megalith
         polygons.push({
           vertices: [
-            [bx - 70, 0, -920],
-            [bx + 70, 0, -920],
-            [bx + 60, 420, -920],
-            [bx - 60, 420, -920]
+            [bx - 70, 0, z1 - 20],
+            [bx + 70, 0, z1 - 20],
+            [bx + 60, 420, z1 - 20],
+            [bx - 60, 420, z1 - 20]
           ],
           fill: shadeHexColor(palette.background, 0.35),
           opacity: 0.88,
           tier: 1
         });
         lines.push({
-          p0: [bx + 60, 420, -920],
-          p1: [bx + 60, 0, -920],
+          p0: [bx + 60, 420, z1 - 20],
+          p1: [bx + 60, 0, z1 - 20],
           stroke: palette.primary,
           strokeWidth: 2,
           opacity: 0.7,
@@ -179,18 +309,18 @@ export class EnvironmentKit {
         // Sky Citadel
         polygons.push({
           vertices: [
-            [bx - 80, 0, -880],
-            [bx + 80, 0, -880],
-            [bx + 40, 360, -880],
-            [bx - 40, 360, -880]
+            [bx - 80, 0, z1 + 20],
+            [bx + 80, 0, z1 + 20],
+            [bx + 40, 360, z1 + 20],
+            [bx - 40, 360, z1 + 20]
           ],
           fill: shadeHexColor(palette.background, 0.4),
           opacity: 0.9,
           tier: 1
         });
         lines.push({
-          p0: [bx - 40, 360, -880],
-          p1: [bx + 40, 360, -880],
+          p0: [bx - 40, 360, z1 + 20],
+          p1: [bx + 40, 360, z1 + 20],
           stroke: palette.accent,
           strokeWidth: 2.5,
           opacity: 0.85,
@@ -199,10 +329,12 @@ export class EnvironmentKit {
       }
     }
 
-    // --- Tier 2 (Z = -450): Midground Industrial (Spacing = 300u) ---
-    const s2 = 300;
-    const k2Min = Math.floor(xMin / s2);
-    const k2Max = Math.ceil(xMax / s2);
+    // --- Tier 2 (Z = -450): Midground Industrial ---
+    const b2 = tierBounds?.tier2MidgroundZ ?? { xMin, xMax };
+    const span2 = Math.max(1500, b2.xMax - b2.xMin);
+    const s2 = Math.max(300, Math.ceil(span2 / 4));
+    const k2Min = Math.floor(b2.xMin / s2);
+    const k2Max = Math.ceil(b2.xMax / s2);
 
     for (let k = k2Min; k <= k2Max; k++) {
       const bx = k * s2;
@@ -212,18 +344,18 @@ export class EnvironmentKit {
         // Factory Block
         polygons.push({
           vertices: [
-            [bx - 55, 0, -450],
-            [bx + 55, 0, -450],
-            [bx + 55, 170, -450],
-            [bx - 55, 170, -450]
+            [bx - 55, 0, z2],
+            [bx + 55, 0, z2],
+            [bx + 55, 170, z2],
+            [bx - 55, 170, z2]
           ],
           fill: shadeHexColor(palette.secondary, -0.1),
           opacity: 0.92,
           tier: 2
         });
         lines.push({
-          p0: [bx - 60, 110, -440],
-          p1: [bx + 60, 110, -440],
+          p0: [bx - 60, 110, z2 + 10],
+          p1: [bx + 60, 110, z2 + 10],
           stroke: palette.primary,
           strokeWidth: 2,
           opacity: 0.8,
@@ -233,24 +365,24 @@ export class EnvironmentKit {
         // Lattice Truss / Reactor Frame
         lines.push(
           {
-            p0: [bx - 40, 0, -460],
-            p1: [bx - 40, 200, -460],
+            p0: [bx - 40, 0, z2 - 10],
+            p1: [bx - 40, 200, z2 - 10],
             stroke: shadeHexColor(palette.secondary, 0.3),
             strokeWidth: 2.5,
             opacity: 0.85,
             tier: 2
           },
           {
-            p0: [bx + 40, 0, -460],
-            p1: [bx + 40, 200, -460],
+            p0: [bx + 40, 0, z2 - 10],
+            p1: [bx + 40, 200, z2 - 10],
             stroke: shadeHexColor(palette.secondary, 0.3),
             strokeWidth: 2.5,
             opacity: 0.85,
             tier: 2
           },
           {
-            p0: [bx - 40, 80, -460],
-            p1: [bx + 40, 160, -460],
+            p0: [bx - 40, 80, z2 - 10],
+            p1: [bx + 40, 160, z2 - 10],
             stroke: palette.accent,
             strokeWidth: 1.5,
             opacity: 0.7,
@@ -260,7 +392,7 @@ export class EnvironmentKit {
       }
     }
 
-    // --- Tier 3 (Z = -120 to +40): Near-Ground Runway (Continuous Floor Z in [-300, 300], Spacing = 200u) ---
+    // --- Tier 3 (Z = -120 to +40): Near-Ground Runway ---
     const floorPad = 300;
     polygons.push({
       vertices: [
@@ -286,9 +418,11 @@ export class EnvironmentKit {
       });
     }
 
-    const s3 = 200;
-    const k3Min = Math.floor(xMin / s3);
-    const k3Max = Math.ceil(xMax / s3);
+    const b3 = tierBounds?.tier3RunwayZ ?? { xMin, xMax };
+    const span3 = Math.max(1200, b3.xMax - b3.xMin);
+    const s3 = Math.max(200, Math.ceil(span3 / 5));
+    const k3Min = Math.floor(b3.xMin / s3);
+    const k3Max = Math.ceil(b3.xMax / s3);
 
     for (let k = k3Min; k <= k3Max; k++) {
       const bx = k * s3;
@@ -296,16 +430,16 @@ export class EnvironmentKit {
       // Streetlamp (Z = -120)
       lines.push(
         {
-          p0: [bx, 0, -120],
-          p1: [bx, 130, -120],
+          p0: [bx, 0, z3],
+          p1: [bx, 130, z3],
           stroke: shadeHexColor(palette.secondary, 0.4),
           strokeWidth: 2.2,
           opacity: 0.85,
           tier: 2
         },
         {
-          p0: [bx, 130, -120],
-          p1: [bx + 25, 125, -120],
+          p0: [bx, 130, z3],
+          p1: [bx + 25, 125, z3],
           stroke: palette.primary,
           strokeWidth: 2,
           opacity: 0.9,
@@ -314,10 +448,10 @@ export class EnvironmentKit {
       );
       polygons.push({
         vertices: [
-          [bx + 20, 127, -120],
-          [bx + 28, 127, -120],
-          [bx + 26, 120, -120],
-          [bx + 22, 120, -120]
+          [bx + 20, 127, z3],
+          [bx + 28, 127, z3],
+          [bx + 26, 120, z3],
+          [bx + 22, 120, z3]
         ],
         fill: palette.accent,
         opacity: 0.95,
@@ -328,10 +462,10 @@ export class EnvironmentKit {
       if (Math.abs(k) % 2 === 1) {
         polygons.push({
           vertices: [
-            [bx + 50, 0, -70],
-            [bx + 80, 0, -70],
-            [bx + 80, 26, -70],
-            [bx + 50, 26, -70]
+            [bx + 50, 0, z3 + 50],
+            [bx + 80, 0, z3 + 50],
+            [bx + 80, 26, z3 + 50],
+            [bx + 50, 26, z3 + 50]
           ],
           fill: shadeHexColor(palette.secondary, -0.3),
           opacity: 0.9,
@@ -340,29 +474,31 @@ export class EnvironmentKit {
       }
     }
 
-    // --- Tier 4 (Z = +140): Foreground Overhang (Spacing = 600u) ---
+    // --- Tier 4 (Z = +140): Foreground Overhang ---
     // Strictly excluded on CLOSE_UP shots (Gap 2)
     if (!isCloseUp) {
-      const s4 = 600;
-      const k4Min = Math.floor(xMin / s4);
-      const k4Max = Math.ceil(xMax / s4);
+      const b4 = tierBounds?.tier4ForegroundZ ?? { xMin, xMax };
+      const span4 = Math.max(1200, b4.xMax - b4.xMin);
+      const s4 = Math.max(600, Math.ceil(span4 / 2));
+      const k4Min = Math.floor(b4.xMin / s4);
+      const k4Max = Math.ceil(b4.xMax / s4);
 
       for (let k = k4Min; k <= k4Max; k++) {
         const bx = k * s4;
         polygons.push({
           vertices: [
-            [bx - 80, 240, 140],
-            [bx + 180, 240, 140],
-            [bx + 180, 252, 140],
-            [bx - 80, 252, 140]
+            [bx - 80, 240, z4],
+            [bx + 180, 240, z4],
+            [bx + 180, 252, z4],
+            [bx - 80, 252, z4]
           ],
           fill: shadeHexColor(palette.background, 0.2),
           opacity: 0.92,
           tier: 3
         });
         lines.push({
-          p0: [bx + 50, 252, 140],
-          p1: [bx + 50, 360, 140],
+          p0: [bx + 50, 252, z4],
+          p1: [bx + 50, 360, z4],
           stroke: palette.secondary,
           strokeWidth: 1.5,
           opacity: 0.8,

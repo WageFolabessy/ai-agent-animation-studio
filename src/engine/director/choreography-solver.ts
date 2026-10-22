@@ -39,7 +39,7 @@ export function solveChoreography(
   spec: StorySpecContract,
   storyboard: DirectorStoryboardContract,
   rigs: Map<string, AssetRigContract>,
-  framesPerBeat = 15
+  framesPerBeat?: number
 ): ChoreographyContract {
   const tracks: EntityTrack[] = [];
   const shots = storyboard.shots;
@@ -52,32 +52,29 @@ export function solveChoreography(
       instanceId: leadRigId,
       spec: {
         instanceId: leadRigId,
-        archetypeId: 'biped_runner',
+        archetypeId: spec.cast[0]?.archetypeId ?? 'biped_runner',
         scale: 1.0,
         accessories: []
       }
     });
 
-  const existingPlan = globalTrajectorySolver.getMotionPlan();
-  const motionPlan =
-    existingPlan.length === storyboard.shots.length &&
-    existingPlan.every((p, idx) => p.shotId === storyboard.shots[idx]?.id)
-      ? existingPlan
-      : buildUnifiedMotionPlan({
-          storyboardShots: storyboard.shots.map((s) => ({
-            id: s.id,
-            frameRange: s.frameRange,
-            framing: s.framing,
-            actNumber: s.actNumber
-          })),
-          storySpec: spec,
-          rig: leadRig,
-          framesPerBeat
-        });
+  const effectiveFramesPerBeat = framesPerBeat ?? globalTrajectorySolver.getFramesPerBeat();
+  globalTrajectorySolver.setFramesPerBeat(effectiveFramesPerBeat);
+
+  const motionPlan = buildUnifiedMotionPlan({
+    storyboardShots: storyboard.shots.map((s) => ({
+      id: s.id,
+      frameRange: s.frameRange,
+      framing: s.framing,
+      actNumber: s.actNumber
+    })),
+    storySpec: spec,
+    rig: leadRig,
+    framesPerBeat: effectiveFramesPerBeat
+  });
 
   globalTrajectorySolver.setMotionPlan(motionPlan);
   const shotPlanMap = new Map(motionPlan.map((p) => [p.shotId, p]));
-  const effectiveFramesPerBeat = globalTrajectorySolver.getFramesPerBeat();
 
   // Independent per-character pose clocks and last clip tracking
   const entityPoseClocks = new Map<string, number>();

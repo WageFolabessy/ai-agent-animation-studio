@@ -86,7 +86,7 @@ Camera parameters are structured into six mathematically validated formulas in `
 | **`ESTABLISHING_PANORAMA`** | `EXTREME_WIDE` | `CRANE` | `HIGH_ANGLE` | $60^\circ$ | $0^\circ$ | $[60, 160, 750] \to [60, 100, 650]$ | $[60, 50, 0]$ |
 | **`LOW_ANGLE_HERO`** | `MEDIUM` | `TRACKING` | `LOW_ANGLE` | $48^\circ$ | $0^\circ$ | $[25, -20, 240] \to [25, -20, 240]$ | $[25, 50, 0]$ |
 | **`PURSUIT_OVER_SHOULDER`** | `WIDE` | `DOLLY` | `OVER_THE_SHOULDER` | $52^\circ$ | $+3^\circ$ | $[-110, 140, 340] \to [-70, 110, 300]$ | $[30, 75, 0]$ |
-| **`ORBIT_CLIMAX`** | `WIDE` | `ORBIT` | `OBJECTIVE_THIRD_PERSON` | $50^\circ$ | $0^\circ$ | $[83, 120, 309] \to [309, 120, 83]$ | $[0, 50, 0]$ |
+| **`ORBIT_CLIMAX`** | `WIDE` | `ORBIT` | `OBJECTIVE_THIRD_PERSON` | $50^\circ$ | $0^\circ$ | $[-179, 120, 265] \to [179, 120, 265]$ | $[0, 50, 0]$ |
 | **`FACE_SCREAM_CLOSEUP`** | `CLOSE_UP` | `TRACKING` | `OBJECTIVE_THIRD_PERSON` | $34^\circ$ | $-6^\circ$ | $[12, 52, 155] \to [12, 52, 155]$ | $[12, 52, 0]$ |
 | **`DYNAMIC_PROFILE_SPRINT`** | `MEDIUM` | `TRACKING` | `PROFILE_RIGHT` | $44^\circ$ | $0^\circ$ | $[0, 40, 220] \to [0, 40, 220]$ | $[0, 60, 0]$ |
 
@@ -121,9 +121,9 @@ To replace repetitive treadmill running with dramatic character choreography, Ph
 Foot-slipping ("moonwalking") occurs when character root displacement does not match physical ground contact kinematics. Rather than using an arbitrary hardcoded root speed, the engine computes:
 
 1. **Forward Kinematics Stride Analysis (`analyzeClipContactStride`):**  
-   Evaluates foot contact frames ($y_{\text{foot}} \le y_{\text{ground}} + \epsilon$, with $\epsilon = 0.05 \cdot \text{legLength}$ and $v_{\text{req}} = -d(x_{\text{foot}} - x_{\text{root}})/df > 0$). Physical stride length is:
+   Evaluates foot contact transitions ($y_{\text{foot}}(f) \le y_{\text{ground}} + \epsilon$ and $y_{\text{foot}}(f+1) \le y_{\text{ground}} + \epsilon$, with $\epsilon = 0.02 \cdot \text{legLength}$ and $v_{\text{req}} = -d(x_{\text{foot}} - x_{\text{root}})/df > 0$) across the $N = \text{loopFrames}$ unique transitions $f \in \{0, \dots, N-1\}$ (excluding the closure keyframe at $f = N$ from transition counts). Physical stride length is:
    $$S = \text{mean}(v_{\text{req}}) \cdot \text{loopFrames}$$
-   During ground contact, keyframes are tuned so that max relative slip velocity $|v_{\text{req}} - \text{mean}| / \text{mean} \le 2.0\%$ for bipeds and $\le 4.0\%$ for quadrupeds.
+   Locomotion clips (`stalk_crouch`, `sprint_frenzy`, `exhausted_walk`, `beast_gallop`) are generated with dense per-frame analytical 2-bone IK (`src/engine/rigging/ik-leg-solver.ts`) so that during ground contact max relative slip velocity $|v_{\text{req}} - \text{mean}| / \text{mean} \le 2.0\%$ for both bipeds and quadrupeds, with non-vacuous stance intervals (`stalk_crouch`: $22/36$, `exhausted_walk`: $25/42$, `sprint_frenzy`: $8/18$, `beast_gallop`: $10/24$ per paw). Note: with full-loop IK stance trajectories, root speed at equal `timeScale` changes by about $-44\%$ (`stalk_crouch`, `exhausted_walk`), $-41\%$ (`beast_gallop`), and $+16\%$ (`sprint_frenzy`) relative to earlier sparse-keyframe clips.
 
 2. **Musical TimeScale Alignment (`computeMusicalMotionParameters`):**  
    Locks character gait to the song's musical beat grid by selecting integer beats-per-loop $k \in \{1, 2, 4, 8\}$ that minimizes $|\ln(\text{timeScale}_k)|$:

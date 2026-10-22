@@ -7,17 +7,28 @@ import crypto from 'node:crypto';
  * Bump manually whenever the rendering logic, shader/projection math,
  * or compositor pipeline changes so cached chunks are invalidated.
  */
-export const ENGINE_RENDER_VERSION = 2;
+export const ENGINE_RENDER_VERSION = 3;
+
+export const RENDER_AFFECTING_SRC_DIRS = [
+  'engine',
+  'schemas',
+  'renderer',
+  'config'
+] as const;
+
+export const EXEMPT_SRC_DIRS = [
+  'agents',
+  'diagnostics',
+  'assets',
+  'demo'
+] as const;
 
 /**
  * Computes a deterministic LF-normalized SHA-256 hash over all
- * render-affecting sources (src/engine and src/schemas).
+ * render-affecting sources (src/engine, src/schemas, src/renderer, and src/config).
  */
 export function computeRenderSourcesHash(baseDir = process.cwd()): string {
-  const dirsToScan = [
-    path.join(baseDir, 'src', 'engine'),
-    path.join(baseDir, 'src', 'schemas')
-  ];
+  const dirsToScan = RENDER_AFFECTING_SRC_DIRS.map((dir) => path.join(baseDir, 'src', dir));
 
   function getFiles(dir: string): string[] {
     if (!fs.existsSync(dir)) return [];

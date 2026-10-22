@@ -12,11 +12,105 @@ import type {
   CameraEasing,
   EnvironmentZoneType
 } from '../../schemas/storyboard.contract.js';
-import type { Vec3 } from '../../schemas/primitives.schema.js';
+import type { Vec3, CameraTransform } from '../../schemas/primitives.schema.js';
 import type { StorySpecContract, SectionStagingSpec } from '../../schemas/story-spec.contract.js';
+import { computeCameraBasis } from '../camera/camera-3d.js';
 import { THEME_PALETTES } from '../library/environment-kit.js';
 import { ArchetypeFactory } from '../library/archetype-factory.js';
 import { globalTrajectorySolver, buildUnifiedMotionPlan } from './trajectory-solver.js';
+
+/**
+ * Minimum required negative-Z component (-r_z >= 0.15, ~8.6 degrees into -Z half-space)
+ * for all 4 viewport frustum corner unit rays at both cameraStart and cameraEnd,
+ * including worst-case camera trauma shake perturbations.
+ *
+ * Half horizontal FOV arithmetic at 16:9 aspect ratio:
+ * - 60 deg vertical FOV -> arctan((16/9) * tan(30 deg)) = arctan(1.0264) ~= 45.75 deg
+ * - 50 deg vertical FOV -> arctan((16/9) * tan(25 deg)) = arctan(0.8290) ~= 39.66 deg
+ */
+export const MIN_FRUSTUM_RAY_NEG_Z_MARGIN = 0.15;
+
+export function checkCameraFrustumNegativeZ(
+  cam: CameraTransform,
+  aspect = 16 / 9,
+  shakeRollMarginDeg = 3.0,
+  shakePosMargin = 5.0
+): { valid: boolean; maxRayZ: number } {
+  const fovDeg = cam.projectionMode === 'perspective' ? cam.verticalFovDegrees : 50;
+  const tanHalfV = Math.tan((fovDeg * Math.PI) / 360);
+  const tanHalfH = aspect * tanHalfV;
+
+  const rollOffsets = [-shakeRollMarginDeg, 0, shakeRollMarginDeg];
+  const posShifts: Array<[-1 | 0 | 1, -1 | 0 | 1]> = [
+    [0, 0],
+    [-1, 1],
+    [1, -1]
+  ];
+  const cornerSigns: Array<[-1 | 1, -1 | 1]> = [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1]
+  ];
+
+  let maxRayZ = -Infinity;
+
+  for (const dRoll of rollOffsets) {
+    for (const [sp, st] of posShifts) {
+      const perturbed: CameraTransform = {
+        ...cam,
+        position: [
+          cam.position[0] + sp * shakePosMargin,
+          cam.position[1],
+          cam.position[2] - Math.abs(sp) * shakePosMargin
+        ],
+        target: [
+          cam.target[0] + st * shakePosMargin,
+          cam.target[1],
+          cam.target[2]
+        ],
+        rollDegrees: (cam.rollDegrees ?? 0) + dRoll
+      };
+
+      const { right: u, up: v, forward: w } = computeCameraBasis(perturbed);
+      for (const [sx, sy] of cornerSigns) {
+        const rx = w[0] + sx * tanHalfH * u[0] + sy * tanHalfV * v[0];
+        const ry = w[1] + sx * tanHalfH * u[1] + sy * tanHalfV * v[1];
+        const rz = w[2] + sx * tanHalfH * u[2] + sy * tanHalfV * v[2];
+        const len = Math.hypot(rx, ry, rz);
+        const unitRz = len > 1e-9 ? rz / len : 0;
+        if (unitRz > maxRayZ) {
+          maxRayZ = unitRz;
+        }
+      }
+    }
+  }
+
+  return {
+    valid: maxRayZ <= -MIN_FRUSTUM_RAY_NEG_Z_MARGIN,
+    maxRayZ
+  };
+}
+
+export function assertStoryboardFrustumNegativeZ(
+  shots: readonly CinematicShot[],
+  aspect = 16 / 9
+): void {
+  for (const shot of shots) {
+    const startCheck = checkCameraFrustumNegativeZ(shot.cameraStart, aspect);
+    if (!startCheck.valid) {
+      throw new Error(
+        `Shot ${shot.id} cameraStart violates -Z frustum ray invariant: maxRayZ=${startCheck.maxRayZ.toFixed(4)} > -${MIN_FRUSTUM_RAY_NEG_Z_MARGIN}`
+      );
+    }
+    const endCheck = checkCameraFrustumNegativeZ(shot.cameraEnd, aspect);
+    if (!endCheck.valid) {
+      throw new Error(
+        `Shot ${shot.id} cameraEnd violates -Z frustum ray invariant: maxRayZ=${endCheck.maxRayZ.toFixed(4)} > -${MIN_FRUSTUM_RAY_NEG_Z_MARGIN}`
+      );
+    }
+  }
+}
 
 export interface CinematicAngleFormula {
   readonly name: string;
@@ -79,11 +173,11 @@ export const CINEMATIC_ANGLES: readonly CinematicAngleFormula[] = [
     viewpoint: 'OBJECTIVE_THIRD_PERSON',
     fov: 50,
     rollDegrees: 0,
-    camOffsetStart: [83, 120, 309],
-    camOffsetEnd: [309, 120, 83],
+    camOffsetStart: [-179, 120, 265],
+    camOffsetEnd: [179, 120, 265],
     targetOffsetStart: [0, 50, 0],
     targetOffsetEnd: [0, 50, 0],
-    easing: 'easeInOutCubic'
+    easing: 'linear'
   },
   {
     name: 'FACE_SCREAM_CLOSEUP',
@@ -297,11 +391,17 @@ export function compileStorySpecToStoryboard(
     instanceId: leadRigId,
     spec: {
       instanceId: leadRigId,
-      archetypeId: 'biped_runner',
-      scale: 1.0,
-      accessories: []
+      archetypeId: spec.cast[0]?.archetypeId ?? 'biped_runner',
+      scale: spec.cast[0]?.scale ?? 1.0,
+      accessories: spec.cast[0]?.accessories ?? []
     }
   });
+
+  const effectiveFramesPerBeat =
+    manifest.beatGrid?.framesPerBeat && manifest.beatGrid.framesPerBeat > 0
+      ? manifest.beatGrid.framesPerBeat
+      : (60 / (manifest.metadata.tempoBpm ?? 120)) * (manifest.metadata.fps ?? 30);
+  globalTrajectorySolver.setFramesPerBeat(effectiveFramesPerBeat);
 
   const motionPlan = buildUnifiedMotionPlan({
     storyboardShots: skeletons.map((s) => ({
@@ -312,10 +412,7 @@ export function compileStorySpecToStoryboard(
     })),
     storySpec: spec,
     rig: leadRig,
-    framesPerBeat:
-      manifest.beatGrid?.framesPerBeat && manifest.beatGrid.framesPerBeat > 0
-        ? manifest.beatGrid.framesPerBeat
-        : (60 / (manifest.metadata.tempoBpm ?? 120)) * (manifest.metadata.fps ?? 30)
+    framesPerBeat: effectiveFramesPerBeat
   });
 
   globalTrajectorySolver.setMotionPlan(motionPlan);
@@ -443,6 +540,8 @@ export function compileStorySpecToStoryboard(
       frameRange: { startFrameInclusive: act3Start, endFrameExclusive: totalFrames }
     }
   ];
+
+  assertStoryboardFrustumNegativeZ(shots);
 
   return {
     projectId: spec.projectId,

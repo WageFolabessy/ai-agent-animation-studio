@@ -80,6 +80,8 @@ export interface ChunkRenderOptions {
   abortSignal?: AbortSignal;
   /** Optional SHA-256 fingerprint for content-addressed caching (.meta.json). */
   fingerprint?: string;
+  /** Optional callback notified with the active FFmpeg child PID when started and `null` when finished. */
+  onChildPidChange?: (pid: number | null) => void;
 }
 
 /**
@@ -92,7 +94,7 @@ export interface ChunkRenderOptions {
  * - Strictly zero per-frame disk I/O (in-memory SVG -> Resvg -> FFmpeg stdin pipe).
  */
 export async function renderChunk(options: ChunkRenderOptions): Promise<RenderPipelineResult> {
-  const { chunk, renderConfig, frameGenerator, onChunkFrameRendered, abortSignal } = options;
+  const { chunk, renderConfig, frameGenerator, onChunkFrameRendered, abortSignal, onChildPidChange } = options;
 
   // Chunk video is encoded video-only with identical GOP/CRF/BT.709 parameters.
   // Master audio is mapped continuously in the concat-stitch step to prevent seam pops.
@@ -122,19 +124,25 @@ export async function renderChunk(options: ChunkRenderOptions): Promise<RenderPi
     abortSignal
   });
 
-  const res = await pipeline.run();
-
-  if (res.committed && options.fingerprint) {
-    writeChunkMetadataAtomic(chunk.filePath, {
-      chunkIndex: chunk.chunkIndex,
-      startFrame: chunk.startFrame,
-      endFrame: chunk.endFrame,
-      frameCount: chunk.frameCount,
-      fingerprint: options.fingerprint,
-      engineRenderVersion: ENGINE_RENDER_VERSION,
-      createdAt: new Date().toISOString()
+  try {
+    const res = await pipeline.run((streamer) => {
+      onChildPidChange?.(streamer.getChildPid() ?? null);
     });
-  }
 
-  return res;
+    if (res.committed && options.fingerprint) {
+      writeChunkMetadataAtomic(chunk.filePath, {
+        chunkIndex: chunk.chunkIndex,
+        startFrame: chunk.startFrame,
+        endFrame: chunk.endFrame,
+        frameCount: chunk.frameCount,
+        fingerprint: options.fingerprint,
+        engineRenderVersion: ENGINE_RENDER_VERSION,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    return res;
+  } finally {
+    onChildPidChange?.(null);
+  }
 }
