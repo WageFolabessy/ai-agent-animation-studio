@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { buildDeterministicStorySpec } from '../src/agents/story-spec-agent.js';
 import { compileStorySpecToStoryboard } from '../src/engine/director/shot-planner.js';
 import { solveChoreography } from '../src/engine/director/choreography-solver.js';
+import {
+  TrajectorySolver,
+  ANATOMICAL_FOCUS_OFFSETS
+} from '../src/engine/director/trajectory-solver.js';
 import { ArchetypeFactory } from '../src/engine/library/archetype-factory.js';
 import { ShotSequencer } from '../src/engine/director/shot-sequencer.js';
 import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
@@ -13,6 +17,7 @@ import {
   applyAffine2D
 } from '../src/engine/rigging/kinematics.js';
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
+import { validateSafeFraming } from '../src/schemas/invariants.js';
 import {
   createSyntheticRockManifest,
   createSyntheticElectronicManifest,
@@ -46,9 +51,17 @@ test('Mathematical Safe Framing Verification Suite', async (t) => {
         rigsMap.set(castItem.instanceId, rig);
       }
 
-      const storyboard = compileStorySpecToStoryboard(spec, manifest);
-      const choreography = solveChoreography(spec, storyboard, rigsMap);
+      const solver = new TrajectorySolver();
+      const storyboard = compileStorySpecToStoryboard(spec, manifest, solver);
+      const choreography = solveChoreography(spec, storyboard, rigsMap, undefined, solver);
       const sequencer = new ShotSequencer(storyboard);
+
+      const contractFramingReport = validateSafeFraming(storyboard, choreography, rigsMap);
+      assert.equal(
+        contractFramingReport.isValid,
+        true,
+        `validateSafeFraming failed on ${name}: ${JSON.stringify(contractFramingReport.errors)}`
+      );
 
       // Evaluate EVERY locomotion-capable cast entity present in the spec
       const locomotionCast = spec.cast.filter(
@@ -59,7 +72,9 @@ test('Mathematical Safe Framing Verification Suite', async (t) => {
         `Spec must include locomotion cast entities (found: ${locomotionCast.map((c) => c.archetypeId).join(', ')})`
       );
 
-      const leadBiped = spec.cast.find((c) => c.archetypeId === 'biped_runner');
+      const leadCast = spec.cast[0];
+      assert.ok(leadCast, 'Spec must have a primary lead cast member at cast[0]');
+      const leadFocusSpec = ANATOMICAL_FOCUS_OFFSETS[leadCast.archetypeId];
 
       const stateBuilder = new FrameStateBuilder({
         storyboard,
@@ -133,66 +148,76 @@ test('Mathematical Safe Framing Verification Suite', async (t) => {
           }
         }
 
-        // Camera Tracking & Framing Invariants for the Lead Biped Hero (when present in spec)
-        if (leadBiped) {
-          const leadRig = rigsMap.get(leadBiped.instanceId)!;
-          const leadEntity = frameState.entities.find((e) => e.rigId === leadBiped.instanceId);
-          if (leadEntity) {
-            // Invariant: Camera-to-character relative X offset remains strictly constant during tracking shots
-            if (shot.movement === 'TRACKING') {
-              const baseCam = sequencer.interpolateCamera(shot, normalizedProgress);
-              const baseRelX = Number((baseCam.position[0] - leadEntity.worldPosition[0]).toFixed(2));
+        // Camera Tracking & Framing Invariants for the Primary Lead Subject (biped_runner or quadruped_beast)
+        const leadRig = rigsMap.get(leadCast.instanceId)!;
+        const leadEntity = frameState.entities.find((e) => e.rigId === leadCast.instanceId);
+        if (leadEntity) {
+          // Invariant: Camera-to-character relative X offset remains strictly constant during tracking shots
+          if (shot.movement === 'TRACKING') {
+            const baseCam = sequencer.interpolateCamera(shot, normalizedProgress);
+            const baseRelX = Number((baseCam.position[0] - leadEntity.worldPosition[0]).toFixed(2));
 
-              if (!trackingRelXByShot.has(shot.id)) {
-                trackingRelXByShot.set(shot.id, baseRelX);
-              } else {
-                const initialRelX = trackingRelXByShot.get(shot.id)!;
-                if (Math.abs(baseRelX - initialRelX) > 0.10) {
-                  failures.push(
-                    `Frame ${f} (Shot ${shot.id}, TRACKING): Camera-to-character base relative X offset drifted from ${initialRelX} to ${baseRelX}`
-                  );
-                }
-              }
-
-              // Audio camera trauma shake must stay within physically bounded limits around base tracking
-              const shakeDisplacementX = Math.abs(frameState.camera.position[0] - baseCam.position[0]);
-              if (shakeDisplacementX > 5.0) {
+            if (!trackingRelXByShot.has(shot.id)) {
+              trackingRelXByShot.set(shot.id, baseRelX);
+            } else {
+              const initialRelX = trackingRelXByShot.get(shot.id)!;
+              if (Math.abs(baseRelX - initialRelX) > 0.10) {
                 failures.push(
-                  `Frame ${f} (Shot ${shot.id}, TRACKING): Camera shake displacement X=${shakeDisplacementX.toFixed(2)} exceeds 5.0 bounds`
+                  `Frame ${f} (Shot ${shot.id}, TRACKING): Camera-to-character base relative X offset drifted from ${initialRelX} to ${baseRelX}`
                 );
               }
             }
 
-            const leadCtx = createBillboardContext(
-              leadEntity.worldPosition,
-              leadEntity.worldRotationZDegrees,
-              leadEntity.scale,
-              frameState.camera,
-              basis,
-              1920,
-              1080
-            );
+            // Audio camera trauma shake must stay within physically bounded limits around base tracking
+            const shakeDisplacementX = Math.abs(frameState.camera.position[0] - baseCam.position[0]);
+            if (shakeDisplacementX > 5.0) {
+              failures.push(
+                `Frame ${f} (Shot ${shot.id}, TRACKING): Camera shake displacement X=${shakeDisplacementX.toFixed(2)} exceeds 5.0 bounds`
+              );
+            }
+          }
 
-            if (leadCtx) {
-              const pScreenPelvis = leadCtx.screenAnchor;
-              if (shot.framing !== 'EXTREME_WIDE' && (pScreenPelvis.x < 384 || pScreenPelvis.x > 1536)) {
+          const leadCtx = createBillboardContext(
+            leadEntity.worldPosition,
+            leadEntity.worldRotationZDegrees,
+            leadEntity.scale,
+            frameState.camera,
+            basis,
+            1920,
+            1080
+          );
+
+          if (leadCtx && leadRig.skeleton) {
+            const fk = computeSkeletonFK(leadRig.skeleton, leadEntity.jointAngles, leadEntity.jointOffsets);
+            const bodyAffine = fk.get(leadFocusSpec.fkBodyCenterJointId);
+            const bodyRigPoint: [number, number] = bodyAffine
+              ? applyAffine2D(bodyAffine, [0, 0])
+              : [0, 0];
+            const [sxBody] = projectBillboardPoint(bodyRigPoint, leadCtx);
+
+            if (shot.framing !== 'EXTREME_WIDE' && (sxBody < 384 || sxBody > 1536)) {
+              failures.push(
+                `Frame ${f} (Shot ${shot.id}, ${shot.framing}): Lead (${leadCast.archetypeId}) body screen X=${sxBody.toFixed(1)} outside [384, 1536]`
+              );
+            }
+
+            // Head & cranial visor framing in Close-Up and Medium shots
+            if (shot.framing === 'CLOSE_UP' || shot.framing === 'MEDIUM') {
+              const headAffine = fk.get(leadFocusSpec.fkFocusJointId);
+              const visorRigPoint: [number, number] = headAffine
+                ? applyAffine2D(headAffine, leadFocusSpec.fkFocusLocalPoint)
+                : [0, 56];
+              const [sxHead, syHead] = projectBillboardPoint(visorRigPoint, leadCtx);
+
+              if (sxHead < 384 || sxHead > 1536) {
                 failures.push(
-                  `Frame ${f} (Shot ${shot.id}, ${shot.framing}): Lead screen X=${pScreenPelvis.x.toFixed(1)} outside [384, 1536]`
+                  `Frame ${f} (Shot ${shot.id}, ${shot.framing}): Lead (${leadCast.archetypeId}) head screen X=${sxHead.toFixed(1)} outside [384, 1536]`
                 );
               }
-
-              // Head & cranial visor framing in Close-Up and Medium shots
-              if (leadRig.skeleton && (shot.framing === 'CLOSE_UP' || shot.framing === 'MEDIUM')) {
-                const fk = computeSkeletonFK(leadRig.skeleton, leadEntity.jointAngles, leadEntity.jointOffsets);
-                const headAffine = fk.get('head');
-                const visorRigPoint: [number, number] = headAffine ? applyAffine2D(headAffine, [4, 18]) : [0, 56];
-                const [, syHead] = projectBillboardPoint(visorRigPoint, leadCtx);
-
-                if (syHead < 150 || syHead > 680) {
-                  failures.push(
-                    `Frame ${f} (Shot ${shot.id}, ${shot.framing}): Lead head screen Y=${syHead.toFixed(1)} outside [150, 680]`
-                  );
-                }
+              if (syHead < 150 || syHead > 680) {
+                failures.push(
+                  `Frame ${f} (Shot ${shot.id}, ${shot.framing}): Lead (${leadCast.archetypeId}) head screen Y=${syHead.toFixed(1)} outside [150, 680]`
+                );
               }
             }
           }

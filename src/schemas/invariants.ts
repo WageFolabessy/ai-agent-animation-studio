@@ -7,6 +7,11 @@ import type { Vec3 } from './primitives.schema.js';
 import { computeCameraBasis, worldToCameraSpace } from '../engine/camera/camera-3d.js';
 import { projectCameraPointToScreen } from '../engine/camera/clipping.js';
 import { ShotSequencer } from '../engine/director/shot-sequencer.js';
+import {
+  ANATOMICAL_FOCUS_OFFSETS,
+  ARCHETYPE_CANONICAL_BASE_Y
+} from '../engine/director/trajectory-solver.js';
+import type { CharacterArchetypeId } from '../engine/library/types.js';
 import { lerpVec3 } from '../engine/math/easing.js';
 
 function computePartPivotDistance(part: RigPart): number {
@@ -1029,6 +1034,16 @@ export function validateSafeFraming(
     characterRigId = storyboard.shots[0].activeRigIds.find((id) => rigs.get(id)?.type === 'character') ?? storyboard.shots[0].activeRigIds[0];
   }
 
+  const charRig = characterRigId ? rigs.get(characterRigId) : undefined;
+  const jointIds = new Set(charRig?.skeleton?.joints.map((j) => j.id) ?? []);
+  const archetypeId: CharacterArchetypeId = jointIds.has('leg_fl_upper')
+    ? 'quadruped_beast'
+    : jointIds.has('chassis_core')
+      ? 'aerial_drone'
+      : 'biped_runner';
+  const focusSpec = ANATOMICAL_FOCUS_OFFSETS[archetypeId];
+  const fallbackBaseY = ARCHETYPE_CANONICAL_BASE_Y[archetypeId];
+
   const trackMap = new Map<string, EntityTrack>();
   for (const track of choreography.tracks) {
     trackMap.set(`${track.shotId}:${track.rigId}`, track);
@@ -1069,10 +1084,15 @@ export function validateSafeFraming(
           charPos = lerpVec3(k0.position, k1.position, u);
         }
       } else {
-        charPos = [f * 0.45, 75, 0];
+        charPos = charRig?.baseTransform.position ?? [0, fallbackBaseY, 0];
       }
 
-      const pCamChar = worldToCameraSpace(charPos, camera, basis);
+      const bodyCenterWorldPos: Vec3 = [
+        charPos[0] + focusSpec.worldBodyCenterOffsetX,
+        charPos[1],
+        charPos[2]
+      ];
+      const pCamChar = worldToCameraSpace(bodyCenterWorldPos, camera, basis);
       const zc = pCamChar[2];
 
       // 1. Camera Distance: zc >= 135
@@ -1101,7 +1121,8 @@ export function validateSafeFraming(
       }
 
       // 3. Head Decapitation Guard: 194 <= ys_head <= 594 in CLOSE_UP and MEDIUM shots
-      const headPos: Vec3 = [charPos[0] + 3, charPos[1] + 58, charPos[2]];
+      const [hDx, hDy, hDz] = focusSpec.worldHeadOffsetFromRoot;
+      const headPos: Vec3 = [charPos[0] + hDx, charPos[1] + hDy, charPos[2] + hDz];
       const pCamHead = worldToCameraSpace(headPos, camera, basis);
       const pScreenHead = projectCameraPointToScreen(pCamHead, camera, width, height);
 
@@ -1111,7 +1132,7 @@ export function validateSafeFraming(
             code: 'CHARACTER_HEAD_DECAPITATED',
             path: `storyboard.shots[${sIdx}].camera.target`,
             severity: 'error',
-            message: `Character head projected screen Y=${pScreenHead.y.toFixed(1)}px is outside safe vertical range [194, 594] in shot "${shot.id}" (${shot.framing}) at frame ${f}. Camera target must aim at chest/neck/head height (~125u), not pelvis (~75u).`,
+            message: `Character head projected screen Y=${pScreenHead.y.toFixed(1)}px is outside safe vertical range [194, 594] in shot "${shot.id}" (${shot.framing}) at frame ${f}. Camera target must align with archetype head/chest focus.`,
             relatedIds: [shot.id]
           });
         }

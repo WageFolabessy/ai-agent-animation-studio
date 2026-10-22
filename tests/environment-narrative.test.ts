@@ -60,3 +60,76 @@ test('EnvironmentNarrative: getOrchestratedEnvironment dispatches correct zone e
   const reactor = getOrchestratedEnvironment('shot-4', 2000, 'REACTOR');
   assert.ok((reactor.lines?.length ?? 0) >= 20);
 });
+
+test('EnvironmentKit.build: Generates 4 structurally distinct 3D biome geometries across environmentKitId values within <= 65 drawables budget', async () => {
+  const { EnvironmentKit } = await import('../src/engine/library/environment-kit.js');
+  const kitIds = [
+    'industrial_city',
+    'orbital_station',
+    'neon_chasm',
+    'synth_grid'
+  ] as const;
+
+  const geometrySignatures = new Set<string>();
+
+  for (const environmentKitId of kitIds) {
+    const env = EnvironmentKit.build({
+      shotId: 'shot_biome_check',
+      centerX: 600,
+      xMin: 0,
+      xMax: 1500,
+      framing: 'WIDE',
+      section: {
+        sectionId: `sec_${environmentKitId}`,
+        startFrame: 0,
+        endFrame: 300,
+        narrativeIntent: 'Biome geometry verification',
+        emotionalTone: 'defiant',
+        lyricMotifs: [],
+        cameraIntensity: 0.7,
+        environmentKitId,
+        colorThemeId: 'CYBERPUNK_CYAN',
+        kitParams: {
+          rooftopDensity: 0.6,
+          hvacVisible: true,
+          streetlamps: true,
+          portalCount: 4,
+          conduitGlow: true,
+          hazardStripes: true,
+          pylonCount: 2,
+          stayCableDensity: 0.7,
+          abyssDepth: 500,
+          gridSpacing: 40,
+          horizonSun: true,
+          wireframeMountains: true
+        },
+        castDirectives: []
+      }
+    });
+
+    const totalDrawables = (env.polygons?.length ?? 0) + (env.lines?.length ?? 0);
+    assert.ok(
+      totalDrawables > 15 && totalDrawables <= 65,
+      `${environmentKitId} drawables (${totalDrawables}) must be in (15, 65]`
+    );
+
+    // Build a color-invariant structural signature of vertex counts and coordinates
+    const polyShapeSig = (env.polygons ?? [])
+      .map((p) => `${p.vertices.length}:${p.vertices.map((v) => v.join(',')).join(';')}`)
+      .join('|');
+    const lineShapeSig = (env.lines ?? [])
+      .map((l) => `${l.p0.join(',')}->${l.p1.join(',')}`)
+      .join('|');
+    const fullSignature = `P[${polyShapeSig}]L[${lineShapeSig}]`;
+
+    assert.equal(
+      geometrySignatures.has(fullSignature),
+      false,
+      `Biome ${environmentKitId} produced duplicate geometry signature`
+    );
+    geometrySignatures.add(fullSignature);
+  }
+
+  assert.equal(geometrySignatures.size, 4, 'All 4 EnvironmentKit biomes must be structurally distinct');
+});
+

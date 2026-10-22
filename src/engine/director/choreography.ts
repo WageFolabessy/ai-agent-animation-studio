@@ -122,12 +122,16 @@ export function evaluateEntityTrack(
   for (const binding of track.morphBindings) {
     let sourceVal: number;
     if (binding.spring) {
-      sourceVal = evaluateSpringResponse(
+      const rawSpringVal = evaluateSpringResponse(
         frameIndex,
         fps,
         binding.spring.zeta,
         binding.spring.omega,
         (f) => getAudioSourceValue(binding.source, getAudioFeatureAtFrame(f))
+      );
+      sourceVal = Math.max(
+        0,
+        Math.min(1.5, rawSpringVal * (binding.spring.omega * binding.spring.omega))
       );
     } else {
       sourceVal = getAudioSourceValue(binding.source, getAudioFeatureAtFrame(frameIndex));

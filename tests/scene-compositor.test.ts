@@ -339,3 +339,94 @@ test('SceneCompositor: Eye ellipse parts scale vertically with blink morph weigh
   assert.ok(outBlink.svg.includes('<polygon '), 'Blinking eye with squashed ry should emit flattened <polygon>');
   assert.ok(outOpen.svg.includes('fill="#060814" opacity="0.78"'), 'Lyric backing plate rect must be emitted');
 });
+
+test('SceneCompositor: ArchetypeFactory.buildBipedRunner renders distinct facial morph <path> d attributes and reduced eye blink vertical span', async () => {
+  const { ArchetypeFactory } = await import('../src/engine/library/archetype-factory.js');
+  const runnerRig = ArchetypeFactory.build({
+    instanceId: 'lead_runner',
+    spec: {
+      instanceId: 'lead_runner',
+      archetypeId: 'biped_runner',
+      scale: 1.0,
+      accessories: []
+    }
+  });
+
+  // Verify morph and eye ellipse parts exist on biped_runner
+  const morphPart = runnerRig.parts.find((p) => p.shape.kind === 'morph');
+  const eyePart = runnerRig.parts.find(
+    (p) => p.shape.kind === 'ellipse' && p.id.includes('eye')
+  );
+  assert.ok(morphPart, 'biped_runner must define a shape.kind === "morph" part');
+  assert.ok(eyePart, 'biped_runner must define an ellipse part whose id contains "eye"');
+
+  const compositor = new SceneCompositor({ width: 1920, height: 1080, fps: 30 });
+  const rigs = new Map<string, AssetRigContract>([['lead_runner', runnerRig]]);
+
+  const neutralFrame = createMockFrameState();
+  neutralFrame.camera.position = [12, 123, 155];
+  neutralFrame.camera.target = [12, 123, 0];
+  neutralFrame.entities = [
+    {
+      rigId: 'lead_runner',
+      worldPosition: [0, 75, 0],
+      worldRotationZDegrees: 0,
+      scale: [1.35, 1.35],
+      jointAngles: {},
+      jointOffsets: {},
+      morphWeights: { mouthOpen: 0, browRaise: 0, blink: 0 },
+      opacity: 1
+    }
+  ];
+
+  const expressiveFrame = createMockFrameState();
+  expressiveFrame.camera.position = [12, 123, 155];
+  expressiveFrame.camera.target = [12, 123, 0];
+  expressiveFrame.entities = [
+    {
+      rigId: 'lead_runner',
+      worldPosition: [0, 75, 0],
+      worldRotationZDegrees: 0,
+      scale: [1.35, 1.35],
+      jointAngles: {},
+      jointOffsets: {},
+      morphWeights: { mouthOpen: 1.0, browRaise: 1.0, blink: 0.9 },
+      opacity: 1
+    }
+  ];
+
+  const outNeutral = compositor.renderFrame(neutralFrame, rigs);
+  const outExpressive = compositor.renderFrame(expressiveFrame, rigs);
+
+  const pathRegex = /<path d="([^"]+)"/g;
+  const neutralPaths = [...outNeutral.svg.matchAll(pathRegex)].map((m) => m[1]);
+  const expressivePaths = [...outExpressive.svg.matchAll(pathRegex)].map((m) => m[1]);
+
+  assert.ok(neutralPaths.length >= 1, 'Expected morph <path> element in neutral render');
+  assert.ok(expressivePaths.length >= 1, 'Expected morph <path> element in expressive render');
+  assert.notDeepEqual(
+    neutralPaths,
+    expressivePaths,
+    'Active morphWeights { mouthOpen: 1, browRaise: 1, blink: 0.9 } must produce distinct <path> d attributes'
+  );
+
+  // Extract 12-vertex eye polygons (opacity="0.98") and compare vertical span (maxY - minY)
+  const polyRegex = /<polygon points="([^"]+)"[^>]*opacity="0\.98"\/>/g;
+  const getVerticalSpans = (svg: string): number[] =>
+    [...svg.matchAll(polyRegex)].map((m) => {
+      const ys = m[1]
+        .trim()
+        .split(/\s+/)
+        .map((pair) => Number(pair.split(',')[1]));
+      return Math.max(...ys) - Math.min(...ys);
+    });
+
+  const neutralSpans = getVerticalSpans(outNeutral.svg);
+  const expressiveSpans = getVerticalSpans(outExpressive.svg);
+  assert.equal(neutralSpans.length, expressiveSpans.length);
+  assert.ok(
+    expressiveSpans.some((span, idx) => span < neutralSpans[idx] * 0.5),
+    'Eye optic ellipse vertical span must shrink significantly when blink=0.9'
+  );
+});
+

@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
  * Bump manually whenever the rendering logic, shader/projection math,
  * or compositor pipeline changes so cached chunks are invalidated.
  */
-export const ENGINE_RENDER_VERSION = 3;
+export const ENGINE_RENDER_VERSION = 4;
 
 export const RENDER_AFFECTING_SRC_DIRS = [
   'engine',

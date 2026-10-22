@@ -26,10 +26,10 @@ test('Engine Render Version & Sources Hash Guard', async (t) => {
     );
   });
 
-  await t.test('ENGINE_RENDER_VERSION is bumped to at least 3', () => {
+  await t.test('ENGINE_RENDER_VERSION is bumped to at least 4', () => {
     assert.ok(
-      ENGINE_RENDER_VERSION >= 3,
-      `ENGINE_RENDER_VERSION must be >= 3 (found: ${ENGINE_RENDER_VERSION})`
+      ENGINE_RENDER_VERSION >= 4,
+      `ENGINE_RENDER_VERSION must be >= 4 (found: ${ENGINE_RENDER_VERSION})`
     );
   });
 

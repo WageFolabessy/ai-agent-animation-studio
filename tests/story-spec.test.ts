@@ -17,6 +17,7 @@ import {
   snapShotBoundariesToBeats
 } from '../src/engine/director/shot-planner.js';
 import { solveChoreography } from '../src/engine/director/choreography-solver.js';
+import { TrajectorySolver } from '../src/engine/director/trajectory-solver.js';
 import { ArchetypeFactory } from '../src/engine/library/archetype-factory.js';
 import { DeterministicMockLlmProvider } from '../src/agents/llm-provider.js';
 import { StudioAgentOrchestrator } from '../src/agents/orchestrator.js';
@@ -255,7 +256,8 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
 
   await t.test('solveChoreography generates valid tracks and satisfies anti-moonwalk invariants', () => {
     const spec = buildDeterministicStorySpec(demoAudioManifest, 'choreo-spec');
-    const storyboard = compileStorySpecToStoryboard(spec, demoAudioManifest);
+    const solver = new TrajectorySolver();
+    const storyboard = compileStorySpecToStoryboard(spec, demoAudioManifest, solver);
     const rigs = new Map();
     for (const castItem of spec.cast) {
       const rig = ArchetypeFactory.build({
@@ -265,7 +267,7 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
       rigs.set(rig.id, rig);
     }
 
-    const choreo = solveChoreography(spec, storyboard, rigs);
+    const choreo = solveChoreography(spec, storyboard, rigs, undefined, solver);
     assert.ok(choreo.tracks.length > 0);
 
     const choreoReport = validateChoreography(choreo, storyboard, rigs);
@@ -312,13 +314,14 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
     };
 
     const spec = buildDeterministicStorySpec(multiSectionManifest, 'preset-verification');
-    const storyboard = compileStorySpecToStoryboard(spec, multiSectionManifest);
+    const solver = new TrajectorySolver();
+    const storyboard = compileStorySpecToStoryboard(spec, multiSectionManifest, solver);
     const rigs = new Map();
     for (const castItem of spec.cast) {
       const rig = ArchetypeFactory.build({ instanceId: castItem.instanceId, spec: castItem });
       rigs.set(rig.id, rig);
     }
-    const choreo = solveChoreography(spec, storyboard, rigs);
+    const choreo = solveChoreography(spec, storyboard, rigs, undefined, solver);
 
     const bipedTracks = choreo.tracks.filter((tr) => tr.rigId === 'lead_runner');
     const clipIds = new Set(bipedTracks.map((tr) => tr.pose?.clipId).filter(Boolean));
@@ -621,6 +624,28 @@ test('StorySpec Contract & Spec-Then-Compile Pipeline Suite', async (t) => {
 
         visit(sourceFile);
       }
+    }
+  );
+
+  await t.test(
+    'Scoped TrajectorySolver instances isolate leadArchetypeId and motion plans across independent compilations',
+    () => {
+      const rockManifest = createSyntheticRockManifest({ totalFrames: 900 });
+      const elecManifest = createSyntheticElectronicManifest({ totalFrames: 900 });
+
+      const rockSpec = buildDeterministicStorySpec(rockManifest, 'iso-rock');
+      const elecSpec = buildDeterministicStorySpec(elecManifest, 'iso-elec');
+
+      const rockSolver = new TrajectorySolver();
+      const elecSolver = new TrajectorySolver();
+
+      compileStorySpecToStoryboard(rockSpec, rockManifest, rockSolver);
+      compileStorySpecToStoryboard(elecSpec, elecManifest, elecSolver);
+
+      assert.equal(rockSolver.getLeadArchetype(), 'biped_runner');
+      assert.equal(elecSolver.getLeadArchetype(), 'quadruped_beast');
+      assert.equal(rockSolver.computeWorldPos(100)[1], 75);
+      assert.equal(elecSolver.computeWorldPos(100)[1], 50);
     }
   );
 });

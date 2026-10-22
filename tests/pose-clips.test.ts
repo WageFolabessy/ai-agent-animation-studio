@@ -5,6 +5,7 @@ import { samplePoseTrack } from '../src/engine/rigging/deformer.js';
 import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinematics.js';
 import { evaluateLimbFootTrajectory } from '../src/engine/rigging/ik-leg-solver.js';
 import {
+  TrajectorySolver,
   computeClipStrideLength,
   analyzeClipContactStride,
   computeMusicalMotionParameters,
@@ -504,8 +505,9 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
         ]
       };
 
-      const testStoryboard = compileStorySpecToStoryboard(testSpec, manifest);
-      const choreo = solveChoreography(testSpec, testStoryboard, testRigs);
+      const solver = new TrajectorySolver();
+      const testStoryboard = compileStorySpecToStoryboard(testSpec, manifest, solver);
+      const choreo = solveChoreography(testSpec, testStoryboard, testRigs, undefined, solver);
 
       const shot0 = testStoryboard.shots[0];
       const trackA_s0 = choreo.tracks.find((t) => t.shotId === shot0.id && t.rigId === 'lead_hero')!;
@@ -687,10 +689,11 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
             ]
           };
 
-          const sb = compileStorySpecToStoryboard(testSpec, manifest);
+          const solver = new TrajectorySolver();
+          const sb = compileStorySpecToStoryboard(testSpec, manifest, solver);
           // Force first shot framing to MEDIUM so close-up scream override doesn't trigger
           sb.shots[0].framing = 'MEDIUM';
-          const choreo = solveChoreography(testSpec, sb, new Map([[rig.id, rig]]), fpb);
+          const choreo = solveChoreography(testSpec, sb, new Map([[rig.id, rig]]), fpb, solver);
           const shot0 = sb.shots[0];
           const track = choreo.tracks.find((tr) => tr.shotId === shot0.id && tr.rigId === rig.id)!;
           assert.ok(track, `Track must exist for ${rig.id} in shot ${shot0.id}`);

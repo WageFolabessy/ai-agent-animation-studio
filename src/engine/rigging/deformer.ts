@@ -214,7 +214,7 @@ export function evaluateSecondaryMotion(
       }
     };
 
-    const springVal = evaluateSpringResponse(
+    const rawSpringVal = evaluateSpringResponse(
       frameIndex,
       fps,
       sm.spring.zeta,
@@ -222,7 +222,10 @@ export function evaluateSecondaryMotion(
       getDrive
     );
 
-    const deltaDeg = springVal * sm.gainDegrees;
+    // Normalize by omega^2 so unit steady-state drive yields springNorm = 1.0
+    const springNorm = rawSpringVal * (sm.spring.omega * sm.spring.omega);
+    const cap = sm.maxDeflectionDeg ?? 65;
+    const deltaDeg = Math.max(-cap, Math.min(cap, springNorm * sm.gainDegrees));
     result[sm.jointId] = (result[sm.jointId] ?? 0) + deltaDeg;
   }
 

@@ -104,8 +104,115 @@ test('Library Kits & Character Archetypes Suite', async (t) => {
     });
 
     AssetRigContractSchema.parse(drone);
-    assert.ok(drone.skeleton && drone.skeleton.joints.length >= 4);
+    assert.ok(drone.skeleton && drone.skeleton.joints.length >= 6);
     assert.ok(drone.parts.length <= 16, `aerial_drone drawables ${drone.parts.length} must be <= 16`);
+  });
+
+  await t.test('ArchetypeFactory: all 3 archetypes populate secondaryMotion springs and produce non-zero audio-reactive deflections without pivot detachment', async () => {
+    const { evaluateSecondaryMotion } = await import('../src/engine/rigging/deformer.js');
+
+    const archetypes = [
+      {
+        archetypeId: 'biped_runner' as const,
+        expectedJoints: ['coat_tail', 'hair_tie']
+      },
+      {
+        archetypeId: 'quadruped_beast' as const,
+        expectedJoints: ['tail_root', 'ear_l']
+      },
+      {
+        archetypeId: 'aerial_drone' as const,
+        expectedJoints: ['wing_l', 'wing_r']
+      }
+    ];
+
+    const getPulseFeature = (f: number) => ({
+      frameIndex: f,
+      timestamp: f / 30,
+      rms: 0.8,
+      rmsRelativeGlobal: 0.8,
+      rmsRelativeLocal: 0.8,
+      localWindowFrames: 90,
+      spectralFlux: 0.7,
+      onsetStrength: f >= 10 && f <= 14 ? 1.0 : 0,
+      isOnset: f === 10,
+      bands: {
+        subBass: 0.8,
+        bass: f >= 10 && f <= 16 ? 0.95 : 0,
+        lowMid: 0.5,
+        mid: 0.5,
+        highMid: 0.4,
+        presence: 0.4,
+        brilliance: 0.3
+      }
+    });
+
+    for (const { archetypeId, expectedJoints } of archetypes) {
+      const rig = ArchetypeFactory.build({
+        instanceId: `sm_${archetypeId}`,
+        spec: {
+          instanceId: `sm_${archetypeId}`,
+          archetypeId,
+          scale: 1.0,
+          accessories: []
+        }
+      });
+
+      assert.equal(rig.secondaryMotion.length, expectedJoints.length);
+      const smJointIds = rig.secondaryMotion.map((sm) => sm.jointId);
+      assert.deepEqual(smJointIds, expectedJoints);
+
+      // Verify PART_DETACHED_FROM_JOINT_PIVOT safeguard on all secondary-motion parts
+      for (const jointId of expectedJoints) {
+        const attachedParts = rig.parts.filter((p) => p.jointId === jointId);
+        assert.ok(
+          attachedParts.length >= 1,
+          `Expected at least 1 part attached to secondary motion joint ${jointId} on ${archetypeId}`
+        );
+        for (const part of attachedParts) {
+          assert.deepEqual(
+            part.localOffset2D,
+            [0, 0],
+            `Part ${part.id} on ${jointId} must have localOffset2D: [0, 0]`
+          );
+          if (part.shape.kind === 'polygon') {
+            assert.deepEqual(
+              part.shape.points[0],
+              [0, 0],
+              `Polygon part ${part.id} on ${jointId} must anchor root vertex at [0, 0]`
+            );
+          }
+        }
+      }
+
+      // Evaluate secondary motion at frame 12 (2 frames after onset/bass pulse at frame 10)
+      const baseAngles: Record<string, number> = {};
+      for (const j of rig.skeleton!.joints) {
+        baseAngles[j.id] = j.rotationZDegrees;
+      }
+
+      const deformedAngles = evaluateSecondaryMotion(
+        rig,
+        12,
+        30,
+        getPulseFeature,
+        baseAngles
+      );
+
+      for (const sm of rig.secondaryMotion) {
+        const delta = Math.abs(deformedAngles[sm.jointId] - baseAngles[sm.jointId]);
+        assert.ok(
+          delta > 1.5,
+          `Expected non-trivial secondary motion deflection (> 1.5 deg) on ${archetypeId}.${sm.jointId}, got ${delta.toFixed(3)} deg`
+        );
+        if (sm.maxDeflectionDeg !== undefined) {
+          assert.ok(
+            delta <= sm.maxDeflectionDeg + 1e-6,
+            `Deflection ${delta.toFixed(2)} deg on ${archetypeId}.${sm.jointId} exceeded maxDeflectionDeg ${sm.maxDeflectionDeg}`
+          );
+        }
+      }
+    }
   });
 
   await t.test('EnvironmentKit: all 4 kits strictly enforce drawables budget <= 65 and nearPlane clearance', () => {

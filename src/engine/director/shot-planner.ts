@@ -17,7 +17,12 @@ import type { StorySpecContract, SectionStagingSpec } from '../../schemas/story-
 import { computeCameraBasis } from '../camera/camera-3d.js';
 import { THEME_PALETTES } from '../library/environment-kit.js';
 import { ArchetypeFactory } from '../library/archetype-factory.js';
-import { globalTrajectorySolver, buildUnifiedMotionPlan } from './trajectory-solver.js';
+import {
+  TrajectorySolver,
+  globalTrajectorySolver,
+  buildUnifiedMotionPlan,
+  ANATOMICAL_FOCUS_OFFSETS
+} from './trajectory-solver.js';
 
 /**
  * Minimum required negative-Z component (-r_z >= 0.15, ~8.6 degrees into -Z half-space)
@@ -275,9 +280,10 @@ export function snapShotBoundariesToBeats(
 export function computeLeadCharacterWorldPos(
   frame: number,
   section: SectionStagingSpec,
-  instanceId?: string
+  instanceId?: string,
+  solver: TrajectorySolver = globalTrajectorySolver
 ): Vec3 {
-  return globalTrajectorySolver.computeWorldPos(frame, section, instanceId);
+  return solver.computeWorldPos(frame, section, instanceId);
 }
 
 /**
@@ -286,8 +292,10 @@ export function computeLeadCharacterWorldPos(
  */
 export function compileStorySpecToStoryboard(
   spec: StorySpecContract,
-  manifest: AudioAnalysisManifest
+  manifest: AudioAnalysisManifest,
+  solver?: TrajectorySolver
 ): DirectorStoryboardContract {
+  const activeSolver = solver ?? new TrajectorySolver();
   const { totalFrames, fps } = manifest.metadata;
   const castRigIds = spec.cast.map((c) => c.instanceId);
 
@@ -387,11 +395,15 @@ export function compileStorySpecToStoryboard(
 
   // Phase B: Compute Per-Shot Unified Motion Plan
   const leadRigId = castRigIds[0] ?? 'lead';
+  const leadArchetypeId = spec.cast[0]?.archetypeId ?? 'biped_runner';
+  const focusSpec = ANATOMICAL_FOCUS_OFFSETS[leadArchetypeId] ?? ANATOMICAL_FOCUS_OFFSETS.biped_runner;
+  const [focusDx, focusDy, focusDz] = focusSpec.cameraFocusDeltaFromRoot;
+
   const leadRig = ArchetypeFactory.build({
     instanceId: leadRigId,
     spec: {
       instanceId: leadRigId,
-      archetypeId: spec.cast[0]?.archetypeId ?? 'biped_runner',
+      archetypeId: leadArchetypeId,
       scale: spec.cast[0]?.scale ?? 1.0,
       accessories: spec.cast[0]?.accessories ?? []
     }
@@ -401,7 +413,9 @@ export function compileStorySpecToStoryboard(
     manifest.beatGrid?.framesPerBeat && manifest.beatGrid.framesPerBeat > 0
       ? manifest.beatGrid.framesPerBeat
       : (60 / (manifest.metadata.tempoBpm ?? 120)) * (manifest.metadata.fps ?? 30);
-  globalTrajectorySolver.setFramesPerBeat(effectiveFramesPerBeat);
+
+  activeSolver.setLeadArchetype(leadArchetypeId);
+  activeSolver.setFramesPerBeat(effectiveFramesPerBeat);
 
   const motionPlan = buildUnifiedMotionPlan({
     storyboardShots: skeletons.map((s) => ({
@@ -415,6 +429,10 @@ export function compileStorySpecToStoryboard(
     framesPerBeat: effectiveFramesPerBeat
   });
 
+  activeSolver.setMotionPlan(motionPlan);
+  // Mirror into globalTrajectorySolver for standalone backward-compatible callers
+  globalTrajectorySolver.setLeadArchetype(leadArchetypeId);
+  globalTrajectorySolver.setFramesPerBeat(effectiveFramesPerBeat);
   globalTrajectorySolver.setMotionPlan(motionPlan);
 
   // Phase C: Camera Assignment from Motion Plan
@@ -422,29 +440,29 @@ export function compileStorySpecToStoryboard(
     const fStart = skel.frameRange.startFrameInclusive;
     const fEndLast = Math.max(fStart, skel.frameRange.endFrameExclusive - 1);
 
-    const charStartPos = globalTrajectorySolver.computeWorldPos(fStart, skel.secSpec, leadRigId);
-    const charEndPos = globalTrajectorySolver.computeWorldPos(fEndLast, skel.secSpec, leadRigId);
+    const charStartPos = activeSolver.computeWorldPos(fStart, skel.secSpec, leadRigId);
+    const charEndPos = activeSolver.computeWorldPos(fEndLast, skel.secSpec, leadRigId);
 
     const camStartPos: Vec3 = [
-      Number((charStartPos[0] + skel.angle.camOffsetStart[0]).toFixed(2)),
-      Number((charStartPos[1] + skel.angle.camOffsetStart[1]).toFixed(2)),
-      Number((charStartPos[2] + skel.angle.camOffsetStart[2]).toFixed(2))
+      Number((charStartPos[0] + skel.angle.camOffsetStart[0] + focusDx).toFixed(2)),
+      Number(Math.max(15, charStartPos[1] + skel.angle.camOffsetStart[1] + focusDy).toFixed(2)),
+      Number((charStartPos[2] + skel.angle.camOffsetStart[2] + focusDz).toFixed(2))
     ];
     const camStartTarget: Vec3 = [
-      Number((charStartPos[0] + skel.angle.targetOffsetStart[0]).toFixed(2)),
-      Number((charStartPos[1] + skel.angle.targetOffsetStart[1]).toFixed(2)),
-      Number((charStartPos[2] + skel.angle.targetOffsetStart[2]).toFixed(2))
+      Number((charStartPos[0] + skel.angle.targetOffsetStart[0] + focusDx).toFixed(2)),
+      Number((charStartPos[1] + skel.angle.targetOffsetStart[1] + focusDy).toFixed(2)),
+      Number((charStartPos[2] + skel.angle.targetOffsetStart[2] + focusDz).toFixed(2))
     ];
 
     const camEndPos: Vec3 = [
-      Number((charEndPos[0] + skel.angle.camOffsetEnd[0]).toFixed(2)),
-      Number((charEndPos[1] + skel.angle.camOffsetEnd[1]).toFixed(2)),
-      Number((charEndPos[2] + skel.angle.camOffsetEnd[2]).toFixed(2))
+      Number((charEndPos[0] + skel.angle.camOffsetEnd[0] + focusDx).toFixed(2)),
+      Number(Math.max(15, charEndPos[1] + skel.angle.camOffsetEnd[1] + focusDy).toFixed(2)),
+      Number((charEndPos[2] + skel.angle.camOffsetEnd[2] + focusDz).toFixed(2))
     ];
     const camEndTarget: Vec3 = [
-      Number((charEndPos[0] + skel.angle.targetOffsetEnd[0]).toFixed(2)),
-      Number((charEndPos[1] + skel.angle.targetOffsetEnd[1]).toFixed(2)),
-      Number((charEndPos[2] + skel.angle.targetOffsetEnd[2]).toFixed(2))
+      Number((charEndPos[0] + skel.angle.targetOffsetEnd[0] + focusDx).toFixed(2)),
+      Number((charEndPos[1] + skel.angle.targetOffsetEnd[1] + focusDy).toFixed(2)),
+      Number((charEndPos[2] + skel.angle.targetOffsetEnd[2] + focusDz).toFixed(2))
     ];
 
     return {

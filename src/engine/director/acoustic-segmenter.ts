@@ -103,6 +103,10 @@ interface FrameSample {
  * Detects musical structural shifts (intros, verses, drops, breakdowns, solos, and outros)
  * from energy envelopes, spectral flux, beat/bar grids, and lyric stanzas.
  */
+/**
+ * @deprecated Superseded by `segmentAudioSections` in `src/engine/audio/wav-analyzer.ts`
+ * and `StorySpecAgent` section compilation. Retained for standalone unit test compatibility.
+ */
 export class AcousticTimelineSegmenter {
   private readonly manifest: AudioAnalysisManifest;
   private readonly getFeature?: (f: number) => AudioFrameFeature;

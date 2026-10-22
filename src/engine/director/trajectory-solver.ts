@@ -1,8 +1,56 @@
 import type { AssetRigContract, PoseInterpolationContract } from '../../schemas/rig.contract.js';
 import type { SectionStagingSpec, CastDirective, StorySpecContract } from '../../schemas/story-spec.contract.js';
 import type { Vec3 } from '../../schemas/primitives.schema.js';
+import type { CharacterArchetypeId } from '../library/types.js';
 import { computeSkeletonFK, applyAffine2D } from '../rigging/kinematics.js';
 import { samplePoseTrack } from '../rigging/deformer.js';
+
+export const ARCHETYPE_CANONICAL_BASE_Y: Record<CharacterArchetypeId, number> = {
+  biped_runner: 75,
+  quadruped_beast: 50,
+  aerial_drone: 140
+};
+
+export interface AnatomicalFocusSpec {
+  /** Relative [dX, dY, dZ] focus adjustment applied on top of root baseY when aiming camera */
+  readonly cameraFocusDeltaFromRoot: Vec3;
+  /** World-space head/optics offset [dX, dY, dZ] from character rootPosition for validateSafeFraming */
+  readonly worldHeadOffsetFromRoot: Vec3;
+  /** World-space horizontal center offset from character rootPosition for validateSafeFraming */
+  readonly worldBodyCenterOffsetX: number;
+  /** Skeleton joint and local 2D point for exact FK head/visor screen-space checks */
+  readonly fkFocusJointId: string;
+  readonly fkFocusLocalPoint: [number, number];
+  /** Skeleton joint for body-center horizontal framing checks */
+  readonly fkBodyCenterJointId: string;
+}
+
+export const ANATOMICAL_FOCUS_OFFSETS: Record<CharacterArchetypeId, AnatomicalFocusSpec> = {
+  biped_runner: {
+    cameraFocusDeltaFromRoot: [0, 0, 0],
+    worldHeadOffsetFromRoot: [3, 58, 0],
+    worldBodyCenterOffsetX: 0,
+    fkFocusJointId: 'head',
+    fkFocusLocalPoint: [4, 18],
+    fkBodyCenterJointId: 'pelvis'
+  },
+  quadruped_beast: {
+    cameraFocusDeltaFromRoot: [38, -25, 0],
+    worldHeadOffsetFromRoot: [62, 34, 0],
+    worldBodyCenterOffsetX: 30,
+    fkFocusJointId: 'head',
+    fkFocusLocalPoint: [9, 2],
+    fkBodyCenterJointId: 'chest'
+  },
+  aerial_drone: {
+    cameraFocusDeltaFromRoot: [0, -45, 0],
+    worldHeadOffsetFromRoot: [0, 0, 0],
+    worldBodyCenterOffsetX: 0,
+    fkFocusJointId: 'chassis_core',
+    fkFocusLocalPoint: [0, 0],
+    fkBodyCenterJointId: 'chassis_core'
+  }
+};
 
 export const NON_LOCOMOTION_CLIPS = new Set([
   'defiant_scream',
@@ -489,6 +537,15 @@ export class TrajectorySolver {
   private motionPlan = new Map<string, ShotMotionPlanItem>();
   private orderedPlan: ShotMotionPlanItem[] = [];
   private framesPerBeat = 15;
+  private leadArchetypeId: CharacterArchetypeId = 'biped_runner';
+
+  public setLeadArchetype(archetypeId: CharacterArchetypeId): void {
+    this.leadArchetypeId = archetypeId;
+  }
+
+  public getLeadArchetype(): CharacterArchetypeId {
+    return this.leadArchetypeId;
+  }
 
   public setFramesPerBeat(fpb: number): void {
     if (fpb > 0) {
@@ -521,7 +578,7 @@ export class TrajectorySolver {
     instanceId?: string
   ): Vec3 {
     let worldX = 0;
-    const baseY = 75;
+    const baseY = ARCHETYPE_CANONICAL_BASE_Y[this.leadArchetypeId] ?? 75;
     const baseZ = 0;
 
     if (this.orderedPlan.length > 0) {
@@ -542,6 +599,12 @@ export class TrajectorySolver {
     } else {
       // Deterministic fallback for standalone unit tests when no storyboard motion plan is loaded
       worldX = frame * 3.5;
+    }
+
+    // Ground runners (biped_runner and quadruped_beast) lock Y = baseY and Z = 0
+    // so feet remain planted on the Y = 0 runway plane and match solveChoreography() 1:1.
+    if (this.leadArchetypeId === 'biped_runner' || this.leadArchetypeId === 'quadruped_beast') {
+      return [Number(worldX.toFixed(2)), baseY, baseZ];
     }
 
     if (!section || !section.castDirectives || section.castDirectives.length === 0) {

@@ -10,23 +10,23 @@ import {
 } from '../rigging/ik-leg-solver.js';
 
 const baseMouthSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.5, 0], p1: [-1.8, 0.45], p2: [1.8, 0.45], p3: [3.5, 0] },
-  { p0: [3.5, 0], p1: [1.8, -0.45], p2: [-1.8, -0.45], p3: [-3.5, 0] }
+  { p0: [-3.2, 0.0], p1: [-1.5, 0.35], p2: [1.5, 0.35], p3: [3.2, 0.0] },
+  { p0: [3.2, 0.0], p1: [1.5, -0.35], p2: [-1.5, -0.35], p3: [-3.2, 0.0] }
 ];
 
 const mouthOpenSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.8, 0.2], p1: [-1.8, 1.8], p2: [1.8, 1.8], p3: [3.8, 0.2] },
-  { p0: [3.8, 0.2], p1: [1.8, -2.4], p2: [-1.8, -2.4], p3: [-3.8, 0.2] }
+  { p0: [-3.5, 0.3], p1: [-1.6, 1.45], p2: [1.6, 1.45], p3: [3.5, 0.3] },
+  { p0: [3.5, 0.3], p1: [1.6, -1.75], p2: [-1.6, -1.75], p3: [-3.5, 0.3] }
 ];
 
 const browRaiseSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.6, 0.3], p1: [-1.8, 1.0], p2: [1.8, 1.0], p3: [3.6, 0.3] },
-  { p0: [3.6, 0.3], p1: [1.8, -0.3], p2: [-1.8, -0.3], p3: [-3.6, 0.3] }
+  { p0: [-3.4, 0.25], p1: [-1.5, 0.85], p2: [1.5, 0.85], p3: [3.4, 0.25] },
+  { p0: [3.4, 0.25], p1: [1.5, -0.25], p2: [-1.5, -0.25], p3: [-3.4, 0.25] }
 ];
 
 const blinkSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.5, 0], p1: [-1.5, 0.15], p2: [1.5, 0.15], p3: [3.5, 0] },
-  { p0: [3.5, 0], p1: [1.5, -0.15], p2: [-1.5, -0.15], p3: [-3.5, 0] }
+  { p0: [-3.2, 0.0], p1: [-1.4, 0.12], p2: [1.4, 0.12], p3: [3.2, 0.0] },
+  { p0: [3.2, 0.0], p1: [1.4, -0.12], p2: [-1.4, -0.12], p3: [-3.2, 0.0] }
 ];
 
 export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
@@ -678,6 +678,32 @@ export class ArchetypeFactory {
             lit: true
           }
         },
+        // 10b. Eye Optic Core (Blinks via SceneCompositor ellipse ry scaling when id includes 'eye')
+        {
+          id: 'eye_optic_core',
+          jointId: 'head',
+          localOffset2D: [8.5, 6.5],
+          shape: { kind: 'ellipse', radius: [3.5, 1.8] },
+          style: {
+            fill: { kind: 'palette', role: 'primary', shade: 0.45 },
+            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.6 }, width: 1.0 },
+            opacity: 0.98,
+            lit: false
+          }
+        },
+        // 10c. Facial Expression Morph (Driven by rig.morphTopology: mouthOpen, browRaise, blink)
+        {
+          id: 'facial_expression_morph',
+          jointId: 'head',
+          localOffset2D: [7.5, 2.2],
+          shape: { kind: 'morph' },
+          style: {
+            fill: { kind: 'palette', role: 'accent', shade: 0.25 },
+            stroke: { paint: { kind: 'palette', role: 'primary', shade: 0.35 }, width: 1.2 },
+            opacity: 0.95,
+            lit: false
+          }
+        },
         // 11. Left Thigh
         {
           id: 'leg_l_thigh',
@@ -851,7 +877,22 @@ export class ArchetypeFactory {
           { name: 'blink', segments: blinkSegments }
         ]
       },
-      secondaryMotion: [],
+      secondaryMotion: [
+        {
+          jointId: 'coat_tail',
+          spring: { zeta: 0.35, omega: 17.59 },
+          drive: 'audio.onsetStrength',
+          gainDegrees: 22,
+          maxDeflectionDeg: 35
+        },
+        {
+          jointId: 'hair_tie',
+          spring: { zeta: 0.3, omega: 21.99 },
+          drive: 'audio.bands.bass',
+          gainDegrees: 26,
+          maxDeflectionDeg: 40
+        }
+      ],
       poseInterpolation: BipedPoseClips.sprint_frenzy,
       poseClips: BipedPoseClips,
       svgAsset: { idNamespace: instanceId }
@@ -1033,7 +1074,22 @@ export class ArchetypeFactory {
         beast_gallop: QuadrupedPoseClips.beast_gallop,
         beast_idle: QuadrupedPoseClips.beast_idle
       },
-      secondaryMotion: [],
+      secondaryMotion: [
+        {
+          jointId: 'tail_root',
+          spring: { zeta: 0.32, omega: 15.71 },
+          drive: 'audio.onsetStrength',
+          gainDegrees: 24,
+          maxDeflectionDeg: 30
+        },
+        {
+          jointId: 'ear_l',
+          spring: { zeta: 0.4, omega: 23.88 },
+          drive: 'audio.bands.bass',
+          gainDegrees: 16,
+          maxDeflectionDeg: 20
+        }
+      ],
       svgAsset: { idNamespace: instanceId }
     };
   }
@@ -1041,7 +1097,7 @@ export class ArchetypeFactory {
   /**
    * Archetype 3: Aerial Pursuit Drone
    * Enforces:
-   * - 5 joints (chassis_core, thrusters, turret, antenna).
+   * - 6 joints (chassis_core, thrusters, turret, stabilizer wings).
    * - Total parts <= 16.
    */
   public static buildAerialDrone(options: ArchetypeBuildOptions): AssetRigContract {
@@ -1065,7 +1121,9 @@ export class ArchetypeFactory {
           { id: 'chassis_core', parentId: null, localOffset2D: [0, 0], length: 12, rotationZDegrees: 0, constraintsDeg: [-45, 45] },
           { id: 'left_thruster', parentId: 'chassis_core', localOffset2D: [-28, 6], length: 14, rotationZDegrees: 12, constraintsDeg: [-45, 60] },
           { id: 'right_thruster', parentId: 'chassis_core', localOffset2D: [28, 6], length: 14, rotationZDegrees: -12, constraintsDeg: [-60, 45] },
-          { id: 'scanner_turret', parentId: 'chassis_core', localOffset2D: [0, -14], length: 10, rotationZDegrees: 0, constraintsDeg: [-60, 60] }
+          { id: 'scanner_turret', parentId: 'chassis_core', localOffset2D: [0, -14], length: 10, rotationZDegrees: 0, constraintsDeg: [-60, 60] },
+          { id: 'wing_l', parentId: 'chassis_core', localOffset2D: [-24, 4], length: 16, rotationZDegrees: 8, constraintsDeg: [-35, 35] },
+          { id: 'wing_r', parentId: 'chassis_core', localOffset2D: [24, 4], length: 16, rotationZDegrees: -8, constraintsDeg: [-35, 35] }
         ]
       },
       parts: [
@@ -1125,6 +1183,36 @@ export class ArchetypeFactory {
           style: { fill: { kind: 'palette', role: 'secondary', shade: -0.3 }, opacity: 1, lit: true }
         },
         {
+          id: 'drone_wing_l',
+          jointId: 'wing_l',
+          localOffset2D: [0, 0],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [0, 0],
+              [-18, 6],
+              [-14, -4],
+              [0, -2]
+            ]
+          },
+          style: { fill: { kind: 'palette', role: 'secondary', shade: 0.15 }, opacity: 0.92, lit: true }
+        },
+        {
+          id: 'drone_wing_r',
+          jointId: 'wing_r',
+          localOffset2D: [0, 0],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [0, 0],
+              [18, 6],
+              [14, -4],
+              [0, -2]
+            ]
+          },
+          style: { fill: { kind: 'palette', role: 'secondary', shade: 0.15 }, opacity: 0.92, lit: true }
+        },
+        {
           id: 'drone_searchlight',
           jointId: 'scanner_turret',
           localOffset2D: [0, -10],
@@ -1132,7 +1220,22 @@ export class ArchetypeFactory {
           style: { fill: { kind: 'palette', role: 'accent', shade: 0.4 }, opacity: 0.9, lit: true }
         }
       ],
-      secondaryMotion: [],
+      secondaryMotion: [
+        {
+          jointId: 'wing_l',
+          spring: { zeta: 0.38, omega: 20.11 },
+          drive: 'audio.bands.bass',
+          gainDegrees: 15,
+          maxDeflectionDeg: 18
+        },
+        {
+          jointId: 'wing_r',
+          spring: { zeta: 0.38, omega: 20.11 },
+          drive: 'audio.bands.bass',
+          gainDegrees: -15,
+          maxDeflectionDeg: 18
+        }
+      ],
       svgAsset: { idNamespace: instanceId }
     };
   }

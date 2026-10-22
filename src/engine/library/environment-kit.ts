@@ -214,25 +214,27 @@ export class EnvironmentKit {
       palette,
       section.environmentKitId,
       isCloseUp,
-      tierBounds
+      tierBounds,
+      section.kitParams
     );
   }
 
   /**
    * Procedural 4-tier scrolling parallax environment generator.
-   * Generates continuous world geometry across [xMin, xMax] (and per-tier frustum spans):
-   * - Tier 1 (Z = ENVIRONMENT_TIER_DEPTHS.tier1SkylineZ = -900): Distant skyline (spires, megaliths, citadels)
-   * - Tier 2 (Z = ENVIRONMENT_TIER_DEPTHS.tier2MidgroundZ = -450): Midground industrial structures and trusses
-   * - Tier 3 (Z = ENVIRONMENT_TIER_DEPTHS.tier3RunwayZ = -120): Continuous runway floor, expansion lines, streetlamps, tech barriers
-   * - Tier 4 (Z = ENVIRONMENT_TIER_DEPTHS.tier4ForegroundZ = +140): Foreground overhead conduits (strictly excluded on CLOSE_UP shots)
+   * Generates biome-distinct world geometry across [xMin, xMax] (and per-tier frustum spans):
+   * - Tier 1 (Z = ENVIRONMENT_TIER_DEPTHS.tier1SkylineZ = -900): Distant skyline silhouettes per kitId
+   * - Tier 2 (Z = ENVIRONMENT_TIER_DEPTHS.tier2MidgroundZ = -450): Midground structural motifs per kitId
+   * - Tier 3 (Z = ENVIRONMENT_TIER_DEPTHS.tier3RunwayZ = -120): Runway floor, deck markings, and roadside props per kitId
+   * - Tier 4 (Z = ENVIRONMENT_TIER_DEPTHS.tier4ForegroundZ = +140): Foreground overhead structures per kitId (excluded on CLOSE_UP)
    */
   public static buildTiledParallaxEnvironment(
     xMin: number,
     xMax: number,
     palette: ColorLightingPalette,
-    _kitId: EnvironmentKitId = 'industrial_city',
+    kitId: EnvironmentKitId = 'industrial_city',
     isCloseUp = false,
-    tierBounds?: Partial<Record<EnvironmentTierKey, TierXSpan>>
+    tierBounds?: Partial<Record<EnvironmentTierKey, TierXSpan>>,
+    kitParams?: Record<string, string | number | boolean>
   ): SceneEnvironment {
     const polygons: EnvironmentPolygon[] = [];
     const lines: EnvironmentLine[] = [];
@@ -241,6 +243,13 @@ export class EnvironmentKit {
     const z2 = ENVIRONMENT_TIER_DEPTHS.tier2MidgroundZ;
     const z3 = ENVIRONMENT_TIER_DEPTHS.tier3RunwayZ;
     const z4 = ENVIRONMENT_TIER_DEPTHS.tier4ForegroundZ;
+
+    const showHvac = kitParams?.hvacVisible !== false;
+    const showStreetlamps = kitParams?.streetlamps !== false;
+    const conduitGlow = kitParams?.conduitGlow !== false;
+    const hazardStripes = kitParams?.hazardStripes !== false;
+    const horizonSun = kitParams?.horizonSun !== false;
+    const wireframeMountains = kitParams?.wireframeMountains !== false;
 
     // --- Tier 1 (Z = -900): Distant Skyline ---
     const b1 = tierBounds?.tier1SkylineZ ?? { xMin, xMax };
@@ -253,83 +262,166 @@ export class EnvironmentKit {
       const bx = k * s1;
       const variant = Math.abs(k) % 3;
 
-      if (variant === 0) {
-        // Gothic Spire
+      if (kitId === 'orbital_station') {
+        // 6-vertex Octagonal Habitat Dome + Hexagonal Solar Wing Array
         polygons.push({
           vertices: [
-            [bx - 50, 0, z1],
-            [bx + 50, 0, z1],
-            [bx + 38, 320, z1],
-            [bx - 38, 320, z1]
+            [bx - 85, 0, z1],
+            [bx + 85, 0, z1],
+            [bx + 85, 220, z1],
+            [bx + 45, 310, z1],
+            [bx - 45, 310, z1],
+            [bx - 85, 220, z1]
           ],
-          fill: shadeHexColor(palette.background, 0.45),
+          fill: shadeHexColor(palette.background, 0.38),
           opacity: 0.9,
-          tier: 1
-        });
-        polygons.push({
-          vertices: [
-            [bx - 16, 320, z1],
-            [bx + 16, 320, z1],
-            [bx, 480, z1]
-          ],
-          fill: shadeHexColor(palette.secondary, -0.2),
-          opacity: 0.85,
           tier: 1
         });
         lines.push({
-          p0: [bx, 480, z1],
-          p1: [bx, 530, z1],
-          stroke: palette.accent,
+          p0: [bx - 70, 260, z1 + 10],
+          p1: [bx + 70, 260, z1 + 10],
+          stroke: palette.primary,
           strokeWidth: 2,
+          opacity: 0.82,
+          tier: 1
+        });
+      } else if (kitId === 'neon_chasm') {
+        // 5-vertex Jagged Asymmetric Canyon Monolith + Vertical Neon Edge Vein
+        const peakShift = variant === 0 ? -24 : variant === 1 ? 28 : 0;
+        polygons.push({
+          vertices: [
+            [bx - 75, 0, z1],
+            [bx + 75, 0, z1],
+            [bx + 48, 310, z1],
+            [bx + peakShift, 490, z1],
+            [bx - 52, 280, z1]
+          ],
+          fill: shadeHexColor(palette.background, 0.42),
           opacity: 0.9,
           tier: 1
         });
-      } else if (variant === 1) {
-        // Neon Megalith
+        lines.push({
+          p0: [bx + peakShift, 490, z1],
+          p1: [bx, 0, z1],
+          stroke: palette.accent,
+          strokeWidth: 2.2,
+          opacity: 0.85,
+          tier: 1
+        });
+      } else if (kitId === 'synth_grid') {
+        // 3-vertex Retro-Futuristic Wireframe Mountain Peak + Segmented Sun Horizon Disc
+        const peakH = wireframeMountains ? (variant === 1 ? 430 : 350) : 260;
         polygons.push({
           vertices: [
-            [bx - 70, 0, z1 - 20],
-            [bx + 70, 0, z1 - 20],
-            [bx + 60, 420, z1 - 20],
-            [bx - 60, 420, z1 - 20]
+            [bx - 95, 0, z1],
+            [bx + 95, 0, z1],
+            [bx, peakH, z1]
           ],
-          fill: shadeHexColor(palette.background, 0.35),
+          fill: shadeHexColor(palette.background, 0.32),
           opacity: 0.88,
           tier: 1
         });
-        lines.push({
-          p0: [bx + 60, 420, z1 - 20],
-          p1: [bx + 60, 0, z1 - 20],
-          stroke: palette.primary,
-          strokeWidth: 2,
-          opacity: 0.7,
-          tier: 1
-        });
+        if (horizonSun && variant === 1) {
+          polygons.push({
+            vertices: [
+              [bx - 70, 180, z1 - 15],
+              [bx + 70, 180, z1 - 15],
+              [bx + 95, 250, z1 - 15],
+              [bx + 70, 320, z1 - 15],
+              [bx - 70, 320, z1 - 15],
+              [bx - 95, 250, z1 - 15]
+            ],
+            fill: palette.accent,
+            opacity: 0.82,
+            tier: 1
+          });
+        } else {
+          lines.push({
+            p0: [bx - 95, 0, z1 + 5],
+            p1: [bx, peakH, z1 + 5],
+            stroke: palette.primary,
+            strokeWidth: 2,
+            opacity: 0.85,
+            tier: 1
+          });
+        }
       } else {
-        // Sky Citadel
-        polygons.push({
-          vertices: [
-            [bx - 80, 0, z1 + 20],
-            [bx + 80, 0, z1 + 20],
-            [bx + 40, 360, z1 + 20],
-            [bx - 40, 360, z1 + 20]
-          ],
-          fill: shadeHexColor(palette.background, 0.4),
-          opacity: 0.9,
-          tier: 1
-        });
-        lines.push({
-          p0: [bx - 40, 360, z1 + 20],
-          p1: [bx + 40, 360, z1 + 20],
-          stroke: palette.accent,
-          strokeWidth: 2.5,
-          opacity: 0.85,
-          tier: 1
-        });
+        // industrial_city: Stepped Gothic-Industrial Towers & Tapered Smokestacks
+        if (variant === 0) {
+          polygons.push({
+            vertices: [
+              [bx - 50, 0, z1],
+              [bx + 50, 0, z1],
+              [bx + 38, 320, z1],
+              [bx - 38, 320, z1]
+            ],
+            fill: shadeHexColor(palette.background, 0.45),
+            opacity: 0.9,
+            tier: 1
+          });
+          polygons.push({
+            vertices: [
+              [bx - 16, 320, z1],
+              [bx + 16, 320, z1],
+              [bx, 480, z1]
+            ],
+            fill: shadeHexColor(palette.secondary, -0.2),
+            opacity: 0.85,
+            tier: 1
+          });
+          lines.push({
+            p0: [bx, 480, z1],
+            p1: [bx, 530, z1],
+            stroke: palette.accent,
+            strokeWidth: 2,
+            opacity: 0.9,
+            tier: 1
+          });
+        } else if (variant === 1) {
+          polygons.push({
+            vertices: [
+              [bx - 70, 0, z1 - 20],
+              [bx + 70, 0, z1 - 20],
+              [bx + 60, 420, z1 - 20],
+              [bx - 60, 420, z1 - 20]
+            ],
+            fill: shadeHexColor(palette.background, 0.35),
+            opacity: 0.88,
+            tier: 1
+          });
+          lines.push({
+            p0: [bx + 60, 420, z1 - 20],
+            p1: [bx + 60, 0, z1 - 20],
+            stroke: palette.primary,
+            strokeWidth: 2,
+            opacity: 0.7,
+            tier: 1
+          });
+        } else {
+          polygons.push({
+            vertices: [
+              [bx - 80, 0, z1 + 20],
+              [bx + 80, 0, z1 + 20],
+              [bx + 40, 360, z1 + 20],
+              [bx - 40, 360, z1 + 20]
+            ],
+            fill: shadeHexColor(palette.background, 0.4),
+            opacity: 0.9,
+            tier: 1
+          });
+          lines.push({
+            p0: [bx - 40, 360, z1 + 20],
+            p1: [bx + 40, 360, z1 + 20],
+            stroke: palette.accent,
+            strokeWidth: 2.5,
+            opacity: 0.85,
+            tier: 1
+          });
+        }
       }
     }
 
-    // --- Tier 2 (Z = -450): Midground Industrial ---
+    // --- Tier 2 (Z = -450): Midground Structures ---
     const b2 = tierBounds?.tier2MidgroundZ ?? { xMin, xMax };
     const span2 = Math.max(1500, b2.xMax - b2.xMin);
     const s2 = Math.max(300, Math.ceil(span2 / 4));
@@ -340,66 +432,156 @@ export class EnvironmentKit {
       const bx = k * s2;
       const variant = Math.abs(k) % 2;
 
-      if (variant === 0) {
-        // Factory Block
+      if (kitId === 'orbital_station') {
+        // 6-vertex Octagonal Portal Arch + Conduit Glow Rib
         polygons.push({
           vertices: [
-            [bx - 55, 0, z2],
-            [bx + 55, 0, z2],
-            [bx + 55, 170, z2],
-            [bx - 55, 170, z2]
+            [bx - 52, 0, z2],
+            [bx - 52, 165, z2],
+            [bx - 24, 215, z2],
+            [bx + 24, 215, z2],
+            [bx + 52, 165, z2],
+            [bx + 52, 0, z2]
           ],
-          fill: shadeHexColor(palette.secondary, -0.1),
+          fill: shadeHexColor(palette.secondary, 0.15),
           opacity: 0.92,
           tier: 2
         });
-        lines.push({
-          p0: [bx - 60, 110, z2 + 10],
-          p1: [bx + 60, 110, z2 + 10],
-          stroke: palette.primary,
-          strokeWidth: 2,
-          opacity: 0.8,
-          tier: 2
-        });
-      } else {
-        // Lattice Truss / Reactor Frame
+        if (conduitGlow) {
+          lines.push({
+            p0: [bx - 48, 20, z2 + 8],
+            p1: [bx + 48, 20, z2 + 8],
+            stroke: palette.primary,
+            strokeWidth: 2.2,
+            opacity: 0.88,
+            tier: 2
+          });
+        }
+      } else if (kitId === 'neon_chasm') {
+        // A-Frame Suspension Pylon + Radiating Stay Cable + Vertical Hologram Banner
         lines.push(
           {
-            p0: [bx - 40, 0, z2 - 10],
-            p1: [bx - 40, 200, z2 - 10],
-            stroke: shadeHexColor(palette.secondary, 0.3),
-            strokeWidth: 2.5,
-            opacity: 0.85,
+            p0: [bx - 55, 0, z2],
+            p1: [bx, 250, z2],
+            stroke: palette.secondary,
+            strokeWidth: 3.0,
+            opacity: 0.9,
             tier: 2
           },
           {
-            p0: [bx + 40, 0, z2 - 10],
-            p1: [bx + 40, 200, z2 - 10],
-            stroke: shadeHexColor(palette.secondary, 0.3),
-            strokeWidth: 2.5,
-            opacity: 0.85,
-            tier: 2
-          },
-          {
-            p0: [bx - 40, 80, z2 - 10],
-            p1: [bx + 40, 160, z2 - 10],
-            stroke: palette.accent,
-            strokeWidth: 1.5,
-            opacity: 0.7,
+            p0: [bx + 55, 0, z2],
+            p1: [bx, 250, z2],
+            stroke: palette.secondary,
+            strokeWidth: 3.0,
+            opacity: 0.9,
             tier: 2
           }
         );
+        if (variant === 0) {
+          polygons.push({
+            vertices: [
+              [bx - 18, 70, z2 + 10],
+              [bx + 18, 70, z2 + 10],
+              [bx + 18, 195, z2 + 10],
+              [bx - 18, 195, z2 + 10]
+            ],
+            fill: palette.accent,
+            opacity: 0.82,
+            tier: 2
+          });
+        } else {
+          lines.push({
+            p0: [bx, 240, z2],
+            p1: [bx + 65, 30, z2 + 15],
+            stroke: palette.primary,
+            strokeWidth: 1.6,
+            opacity: 0.78,
+            tier: 2
+          });
+        }
+      } else if (kitId === 'synth_grid') {
+        // Trapezoidal Synth Portal Arch + Neon Horizon Bar
+        polygons.push({
+          vertices: [
+            [bx - 60, 0, z2],
+            [bx + 60, 0, z2],
+            [bx + 32, 190, z2],
+            [bx - 32, 190, z2]
+          ],
+          fill: shadeHexColor(palette.secondary, -0.15),
+          opacity: 0.9,
+          tier: 2
+        });
+        lines.push({
+          p0: [bx - 48, 145, z2 + 10],
+          p1: [bx + 48, 145, z2 + 10],
+          stroke: palette.accent,
+          strokeWidth: 2.2,
+          opacity: 0.88,
+          tier: 2
+        });
+      } else {
+        // industrial_city: Factory Block + Cross-Braced Crane Lattice Truss
+        if (variant === 0 && showHvac) {
+          polygons.push({
+            vertices: [
+              [bx - 55, 0, z2],
+              [bx + 55, 0, z2],
+              [bx + 55, 170, z2],
+              [bx - 55, 170, z2]
+            ],
+            fill: shadeHexColor(palette.secondary, -0.1),
+            opacity: 0.92,
+            tier: 2
+          });
+          lines.push({
+            p0: [bx - 60, 110, z2 + 10],
+            p1: [bx + 60, 110, z2 + 10],
+            stroke: palette.primary,
+            strokeWidth: 2,
+            opacity: 0.8,
+            tier: 2
+          });
+        } else {
+          lines.push(
+            {
+              p0: [bx - 40, 0, z2 - 10],
+              p1: [bx - 40, 200, z2 - 10],
+              stroke: shadeHexColor(palette.secondary, 0.3),
+              strokeWidth: 2.5,
+              opacity: 0.85,
+              tier: 2
+            },
+            {
+              p0: [bx + 40, 0, z2 - 10],
+              p1: [bx + 40, 200, z2 - 10],
+              stroke: shadeHexColor(palette.secondary, 0.3),
+              strokeWidth: 2.5,
+              opacity: 0.85,
+              tier: 2
+            },
+            {
+              p0: [bx - 40, 80, z2 - 10],
+              p1: [bx + 40, 160, z2 - 10],
+              stroke: palette.accent,
+              strokeWidth: 1.5,
+              opacity: 0.7,
+              tier: 2
+            }
+          );
+        }
       }
     }
 
     // --- Tier 3 (Z = -120 to +40): Near-Ground Runway ---
     const floorPad = 300;
+    const deckZHalf = kitId === 'neon_chasm' ? 180 : 300;
     polygons.push({
       vertices: [
-        [xMin - floorPad, 0, 300],
-        [xMax + floorPad, 0, 300],
-        [xMax + floorPad, 0, -300],
-        [xMin - floorPad, 0, -300]
+        [xMin - floorPad, 0, deckZHalf],
+        [xMax + floorPad, 0, deckZHalf],
+        [xMax + floorPad, 0, -deckZHalf],
+        [xMin - floorPad, 0, -deckZHalf]
       ],
       fill: shadeHexColor(palette.background, 0.15),
       opacity: 0.96,
@@ -411,7 +593,10 @@ export class EnvironmentKit {
       lines.push({
         p0: [xMin - floorPad, 0.3, z],
         p1: [xMax + floorPad, 0.3, z],
-        stroke: shadeHexColor(palette.secondary, -0.4),
+        stroke:
+          kitId === 'synth_grid'
+            ? palette.primary
+            : shadeHexColor(palette.secondary, -0.4),
         strokeWidth: 1.5,
         opacity: 0.75,
         tier: 1
@@ -427,55 +612,135 @@ export class EnvironmentKit {
     for (let k = k3Min; k <= k3Max; k++) {
       const bx = k * s3;
 
-      // Streetlamp (Z = -120)
-      lines.push(
-        {
-          p0: [bx, 0, z3],
-          p1: [bx, 130, z3],
-          stroke: shadeHexColor(palette.secondary, 0.4),
-          strokeWidth: 2.2,
-          opacity: 0.85,
-          tier: 2
-        },
-        {
-          p0: [bx, 130, z3],
-          p1: [bx + 25, 125, z3],
-          stroke: palette.primary,
-          strokeWidth: 2,
-          opacity: 0.9,
-          tier: 2
-        }
-      );
-      polygons.push({
-        vertices: [
-          [bx + 20, 127, z3],
-          [bx + 28, 127, z3],
-          [bx + 26, 120, z3],
-          [bx + 22, 120, z3]
-        ],
-        fill: palette.accent,
-        opacity: 0.95,
-        tier: 2
-      });
-
-      // Barrier Tech Box (Z = -70)
-      if (Math.abs(k) % 2 === 1) {
+      if (kitId === 'orbital_station') {
+        // Glowing Hexagonal Conduit Pillar + Deck Hazard Stripe
         polygons.push({
           vertices: [
-            [bx + 50, 0, z3 + 50],
-            [bx + 80, 0, z3 + 50],
-            [bx + 80, 26, z3 + 50],
-            [bx + 50, 26, z3 + 50]
+            [bx - 12, 0, z3],
+            [bx + 12, 0, z3],
+            [bx + 16, 55, z3],
+            [bx + 12, 110, z3],
+            [bx - 12, 110, z3],
+            [bx - 16, 55, z3]
           ],
-          fill: shadeHexColor(palette.secondary, -0.3),
+          fill: shadeHexColor(palette.secondary, 0.25),
+          opacity: 0.94,
+          tier: 2
+        });
+        lines.push({
+          p0: [bx, 8, z3 + 2],
+          p1: [bx, 102, z3 + 2],
+          stroke: palette.primary,
+          strokeWidth: 2.2,
           opacity: 0.9,
           tier: 2
         });
+        if (hazardStripes && Math.abs(k) % 2 === 0) {
+          lines.push({
+            p0: [bx - 28, 0.5, z3 + 25],
+            p1: [bx + 28, 0.5, z3 + 45],
+            stroke: palette.accent,
+            strokeWidth: 2.8,
+            opacity: 0.85,
+            tier: 1
+          });
+        }
+      } else if (kitId === 'neon_chasm') {
+        // Crystalline Chasm Marker (5-vertex shard) + Transverse Bridge Laser Bar
+        polygons.push({
+          vertices: [
+            [bx - 14, 0, z3],
+            [bx + 14, 0, z3],
+            [bx + 18, 65, z3],
+            [bx, 115, z3],
+            [bx - 18, 65, z3]
+          ],
+          fill: palette.accent,
+          opacity: 0.9,
+          tier: 2
+        });
+        lines.push({
+          p0: [bx - 30, 0.5, z3],
+          p1: [bx + 30, 0.5, z3 + 50],
+          stroke: palette.primary,
+          strokeWidth: 2.0,
+          opacity: 0.85,
+          tier: 1
+        });
+      } else if (kitId === 'synth_grid') {
+        // 4-vertex Diamond Obelisk + Vertical Laser Core
+        polygons.push({
+          vertices: [
+            [bx, 0, z3],
+            [bx + 22, 58, z3],
+            [bx, 116, z3],
+            [bx - 22, 58, z3]
+          ],
+          fill: shadeHexColor(palette.primary, -0.15),
+          opacity: 0.92,
+          tier: 2
+        });
+        lines.push({
+          p0: [bx - 24, 0.5, z3],
+          p1: [bx + 24, 0.5, z3],
+          stroke: palette.accent,
+          strokeWidth: 2.0,
+          opacity: 0.88,
+          tier: 2
+        });
+      } else {
+        // industrial_city: Cantilevered Streetlamp (Z = -120) + Tech Box
+        if (showStreetlamps) {
+          lines.push(
+            {
+              p0: [bx, 0, z3],
+              p1: [bx, 130, z3],
+              stroke: shadeHexColor(palette.secondary, 0.4),
+              strokeWidth: 2.2,
+              opacity: 0.85,
+              tier: 2
+            },
+            {
+              p0: [bx, 130, z3],
+              p1: [bx + 25, 125, z3],
+              stroke: palette.primary,
+              strokeWidth: 2,
+              opacity: 0.9,
+              tier: 2
+            }
+          );
+        }
+        polygons.push({
+          vertices: [
+            [bx - 18, 127, z3],
+            [bx + 28, 127, z3],
+            [bx + 26, 120, z3],
+            [bx - 16, 120, z3]
+          ],
+          fill: palette.accent,
+          opacity: 0.95,
+          tier: 2
+        });
+
+        // Barrier Tech Box (Z = -70, bounded to 1 in 3 cells so worst-case drawables <= 63)
+        if (Math.abs(k) % 3 === 1) {
+          polygons.push({
+            vertices: [
+              [bx + 50, 0, z3 + 50],
+              [bx + 80, 0, z3 + 50],
+              [bx + 80, 26, z3 + 50],
+              [bx + 50, 26, z3 + 50]
+            ],
+            fill: shadeHexColor(palette.secondary, -0.3),
+            opacity: 0.9,
+            tier: 2
+          });
+        }
       }
     }
 
     // --- Tier 4 (Z = +140): Foreground Overhang ---
-    // Strictly excluded on CLOSE_UP shots (Gap 2)
+    // Strictly excluded on CLOSE_UP shots
     if (!isCloseUp) {
       const b4 = tierBounds?.tier4ForegroundZ ?? { xMin, xMax };
       const span4 = Math.max(1200, b4.xMax - b4.xMin);
@@ -485,25 +750,92 @@ export class EnvironmentKit {
 
       for (let k = k4Min; k <= k4Max; k++) {
         const bx = k * s4;
-        polygons.push({
-          vertices: [
-            [bx - 80, 240, z4],
-            [bx + 180, 240, z4],
-            [bx + 180, 252, z4],
-            [bx - 80, 252, z4]
-          ],
-          fill: shadeHexColor(palette.background, 0.2),
-          opacity: 0.92,
-          tier: 3
-        });
-        lines.push({
-          p0: [bx + 50, 252, z4],
-          p1: [bx + 50, 360, z4],
-          stroke: palette.secondary,
-          strokeWidth: 1.5,
-          opacity: 0.8,
-          tier: 3
-        });
+        if (kitId === 'orbital_station') {
+          // 6-vertex Angled Bulkhead Rib + Strut
+          polygons.push({
+            vertices: [
+              [bx - 95, 245, z4],
+              [bx + 185, 245, z4],
+              [bx + 165, 262, z4],
+              [bx + 45, 270, z4],
+              [bx - 45, 270, z4],
+              [bx - 75, 262, z4]
+            ],
+            fill: shadeHexColor(palette.background, 0.24),
+            opacity: 0.92,
+            tier: 3
+          });
+          lines.push({
+            p0: [bx + 45, 270, z4],
+            p1: [bx + 45, 360, z4],
+            stroke: palette.primary,
+            strokeWidth: 1.8,
+            opacity: 0.82,
+            tier: 3
+          });
+        } else if (kitId === 'neon_chasm') {
+          // High-Voltage Catenary Cable Arc + Insulator Strut
+          lines.push(
+            {
+              p0: [bx - 90, 255, z4],
+              p1: [bx + 180, 238, z4],
+              stroke: palette.accent,
+              strokeWidth: 2.0,
+              opacity: 0.85,
+              tier: 3
+            },
+            {
+              p0: [bx + 45, 246, z4],
+              p1: [bx + 45, 355, z4],
+              stroke: palette.secondary,
+              strokeWidth: 1.6,
+              opacity: 0.8,
+              tier: 3
+            }
+          );
+        } else if (kitId === 'synth_grid') {
+          // Laser-Grid Gate Frame + Vertical Beam
+          polygons.push({
+            vertices: [
+              [bx - 85, 242, z4],
+              [bx + 185, 242, z4],
+              [bx + 155, 256, z4],
+              [bx - 55, 256, z4]
+            ],
+            fill: palette.primary,
+            opacity: 0.88,
+            tier: 3
+          });
+          lines.push({
+            p0: [bx + 50, 256, z4],
+            p1: [bx + 50, 360, z4],
+            stroke: palette.accent,
+            strokeWidth: 1.8,
+            opacity: 0.85,
+            tier: 3
+          });
+        } else {
+          // industrial_city: Riveted Overhead Girder Beam + Hanger Rod
+          polygons.push({
+            vertices: [
+              [bx - 80, 240, z4],
+              [bx + 180, 240, z4],
+              [bx + 180, 252, z4],
+              [bx - 80, 252, z4]
+            ],
+            fill: shadeHexColor(palette.background, 0.2),
+            opacity: 0.92,
+            tier: 3
+          });
+          lines.push({
+            p0: [bx + 50, 252, z4],
+            p1: [bx + 50, 360, z4],
+            stroke: palette.secondary,
+            strokeWidth: 1.5,
+            opacity: 0.8,
+            tier: 3
+          });
+        }
       }
     }
 

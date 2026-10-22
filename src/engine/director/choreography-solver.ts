@@ -10,10 +10,12 @@ import type {
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
 import { ArchetypeFactory } from '../library/archetype-factory.js';
 import {
+  TrajectorySolver,
   computeClipStrideLength,
   computeMusicalMotionParameters,
   buildUnifiedMotionPlan,
-  globalTrajectorySolver
+  globalTrajectorySolver,
+  ARCHETYPE_CANONICAL_BASE_Y
 } from './trajectory-solver.js';
 
 function resolveClipIdForSection(
@@ -39,27 +41,32 @@ export function solveChoreography(
   spec: StorySpecContract,
   storyboard: DirectorStoryboardContract,
   rigs: Map<string, AssetRigContract>,
-  framesPerBeat?: number
+  framesPerBeat?: number,
+  solver?: TrajectorySolver
 ): ChoreographyContract {
+  const activeSolver = solver ?? new TrajectorySolver();
   const tracks: EntityTrack[] = [];
   const shots = storyboard.shots;
   const castMap = new Map(spec.cast.map((c) => [c.instanceId, c]));
 
   const leadRigId = spec.cast[0]?.instanceId ?? Array.from(rigs.keys())[0] ?? 'lead';
+  const leadArchetypeId = spec.cast[0]?.archetypeId ?? 'biped_runner';
   const leadRig =
     rigs.get(leadRigId) ??
     ArchetypeFactory.build({
       instanceId: leadRigId,
       spec: {
         instanceId: leadRigId,
-        archetypeId: spec.cast[0]?.archetypeId ?? 'biped_runner',
+        archetypeId: leadArchetypeId,
         scale: 1.0,
         accessories: []
       }
     });
 
-  const effectiveFramesPerBeat = framesPerBeat ?? globalTrajectorySolver.getFramesPerBeat();
-  globalTrajectorySolver.setFramesPerBeat(effectiveFramesPerBeat);
+  const effectiveFramesPerBeat =
+    framesPerBeat ?? (solver ? solver.getFramesPerBeat() : globalTrajectorySolver.getFramesPerBeat());
+  activeSolver.setLeadArchetype(leadArchetypeId);
+  activeSolver.setFramesPerBeat(effectiveFramesPerBeat);
 
   const motionPlan = buildUnifiedMotionPlan({
     storyboardShots: storyboard.shots.map((s) => ({
@@ -73,6 +80,9 @@ export function solveChoreography(
     framesPerBeat: effectiveFramesPerBeat
   });
 
+  activeSolver.setMotionPlan(motionPlan);
+  globalTrajectorySolver.setLeadArchetype(leadArchetypeId);
+  globalTrajectorySolver.setFramesPerBeat(effectiveFramesPerBeat);
   globalTrajectorySolver.setMotionPlan(motionPlan);
   const shotPlanMap = new Map(motionPlan.map((p) => [p.shotId, p]));
 
@@ -177,27 +187,36 @@ export function solveChoreography(
             quadClipId
           );
 
-          let quadStartX: number;
-          let quadEndX: number;
+          let quadStartPos: [number, number, number];
+          let quadEndPos: [number, number, number];
           let quadTimeScale: number;
 
           if (isLead) {
-            quadStartX = leadPlan ? leadPlan.startX : 0;
+            quadStartPos = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
+            quadEndPos = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
             quadTimeScale = leadPlan ? leadPlan.timeScale : quadMotion.timeScale;
-            const quadSpeed = leadPlan ? leadPlan.rootSpeed : quadMotion.rootSpeed;
-            quadEndX = quadStartX + quadSpeed * (lastFrame - startFrame);
           } else {
             // Quadruped pursuer: follows lead at -120 offset, stops when lead stops
             const quadOffsetX = -120;
-            quadStartX = leadStartX + quadOffsetX;
-            quadEndX = isLeadMoving ? leadEndX + quadOffsetX : quadStartX;
+            const quadStartX = leadStartX + quadOffsetX;
+            const quadEndX = isLeadMoving ? leadEndX + quadOffsetX : quadStartX;
+            quadStartPos = [
+              Number(quadStartX.toFixed(2)),
+              ARCHETYPE_CANONICAL_BASE_Y.quadruped_beast,
+              0
+            ];
+            quadEndPos = [
+              Number(quadEndX.toFixed(2)),
+              ARCHETYPE_CANONICAL_BASE_Y.quadruped_beast,
+              0
+            ];
             quadTimeScale = quadMotion.timeScale;
           }
 
           const beastKeyframes: EntityTrackKeyframe[] = [
             {
               frame: startFrame,
-              position: [Number(quadStartX.toFixed(2)), 50, 0],
+              position: quadStartPos,
               rotationZDegrees: 0,
               scale: [1, 1],
               opacity: 1,
@@ -205,7 +224,7 @@ export function solveChoreography(
             },
             {
               frame: lastFrame,
-              position: [Number(quadEndX.toFixed(2)), 50, 0],
+              position: quadEndPos,
               rotationZDegrees: 0,
               scale: [1, 1],
               opacity: 1,
@@ -259,8 +278,8 @@ export function solveChoreography(
           clipId = leadPlan.clipId;
           timeScale = leadPlan.timeScale;
           rootSpeed = leadPlan.rootSpeed;
-          startPos = [leadPlan.startX, 75, 0];
-          endPos = [leadPlan.startX + leadPlan.rootSpeed * (lastFrame - startFrame), 75, 0];
+          startPos = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
+          endPos = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
         } else {
           // Companion biped runner
           const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);

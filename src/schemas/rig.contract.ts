@@ -116,7 +116,8 @@ export const SecondaryMotionSchema = z.object({
     omega: z.number().positive().max(60)
   }).strict(),
   drive: z.enum(['audio.onsetStrength', 'audio.bands.bass', 'audio.rms']),
-  gainDegrees: z.number().finite()
+  gainDegrees: z.number().finite(),
+  maxDeflectionDeg: z.number().finite().positive().max(90).optional()
 }).strict();
 export type SecondaryMotion = z.infer<typeof SecondaryMotionSchema>;
 

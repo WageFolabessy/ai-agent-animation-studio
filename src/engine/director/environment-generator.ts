@@ -442,6 +442,10 @@ export function buildDynamicEnvironment(
  * using a localized ground grid in close-up shots to keep drawable counts low while
  * preserving the horizon floor.
  */
+/**
+ * @deprecated Superseded by `EnvironmentKit.build()` in `src/engine/library/environment-kit.ts`.
+ * Retained for legacy fallback and unit test compatibility.
+ */
 export function getOrchestratedEnvironment(
   shotId: string,
   centerX = 0,

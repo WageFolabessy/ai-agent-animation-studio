@@ -15,6 +15,7 @@ import { StorySpecAgent } from './story-spec-agent.js';
 import type { StorySpecContract, SectionStagingSpec } from '../schemas/story-spec.contract.js';
 import { compileStorySpecToStoryboard } from '../engine/director/shot-planner.js';
 import { solveChoreography } from '../engine/director/choreography-solver.js';
+import { TrajectorySolver } from '../engine/director/trajectory-solver.js';
 import { ArchetypeFactory } from '../engine/library/archetype-factory.js';
 import { EnvironmentKit, computeShotEnvironmentBounds } from '../engine/library/environment-kit.js';
 import {
@@ -256,7 +257,8 @@ export class StudioAgentOrchestrator {
             }),
           validate: (candidateSpec) => {
             try {
-              const sb = compileStorySpecToStoryboard(candidateSpec, options.audioManifest);
+              const solver = new TrajectorySolver();
+              const sb = compileStorySpecToStoryboard(candidateSpec, options.audioManifest, solver);
               const rMap = new Map<string, AssetRigContract>();
               for (const castItem of candidateSpec.cast) {
                 const rig = ArchetypeFactory.build({
@@ -266,7 +268,7 @@ export class StudioAgentOrchestrator {
                 });
                 rMap.set(rig.id, rig);
               }
-              const choreo = solveChoreography(candidateSpec, sb, rMap);
+              const choreo = solveChoreography(candidateSpec, sb, rMap, undefined, solver);
 
               const projRep = validateProjectContracts(
                 options.audioManifest,
@@ -307,7 +309,8 @@ export class StudioAgentOrchestrator {
 
     // 2. Fallback compilation if spec was provided directly in options
     if (!compiledStoryboard || !compiledRigs || !compiledChoreography) {
-      compiledStoryboard = compileStorySpecToStoryboard(storySpec, options.audioManifest);
+      const solver = new TrajectorySolver();
+      compiledStoryboard = compileStorySpecToStoryboard(storySpec, options.audioManifest, solver);
       compiledRigs = new Map<string, AssetRigContract>();
       for (const castItem of storySpec.cast) {
         const rig = ArchetypeFactory.build({
@@ -317,7 +320,13 @@ export class StudioAgentOrchestrator {
         });
         compiledRigs.set(rig.id, rig);
       }
-      compiledChoreography = solveChoreography(storySpec, compiledStoryboard, compiledRigs);
+      compiledChoreography = solveChoreography(
+        storySpec,
+        compiledStoryboard,
+        compiledRigs,
+        undefined,
+        solver
+      );
       projectValidationReport = validateProjectContracts(
         options.audioManifest,
         compiledStoryboard,
