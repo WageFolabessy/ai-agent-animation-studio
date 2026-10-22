@@ -505,13 +505,16 @@ export function buildTheatricalStorySpec(
     const isFirst = i === 0;
     const isLast = i === spans.length - 1;
 
-    // Theatrical Spatial Movement Generator (Pillar 2 & Stage 2)
+    // Theatrical Spatial Movement & Role-Aware Acting Generator (Pillars 2, 3 & 4)
     // Avoids static [0, 0, 0] by orchestrating active spatial blocking across stage zones:
-    // Stage Left (-0.5), Center (0.0), Stage Right (+0.5), Depth: Upstage (-0.3) -> Apron (+0.3)
+    // Stage Left (-0.55), Center (0.0), Stage Right (+0.35), Depth: Upstage (-0.25) -> Apron (+0.35)
     let leadMotionPreset: any;
     let partnerMotionPreset: any;
     let leadWaypoints: Array<{ frameProgress: number; stagePosNorm: [number, number, number] }>;
     let partnerWaypoints: Array<{ frameProgress: number; stagePosNorm: [number, number, number] }>;
+
+    const isLeadInstrumentalist = leadProp.includes('guitar');
+    const isPartnerVocalist = partnerProp === 'microphone';
 
     if (actIndex === 0) {
       if (isFirst) {
@@ -528,8 +531,13 @@ export function buildTheatricalStorySpec(
         ];
       } else {
         // Act I Build: Advancing to Center Stage and stepping toward apron
-        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act1;
-        partnerMotionPreset = directingProfile.actingPresets.act2;
+        if (isLeadInstrumentalist && isPartnerVocalist) {
+          leadMotionPreset = directingProfile.actingPresets.act2;
+          partnerMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act1;
+        } else {
+          leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act1;
+          partnerMotionPreset = directingProfile.actingPresets.act2;
+        }
         leadWaypoints = [
           { frameProgress: 0, stagePosNorm: [-0.15, 0, 0.0] },
           { frameProgress: 1, stagePosNorm: [0.0, 0, 0.2] }
@@ -542,9 +550,15 @@ export function buildTheatricalStorySpec(
     } else if (actIndex === 1) {
       // Act II: Dynamic interaction across stage
       const cycle = i % 4;
-      if (interactionBehavior === 'PURSUIT_AND_CONFRONTATION') {
+      if (isLeadInstrumentalist && isPartnerVocalist) {
+        leadMotionPreset = directingProfile.actingPresets.act2;
+        partnerMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
+      } else {
         leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
         partnerMotionPreset = directingProfile.actingPresets.act2;
+      }
+
+      if (interactionBehavior === 'PURSUIT_AND_CONFRONTATION') {
         leadWaypoints = [
           { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.1] },
           { frameProgress: 1, stagePosNorm: [0.1, 0, 0.25] }
@@ -554,8 +568,6 @@ export function buildTheatricalStorySpec(
           { frameProgress: 1, stagePosNorm: [-0.15, 0, 0.2] }
         ];
       } else if (interactionBehavior === 'FACE_TO_FACE') {
-        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
-        partnerMotionPreset = sp.hasVocals ? directingProfile.actingPresets.act2 : directingProfile.actingPresets.chorus;
         leadWaypoints = [
           { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.15] },
           { frameProgress: 1, stagePosNorm: [-0.1, 0, 0.25] }
@@ -566,8 +578,6 @@ export function buildTheatricalStorySpec(
         ];
       } else if (cycle === 0) {
         // Stage Traversal to Stage Right
-        leadMotionPreset = directingProfile.actingPresets.act2;
-        partnerMotionPreset = directingProfile.actingPresets.act1;
         leadWaypoints = [
           { frameProgress: 0, stagePosNorm: [0.0, 0, 0.1] },
           { frameProgress: 1, stagePosNorm: [0.35, 0, 0.0] }
@@ -578,8 +588,6 @@ export function buildTheatricalStorySpec(
         ];
       } else {
         // Center apron performance
-        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
-        partnerMotionPreset = directingProfile.actingPresets.act2;
         leadWaypoints = [
           { frameProgress: 0, stagePosNorm: [-0.15, 0, 0.15] },
           { frameProgress: 1, stagePosNorm: [0.0, 0, 0.3] }
@@ -605,8 +613,13 @@ export function buildTheatricalStorySpec(
         ];
       } else {
         // Act III Climax: Full Stage energy
-        leadMotionPreset = directingProfile.actingPresets.chorus;
-        partnerMotionPreset = directingProfile.actingPresets.act2;
+        if (isLeadInstrumentalist && isPartnerVocalist) {
+          leadMotionPreset = directingProfile.actingPresets.act2;
+          partnerMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
+        } else {
+          leadMotionPreset = directingProfile.actingPresets.chorus;
+          partnerMotionPreset = directingProfile.actingPresets.act2;
+        }
         leadWaypoints = [
           { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.2] },
           { frameProgress: 1, stagePosNorm: [0.1, 0, 0.35] }

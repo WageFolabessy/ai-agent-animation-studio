@@ -10,6 +10,9 @@ export interface LightingPulseResult {
   backdropBottom: string;
   haloOpacity: number;
   haloRadius: number;
+  spotlightIntensity: number;
+  hazeOpacity: number;
+  strobeFlash: number;
 }
 
 /**
@@ -59,12 +62,20 @@ export function computeLightingPulse(
   const haloOpacity = 0.45 * pulse;
   const haloRadius = 150 + 100 * pulse;
 
+  // Theatrical Stage Atmosphere (Pillar 3 & Stage 3)
+  const spotlightIntensity = Math.max(0.15, Math.min(0.9, 0.25 + 0.65 * pulse));
+  const hazeOpacity = Math.max(0.05, Math.min(0.28, 0.08 + 0.16 * currentAudio.bands.bass));
+  const strobeFlash = onsetSpring > 0.68 ? Math.min(0.35, (onsetSpring - 0.68) * 1.05) : 0;
+
   return {
     pulse,
     backdropTop,
     backdropBottom,
     haloOpacity,
-    haloRadius
+    haloRadius,
+    spotlightIntensity,
+    hazeOpacity,
+    strobeFlash
   };
 }
 

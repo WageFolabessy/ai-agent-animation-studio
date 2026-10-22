@@ -238,10 +238,30 @@ export class SceneCompositor {
           { offset: 1, color: frameState.palette.accent, opacity: 0 }
         ]
       });
-      // Center halo
+
+      let haloCenterX = this.width / 2;
+      let haloCenterY = this.height / 2 + 50;
+
+      const leadEntity = frameState.entities[0];
+      if (leadEntity) {
+        const pLeadCam = worldToCameraSpace(leadEntity.worldPosition, camera, basis);
+        if (pLeadCam[2] >= camera.nearPlane && pLeadCam[2] <= camera.farPlane) {
+          const pLeadScreen = projectCameraPointToScreen(pLeadCam, camera, this.width, this.height);
+          if (
+            pLeadScreen.x >= 0 &&
+            pLeadScreen.x <= this.width &&
+            pLeadScreen.y >= 0 &&
+            pLeadScreen.y <= this.height
+          ) {
+            haloCenterX = pLeadScreen.x;
+            haloCenterY = Math.max(100, pLeadScreen.y - 40);
+          }
+        }
+      }
+
       builder.addCircle(
-        this.width / 2,
-        this.height / 2 + 50,
+        haloCenterX,
+        haloCenterY,
         pulseResult.haloRadius,
         'url(#audio_halo)'
       );
@@ -488,6 +508,106 @@ export class SceneCompositor {
           fkTransforms
         });
       }
+
+      // Floor contact shadow for ground characters
+      if (rig.type === 'character' && entity.opacity > 0.05) {
+        const charX = entity.worldPosition[0];
+        const charZ = entity.worldPosition[2];
+        const scaleX = Math.abs(entity.scale[0]);
+        const scaleY = Math.abs(entity.scale[1]);
+        const rx = 32 * Math.max(0.4, scaleX);
+        const rz = 16 * Math.max(0.4, scaleY);
+        const shadowSteps = 8;
+        const shadowVerts: Vec3[] = [];
+        for (let s = 0; s < shadowSteps; s++) {
+          const theta = (s * Math.PI * 2) / shadowSteps;
+          shadowVerts.push([
+            charX + rx * Math.cos(theta),
+            0.2,
+            charZ + rz * Math.sin(theta)
+          ]);
+        }
+
+        const camVerts = shadowVerts.map((v) => worldToCameraSpace(v, camera, basis));
+        if (camVerts.every((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
+          sortables.push({
+            kind: 'env_polygon',
+            vertices: camVerts,
+            depthKey: entity.worldPosition[2] - 2,
+            tier: 1,
+            layerPass: 0,
+            index: submitIndex++,
+            fill: '#000000',
+            opacity: Number((0.36 * entity.opacity).toFixed(3)),
+            worldVertices: shadowVerts
+          });
+        }
+      }
+    }
+
+    // 2d. Theatrical Volumetric Spotlights & Atmospheric Stage Haze
+    if (environment.polygons && environment.polygons.length > 0) {
+      const activeCharEntities = frameState.entities.filter(
+        (e) => rigs.get(e.rigId)?.type === 'character' && e.opacity > 0.1
+      );
+
+      // Track up to 2 characters with dynamic overhead spotlights
+      for (let c = 0; c < Math.min(2, activeCharEntities.length); c++) {
+        const charEnt = activeCharEntities[c];
+        const targetX = charEnt.worldPosition[0];
+        const targetZ = charEnt.worldPosition[2];
+        const apexX = targetX * 0.75 + (c === 0 ? -15 : 15);
+        const apexY = 380;
+        const apexZ = -80;
+
+        const spotColor = c === 0 ? frameState.palette.primary : frameState.palette.accent;
+        const spotVerts: Vec3[] = [
+          [apexX - 10, apexY, apexZ],
+          [apexX + 10, apexY, apexZ],
+          [targetX + 50, 0, targetZ],
+          [targetX - 50, 0, targetZ]
+        ];
+
+        const camVerts = spotVerts.map((v) => worldToCameraSpace(v, camera, basis));
+        if (camVerts.some((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
+          sortables.push({
+            kind: 'env_polygon',
+            vertices: camVerts,
+            depthKey: targetZ - 15,
+            tier: 2,
+            layerPass: 0,
+            index: submitIndex++,
+            fill: spotColor,
+            opacity: Number((0.11 + 0.16 * pulseResult.spotlightIntensity).toFixed(3)),
+            isTwoSided: true,
+            worldVertices: spotVerts
+          });
+        }
+      }
+
+      // Atmospheric Stage Haze layer rolling across stage floor
+      const centerX = activeCharEntities.length > 0 ? activeCharEntities[0].worldPosition[0] : 0;
+      const hazeVerts: Vec3[] = [
+        [centerX - 500, 0, -90],
+        [centerX + 500, 0, -90],
+        [centerX + 500, 35, -90],
+        [centerX - 500, 35, -90]
+      ];
+      const camHaze = hazeVerts.map((v) => worldToCameraSpace(v, camera, basis));
+      if (camHaze.some((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
+        sortables.push({
+          kind: 'env_polygon',
+          vertices: camHaze,
+          depthKey: -90,
+          tier: 1,
+          layerPass: 0,
+          index: submitIndex++,
+          fill: frameState.palette.accent,
+          opacity: Number((0.05 + 0.09 * pulseResult.hazeOpacity).toFixed(3)),
+          isTwoSided: true,
+          worldVertices: hazeVerts
+        });
+      }
     }
 
     // 3. Strict Back-to-Front Sorting (Painter's Algorithm)
@@ -614,6 +734,19 @@ export class SceneCompositor {
         this.height,
         frameState.palette.background,
         Math.min(1, frameState.transitionOverlayOpacity)
+      );
+    }
+
+    // Theatrical Audio Strobe / Impact Flash on heavy drum onsets
+    if (pulseResult.strobeFlash > 0.05) {
+      stats.drawablesCount++;
+      builder.addRect(
+        0,
+        0,
+        this.width,
+        this.height,
+        frameState.palette.accent,
+        Number((pulseResult.strobeFlash * 0.22).toFixed(3))
       );
     }
 
