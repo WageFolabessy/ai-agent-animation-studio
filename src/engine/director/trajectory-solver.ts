@@ -7,6 +7,8 @@ import { samplePoseTrack } from '../rigging/deformer.js';
 
 export const ARCHETYPE_CANONICAL_BASE_Y: Record<CharacterArchetypeId, number> = {
   biped_runner: 75,
+  biped_frontal: 75,
+  biped_three_quarters: 75,
   quadruped_beast: 50,
   aerial_drone: 140
 };
@@ -34,6 +36,22 @@ export const ANATOMICAL_FOCUS_OFFSETS: Record<CharacterArchetypeId, AnatomicalFo
     fkFocusLocalPoint: [4, 18],
     fkBodyCenterJointId: 'pelvis'
   },
+  biped_frontal: {
+    cameraFocusDeltaFromRoot: [0, 0, 0],
+    worldHeadOffsetFromRoot: [0, 58, 0],
+    worldBodyCenterOffsetX: 0,
+    fkFocusJointId: 'head',
+    fkFocusLocalPoint: [0, 18],
+    fkBodyCenterJointId: 'pelvis'
+  },
+  biped_three_quarters: {
+    cameraFocusDeltaFromRoot: [0, 0, 0],
+    worldHeadOffsetFromRoot: [2, 58, 0],
+    worldBodyCenterOffsetX: 0,
+    fkFocusJointId: 'head',
+    fkFocusLocalPoint: [2, 18],
+    fkBodyCenterJointId: 'pelvis'
+  },
   quadruped_beast: {
     cameraFocusDeltaFromRoot: [38, -25, 0],
     worldHeadOffsetFromRoot: [62, 34, 0],
@@ -57,7 +75,17 @@ export const NON_LOCOMOTION_CLIPS = new Set([
   'combat_clash',
   'beast_idle',
   'idle',
-  'scream'
+  'scream',
+  'pop_vocal_sway',
+  'stage_spin',
+  'rhythmic_step',
+  'crowd_cheer',
+  'acoustic_strum',
+  'bench_contemplation',
+  'gazing_out_window',
+  'slow_waltz',
+  'headbang_riff',
+  'collapse_to_knees'
 ]);
 
 export interface LimbContactStats {
@@ -465,8 +493,23 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       'combat_clash',
       'exhausted_walk',
       'beast_gallop',
-      'beast_idle'
+      'beast_idle',
+      'pop_vocal_sway',
+      'stage_spin',
+      'rhythmic_step',
+      'crowd_cheer',
+      'acoustic_strum',
+      'rain_umbrella_walk',
+      'bench_contemplation',
+      'gazing_out_window',
+      'slow_waltz',
+      'headbang_riff',
+      'collapse_to_knees'
     ]);
+
+    const isTheatrical = Boolean(
+      sectionSpec?.stagingMode === 'theatrical' || sectionSpec?.theatricalSetId
+    );
 
     if (isQuadrupedRig) {
       clipId = rawPreset === 'idle' ? 'beast_idle' : 'beast_gallop';
@@ -485,7 +528,7 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       clipId = act === 1 ? 'stalk_crouch' : act === 3 ? 'sprint_frenzy' : 'exhausted_walk';
     }
 
-    if (!isQuadrupedRig) {
+    if (!isQuadrupedRig && !isTheatrical) {
       if (
         shot.framing === 'CLOSE_UP' &&
         (sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal') ||
@@ -509,9 +552,36 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       clipId
     );
 
-    const startX = currentX;
-    const endX = startX + motionParams.rootSpeed * duration;
-    currentX = endX;
+    let startX: number;
+    let endX: number;
+    let effectiveRootSpeed = motionParams.rootSpeed;
+
+    if (isTheatrical) {
+      const wp0NormX = directive?.waypoints?.[0]?.stagePosNorm[0] ?? 0;
+      const wpLastNormX =
+        directive?.waypoints?.[directive.waypoints.length - 1]?.stagePosNorm[0] ?? wp0NormX;
+
+      if (motionParams.rootSpeed === 0) {
+        startX = Math.max(-95, Math.min(95, wp0NormX * 80));
+        endX = Math.max(-95, Math.min(95, wpLastNormX * 80));
+        effectiveRootSpeed = Number(((endX - startX) / duration).toFixed(4));
+      } else {
+        const rawTravel = motionParams.rootSpeed * duration;
+        if (rawTravel <= 180) {
+          startX = Math.max(-95, Math.min(95 - rawTravel, -rawTravel / 2));
+          endX = startX + rawTravel;
+        } else {
+          startX = -90;
+          endX = 90;
+          effectiveRootSpeed = Number(((endX - startX) / duration).toFixed(4));
+        }
+      }
+      currentX = endX;
+    } else {
+      startX = currentX;
+      endX = startX + motionParams.rootSpeed * duration;
+      currentX = endX;
+    }
 
     plan.push({
       shotId: shot.id,
@@ -520,7 +590,7 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       duration,
       clipId,
       timeScale: motionParams.timeScale,
-      rootSpeed: motionParams.rootSpeed,
+      rootSpeed: effectiveRootSpeed,
       startX: Number(startX.toFixed(2)),
       endX: Number(endX.toFixed(2))
     });
@@ -596,14 +666,43 @@ export class TrajectorySolver {
 
       const localF = Math.max(0, frame - matchedItem.startFrame);
       worldX = matchedItem.startX + matchedItem.rootSpeed * localF;
+    } else if (section && (section.stagingMode === 'theatrical' || section.theatricalSetId)) {
+      const directive =
+        section.castDirectives?.find((d: CastDirective) => !instanceId || d.instanceId === instanceId) ??
+        section.castDirectives?.[0];
+      const wps = directive?.waypoints ?? [];
+      if (wps.length > 0) {
+        const secDuration = Math.max(1, section.endFrame - section.startFrame);
+        const tau = Math.max(0, Math.min(1, (frame - section.startFrame) / secDuration));
+        let wpA = wps[0];
+        let wpB = wps[wps.length - 1];
+        for (let i = 0; i < wps.length - 1; i++) {
+          if (tau >= wps[i].frameProgress && tau <= wps[i + 1].frameProgress) {
+            wpA = wps[i];
+            wpB = wps[i + 1];
+            break;
+          }
+        }
+        const span = Math.max(1e-6, wpB.frameProgress - wpA.frameProgress);
+        const alpha = Math.max(0, Math.min(1, (tau - wpA.frameProgress) / span));
+        const normX = wpA.stagePosNorm[0] + (wpB.stagePosNorm[0] - wpA.stagePosNorm[0]) * alpha;
+        worldX = Math.max(-100, Math.min(100, normX * 80));
+      } else {
+        worldX = 0;
+      }
     } else {
       // Deterministic fallback for standalone unit tests when no storyboard motion plan is loaded
       worldX = frame * 3.5;
     }
 
-    // Ground runners (biped_runner and quadruped_beast) lock Y = baseY and Z = 0
-    // so feet remain planted on the Y = 0 runway plane and match solveChoreography() 1:1.
-    if (this.leadArchetypeId === 'biped_runner' || this.leadArchetypeId === 'quadruped_beast') {
+    // Ground characters (bipeds and quadruped_beast) lock Y = baseY and Z = 0
+    // so feet remain planted on the Y = 0 stage/runway plane and match solveChoreography() 1:1.
+    if (
+      this.leadArchetypeId === 'biped_runner' ||
+      this.leadArchetypeId === 'biped_frontal' ||
+      this.leadArchetypeId === 'biped_three_quarters' ||
+      this.leadArchetypeId === 'quadruped_beast'
+    ) {
       return [Number(worldX.toFixed(2)), baseY, baseZ];
     }
 

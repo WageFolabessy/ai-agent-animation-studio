@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Vec3Schema, HexColorSchema, FrameRangeSchema, CameraTransformSchema } from './primitives.schema.js';
+import { TheatricalSetIdSchema, ShotTransitionSpecSchema } from './stage.contract.js';
 
 export const CameraFramingEnum = z.enum([
   'EXTREME_WIDE', 'WIDE', 'MEDIUM', 'CLOSE_UP', 'EXTREME_CLOSE_UP'
@@ -56,7 +57,9 @@ export const CinematicShotSchema = z.object({
   palette: ColorLightingPaletteSchema,
   narrativeAction: z.string().min(1),
   activeRigIds: z.array(z.string().min(1)).min(1),
-  environmentZone: EnvironmentZoneTypeEnum.optional()
+  environmentZone: EnvironmentZoneTypeEnum.optional(),
+  theatricalSetId: TheatricalSetIdSchema.optional(),
+  transitionIn: ShotTransitionSpecSchema.optional()
 }).strict().refine(
   (shot) => shot.cameraStart.projectionMode === shot.cameraEnd.projectionMode,
   { message: 'Camera projectionMode must match between start and end' }

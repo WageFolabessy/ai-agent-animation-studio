@@ -1,33 +1,21 @@
 import type {
   AssetRigContract,
   NormalizedCubicBezierSegment,
-  PoseInterpolationContract
+  PoseInterpolationContract,
+  RigPart
 } from '../../schemas/rig.contract.js';
 import type { ArchetypeBuildOptions } from './types.js';
 import {
   generateBipedLocomotionClip,
   generateQuadrupedGallopClip
 } from '../rigging/ik-leg-solver.js';
+import {
+  BASE_MOUTH_REST_SEGMENTS,
+  CANONICAL_BIPED_MORPH_TARGETS
+} from '../rigging/vocal-performance-solver.js';
+import { PropFactory, CANONICAL_BIPED_SOCKETS } from './prop-factory.js';
 
-const baseMouthSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.2, 0.0], p1: [-1.5, 0.35], p2: [1.5, 0.35], p3: [3.2, 0.0] },
-  { p0: [3.2, 0.0], p1: [1.5, -0.35], p2: [-1.5, -0.35], p3: [-3.2, 0.0] }
-];
-
-const mouthOpenSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.5, 0.3], p1: [-1.6, 1.45], p2: [1.6, 1.45], p3: [3.5, 0.3] },
-  { p0: [3.5, 0.3], p1: [1.6, -1.75], p2: [-1.6, -1.75], p3: [-3.5, 0.3] }
-];
-
-const browRaiseSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.4, 0.25], p1: [-1.5, 0.85], p2: [1.5, 0.85], p3: [3.4, 0.25] },
-  { p0: [3.4, 0.25], p1: [1.5, -0.25], p2: [-1.5, -0.25], p3: [-3.4, 0.25] }
-];
-
-const blinkSegments: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.2, 0.0], p1: [-1.4, 0.12], p2: [1.4, 0.12], p3: [3.2, 0.0] },
-  { p0: [3.2, 0.0], p1: [1.4, -0.12], p2: [-1.4, -0.12], p3: [-3.2, 0.0] }
-];
+const baseMouthSegments: NormalizedCubicBezierSegment[] = BASE_MOUTH_REST_SEGMENTS;
 
 export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
   stalk_crouch: generateBipedLocomotionClip({
@@ -258,7 +246,596 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     armLowerAmp: -2.5,
     coatDeg0: -12,
     coatAmp: -2
-  })
+  }),
+  rain_umbrella_walk: generateBipedLocomotionClip({
+    loopFrames: 36,
+    stanceFrames: 22,
+    strideLengthUnits: 44.0,
+    groundY: -46.0,
+    swingLift: 7.5,
+    pelvisY0: -2,
+    pelvisBobAmp: 1.2,
+    torsoDeg0: -6,
+    torsoAmp: 1,
+    headDeg0: -8,
+    headAmp: 1,
+    armUpperMid: 35,
+    armUpperAmp: 2,
+    armLowerMid: 55,
+    armLowerAmp: 1,
+    coatDeg0: -14,
+    coatAmp: -2
+  }),
+  pop_vocal_sway: {
+    interpolationMode: 'linear',
+    loopFrames: 24,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -2, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 4 },
+          { jointId: 'head', rotationZDegrees: -3 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 45 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 48 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 72 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -12 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -8 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
+          { jointId: 'coat_tail', rotationZDegrees: -12 }
+        ]
+      },
+      {
+        frame: 12,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 2, localOffset2D: [0, 2] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -10 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 60 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 54 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 78 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -8 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -12 },
+          { jointId: 'coat_tail', rotationZDegrees: -18 }
+        ]
+      },
+      {
+        frame: 24,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -2, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 4 },
+          { jointId: 'head', rotationZDegrees: -3 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 45 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 48 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 72 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -12 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -8 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
+          { jointId: 'coat_tail', rotationZDegrees: -12 }
+        ]
+      }
+    ]
+  },
+  stage_spin: {
+    interpolationMode: 'linear',
+    loopFrames: 24,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 0 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -55 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 35 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 15 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -25 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -35 }
+        ]
+      },
+      {
+        frame: 12,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 8, localOffset2D: [0, 6] },
+          { jointId: 'torso', rotationZDegrees: -8 },
+          { jointId: 'head', rotationZDegrees: 6 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -75 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 75 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 20 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -12 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 28 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -45 },
+          { jointId: 'coat_tail', rotationZDegrees: -55 }
+        ]
+      },
+      {
+        frame: 24,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 0 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -55 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 35 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 15 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -25 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -35 }
+        ]
+      }
+    ]
+  },
+  rhythmic_step: {
+    interpolationMode: 'linear',
+    loopFrames: 24,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -20 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 65 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 35 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 65 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -35 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -12 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -16 }
+        ]
+      },
+      {
+        frame: 12,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 3] },
+          { jointId: 'torso', rotationZDegrees: 4 },
+          { jointId: 'head', rotationZDegrees: -4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 35 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 65 },
+          { jointId: 'arm_r_upper', rotationZDegrees: -20 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 65 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -12 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -35 },
+          { jointId: 'coat_tail', rotationZDegrees: -24 }
+        ]
+      },
+      {
+        frame: 24,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -20 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 65 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 35 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 65 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -35 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -12 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -16 }
+        ]
+      }
+    ]
+  },
+  crowd_cheer: {
+    interpolationMode: 'linear',
+    loopFrames: 24,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 10 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -78 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 15 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 78 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 15 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 6 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -15 }
+        ]
+      },
+      {
+        frame: 12,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 4] },
+          { jointId: 'torso', rotationZDegrees: 10 },
+          { jointId: 'head', rotationZDegrees: 14 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -85 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 5 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 85 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 5 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 12 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -18 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -12 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -18 },
+          { jointId: 'coat_tail', rotationZDegrees: -25 }
+        ]
+      },
+      {
+        frame: 24,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 10 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -78 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 15 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 78 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 15 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 6 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -15 }
+        ]
+      }
+    ]
+  },
+  acoustic_strum: {
+    interpolationMode: 'linear',
+    loopFrames: 24,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -6 },
+          { jointId: 'head', rotationZDegrees: -8 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 68 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 52 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
+          { jointId: 'coat_tail', rotationZDegrees: -8 }
+        ]
+      },
+      {
+        frame: 12,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 1] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: -4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 34 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 72 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 28 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 32 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
+          { jointId: 'coat_tail', rotationZDegrees: -12 }
+        ]
+      },
+      {
+        frame: 24,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -6 },
+          { jointId: 'head', rotationZDegrees: -8 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 68 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 52 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
+          { jointId: 'coat_tail', rotationZDegrees: -8 }
+        ]
+      }
+    ]
+  },
+  bench_contemplation: {
+    interpolationMode: 'linear',
+    loopFrames: 36,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -14] },
+          { jointId: 'torso', rotationZDegrees: -12 },
+          { jointId: 'head', rotationZDegrees: -14 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 18 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 45 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 22 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 55 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 68 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -72 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 64 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -68 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
+        ]
+      },
+      {
+        frame: 18,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -14] },
+          { jointId: 'torso', rotationZDegrees: -9 },
+          { jointId: 'head', rotationZDegrees: -8 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 20 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 48 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 26 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 60 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 68 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -72 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 64 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -68 },
+          { jointId: 'coat_tail', rotationZDegrees: -8 }
+        ]
+      },
+      {
+        frame: 36,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -14] },
+          { jointId: 'torso', rotationZDegrees: -12 },
+          { jointId: 'head', rotationZDegrees: -14 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 18 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 45 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 22 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 55 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 68 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -72 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 64 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -68 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
+        ]
+      }
+    ]
+  },
+  gazing_out_window: {
+    interpolationMode: 'linear',
+    loopFrames: 36,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 3 },
+          { jointId: 'head', rotationZDegrees: 12 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -8 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 28 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
+        ]
+      },
+      {
+        frame: 18,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 1] },
+          { jointId: 'torso', rotationZDegrees: 5 },
+          { jointId: 'head', rotationZDegrees: 16 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -6 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 66 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -10 }
+        ]
+      },
+      {
+        frame: 36,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 3 },
+          { jointId: 'head', rotationZDegrees: 12 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -8 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 28 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
+        ]
+      }
+    ]
+  },
+  slow_waltz: {
+    interpolationMode: 'linear',
+    loopFrames: 36,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -3, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 42 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 52 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 45 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 14 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -18 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -18 }
+        ]
+      },
+      {
+        frame: 18,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 3, localOffset2D: [0, 3] },
+          { jointId: 'torso', rotationZDegrees: -6 },
+          { jointId: 'head', rotationZDegrees: -4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 48 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 40 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 46 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 38 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 14 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -18 },
+          { jointId: 'coat_tail', rotationZDegrees: -26 }
+        ]
+      },
+      {
+        frame: 36,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -3, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 42 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 52 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 45 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 14 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -18 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -18 }
+        ]
+      }
+    ]
+  },
+  headbang_riff: {
+    interpolationMode: 'linear',
+    loopFrames: 16,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -6, localOffset2D: [0, -4] },
+          { jointId: 'torso', rotationZDegrees: -28 },
+          { jointId: 'head', rotationZDegrees: -28 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 36 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 72 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 22 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 58 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 26 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -32 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -18 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -22 },
+          { jointId: 'coat_tail', rotationZDegrees: -32 }
+        ]
+      },
+      {
+        frame: 8,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 2, localOffset2D: [0, 2] },
+          { jointId: 'torso', rotationZDegrees: 8 },
+          { jointId: 'head', rotationZDegrees: 22 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 38 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 76 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 38 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 30 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -26 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -14 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -18 },
+          { jointId: 'coat_tail', rotationZDegrees: -48 }
+        ]
+      },
+      {
+        frame: 16,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -6, localOffset2D: [0, -4] },
+          { jointId: 'torso', rotationZDegrees: -28 },
+          { jointId: 'head', rotationZDegrees: -28 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 36 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 72 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 22 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 58 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 26 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -32 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -18 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -22 },
+          { jointId: 'coat_tail', rotationZDegrees: -32 }
+        ]
+      }
+    ]
+  },
+  collapse_to_knees: {
+    interpolationMode: 'linear',
+    loopFrames: 36,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -8, localOffset2D: [0, -22] },
+          { jointId: 'torso', rotationZDegrees: 14 },
+          { jointId: 'head', rotationZDegrees: 24 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -45 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 45 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 75 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -125 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 65 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -120 },
+          { jointId: 'coat_tail', rotationZDegrees: -10 }
+        ]
+      },
+      {
+        frame: 18,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -10, localOffset2D: [0, -22] },
+          { jointId: 'torso', rotationZDegrees: -18 },
+          { jointId: 'head', rotationZDegrees: -22 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 70 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 30 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 75 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -125 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 65 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -120 },
+          { jointId: 'coat_tail', rotationZDegrees: -15 }
+        ]
+      },
+      {
+        frame: 36,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: -8, localOffset2D: [0, -22] },
+          { jointId: 'torso', rotationZDegrees: 14 },
+          { jointId: 'head', rotationZDegrees: 24 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -45 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 45 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 75 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -125 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 65 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -120 },
+          { jointId: 'coat_tail', rotationZDegrees: -10 }
+        ]
+      }
+    ]
+  }
 };
 
 export const QuadrupedPoseClips: Record<string, PoseInterpolationContract> = {
@@ -336,17 +913,61 @@ export const QuadrupedPoseClips: Record<string, PoseInterpolationContract> = {
 };
 
 export class ArchetypeFactory {
+  private static attachNarrativeProps(
+    rig: AssetRigContract,
+    accessories: readonly string[] = []
+  ): AssetRigContract {
+    const propParts: RigPart[] = [];
+    for (const acc of accessories) {
+      if (PropFactory.isNarrativePropId(acc)) {
+        const candidateParts = PropFactory.buildAttachedPropParts(acc);
+        for (const p of candidateParts) {
+          if (rig.parts.length + propParts.length < 28) {
+            propParts.push(p);
+          }
+        }
+      }
+    }
+
+    return {
+      ...rig,
+      sockets: [...CANONICAL_BIPED_SOCKETS],
+      parts: propParts.length > 0 ? [...rig.parts, ...propParts] : rig.parts
+    };
+  }
+
   public static build(options: ArchetypeBuildOptions): AssetRigContract {
-    const { archetypeId } = options.spec;
+    const { archetypeId, viewAngle, accessories } = options.spec;
+    if (archetypeId === 'biped_frontal' || (archetypeId === 'biped_runner' && viewAngle === 'front')) {
+      return ArchetypeFactory.attachNarrativeProps(
+        ArchetypeFactory.buildBipedFrontal(options),
+        accessories
+      );
+    }
+    if (
+      archetypeId === 'biped_three_quarters' ||
+      (archetypeId === 'biped_runner' && viewAngle === 'three_quarter')
+    ) {
+      return ArchetypeFactory.attachNarrativeProps(
+        ArchetypeFactory.buildBipedThreeQuarters(options),
+        accessories
+      );
+    }
     switch (archetypeId) {
       case 'biped_runner':
-        return ArchetypeFactory.buildBipedRunner(options);
+        return ArchetypeFactory.attachNarrativeProps(
+          ArchetypeFactory.buildBipedRunner(options),
+          accessories
+        );
       case 'quadruped_beast':
         return ArchetypeFactory.buildQuadrupedBeast(options);
       case 'aerial_drone':
         return ArchetypeFactory.buildAerialDrone(options);
       default:
-        return ArchetypeFactory.buildBipedRunner(options);
+        return ArchetypeFactory.attachNarrativeProps(
+          ArchetypeFactory.buildBipedRunner(options),
+          accessories
+        );
     }
   }
 
@@ -871,11 +1492,7 @@ export class ArchetypeFactory {
       ],
       morphTopology: {
         baseSegments: baseMouthSegments,
-        targets: [
-          { name: 'mouthOpen', segments: mouthOpenSegments },
-          { name: 'browRaise', segments: browRaiseSegments },
-          { name: 'blink', segments: blinkSegments }
-        ]
+        targets: CANONICAL_BIPED_MORPH_TARGETS
       },
       secondaryMotion: [
         {
@@ -896,6 +1513,178 @@ export class ArchetypeFactory {
       poseInterpolation: BipedPoseClips.sprint_frenzy,
       poseClips: BipedPoseClips,
       svgAsset: { idNamespace: instanceId }
+    };
+  }
+
+  /**
+   * Archetype 1B: Biped Frontal (0 deg direct-to-camera vocalist/monologue rig)
+   * Features symmetrical torso/shoulders, dual blinking eyes (eye_l_optic_core, eye_r_optic_core),
+   * and centered cranial facial_expression_morph for phoneme lip-sync.
+   */
+  public static buildBipedFrontal(options: ArchetypeBuildOptions): AssetRigContract {
+    const base = ArchetypeFactory.buildBipedRunner(options);
+    const frontalParts: RigPart[] = base.parts
+      .filter((p) => p.id !== 'eye_optic_core' && p.id !== 'facial_expression_morph')
+      .map((p) => {
+        if (p.id === 'head_cranium') {
+          return {
+            ...p,
+            localOffset2D: [0, 6],
+            shape: {
+              kind: 'polygon' as const,
+              points: [
+                [-9, -6],
+                [9, -6],
+                [10, 6],
+                [5, 12],
+                [-5, 12],
+                [-10, 6]
+              ]
+            }
+          };
+        }
+        if (p.id === 'head_visor') {
+          return {
+            ...p,
+            localOffset2D: [0, 6.5],
+            shape: {
+              kind: 'polygon' as const,
+              points: [
+                [-8, -2],
+                [8, -2],
+                [9, 3],
+                [-9, 3]
+              ]
+            }
+          };
+        }
+        return p;
+      });
+
+    frontalParts.push(
+      {
+        id: 'eye_l_optic_core',
+        jointId: 'head',
+        localOffset2D: [-3.5, 6.5],
+        shape: { kind: 'ellipse', radius: [2.2, 1.6] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: 0.45 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.6 }, width: 0.9 },
+          opacity: 0.98,
+          lit: false
+        }
+      },
+      {
+        id: 'eye_r_optic_core',
+        jointId: 'head',
+        localOffset2D: [3.5, 6.5],
+        shape: { kind: 'ellipse', radius: [2.2, 1.6] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: 0.45 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.6 }, width: 0.9 },
+          opacity: 0.98,
+          lit: false
+        }
+      },
+      {
+        id: 'facial_expression_morph',
+        jointId: 'head',
+        localOffset2D: [0, 2.0],
+        shape: { kind: 'morph' },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0.25 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0.35 }, width: 1.2 },
+          opacity: 0.95,
+          lit: false
+        }
+      }
+    );
+
+    return {
+      ...base,
+      name: `Biped Frontal (${options.instanceId})`,
+      viewAngle: 'front',
+      facingDirection: 'front',
+      sockets: [...CANONICAL_BIPED_SOCKETS],
+      parts: frontalParts,
+      poseInterpolation: BipedPoseClips.pop_vocal_sway
+    };
+  }
+
+  /**
+   * Archetype 1C: Biped Three-Quarters (45 deg cinematic conversational/performance rig)
+   * Balances depth foreshortening with clear dual-eye and mouth articulation.
+   */
+  public static buildBipedThreeQuarters(options: ArchetypeBuildOptions): AssetRigContract {
+    const base = ArchetypeFactory.buildBipedRunner(options);
+    const threeQuarterParts: RigPart[] = base.parts
+      .filter((p) => p.id !== 'eye_optic_core' && p.id !== 'facial_expression_morph')
+      .map((p) => {
+        if (p.id === 'head_visor') {
+          return {
+            ...p,
+            localOffset2D: [3.5, 6.5],
+            shape: {
+              kind: 'polygon' as const,
+              points: [
+                [-6, -2],
+                [8, -2],
+                [9, 3],
+                [-5, 3]
+              ]
+            }
+          };
+        }
+        return p;
+      });
+
+    threeQuarterParts.push(
+      {
+        id: 'eye_l_optic_core',
+        jointId: 'head',
+        localOffset2D: [1.2, 6.5],
+        shape: { kind: 'ellipse', radius: [2.0, 1.6] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: 0.45 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.6 }, width: 0.9 },
+          opacity: 0.98,
+          lit: false
+        }
+      },
+      {
+        id: 'eye_r_optic_core',
+        jointId: 'head',
+        localOffset2D: [6.8, 6.5],
+        shape: { kind: 'ellipse', radius: [1.7, 1.5] },
+        style: {
+          fill: { kind: 'palette', role: 'primary', shade: 0.45 },
+          stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.6 }, width: 0.9 },
+          opacity: 0.98,
+          lit: false
+        }
+      },
+      {
+        id: 'facial_expression_morph',
+        jointId: 'head',
+        localOffset2D: [4.2, 2.1],
+        shape: { kind: 'morph' },
+        style: {
+          fill: { kind: 'palette', role: 'accent', shade: 0.25 },
+          stroke: { paint: { kind: 'palette', role: 'primary', shade: 0.35 }, width: 1.2 },
+          opacity: 0.95,
+          lit: false
+        }
+      }
+    );
+
+    return {
+      ...base,
+      name: `Biped Three-Quarters (${options.instanceId})`,
+      viewAngle: 'three_quarter',
+      facingDirection: 'right',
+      sockets: [...CANONICAL_BIPED_SOCKETS],
+      parts: threeQuarterParts,
+      poseInterpolation: BipedPoseClips.acoustic_strum
     };
   }
 

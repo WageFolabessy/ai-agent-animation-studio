@@ -497,7 +497,19 @@ export function compileStorySpecToStoryboard(
       palette: skel.palette,
       narrativeAction: `${skel.secSpec.narrativeIntent} (${skel.angle.name})`,
       activeRigIds: skel.activeRigIds,
-      environmentZone: skel.environmentZone
+      environmentZone: skel.environmentZone,
+      ...(skel.secSpec.theatricalSetId ? { theatricalSetId: skel.secSpec.theatricalSetId } : {}),
+      ...(skel.secSpec.transitionIn
+        ? {
+            transitionIn: {
+              type: skel.secSpec.transitionIn,
+              durationFrames:
+                skel.secSpec.transitionIn === 'CUT'
+                  ? 0
+                  : Math.min(18, Math.max(4, Math.floor((fEndLast - fStart + 1) * 0.25)))
+            }
+          }
+        : {})
     };
   });
 

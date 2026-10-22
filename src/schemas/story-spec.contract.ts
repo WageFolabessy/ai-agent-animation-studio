@@ -1,4 +1,25 @@
 import { z } from 'zod';
+import { TheatricalSetIdSchema, SceneTransitionTypeSchema } from './stage.contract.js';
+
+export const StagingModeSchema = z.enum(['runner', 'theatrical']);
+export type StagingMode = z.infer<typeof StagingModeSchema>;
+
+export const CastRoleSchema = z.enum([
+  'PROTAGONIST',
+  'PARTNER',
+  'ANTAGONIST',
+  'BACKGROUND_CHORUS'
+]);
+export type CastRole = z.infer<typeof CastRoleSchema>;
+
+export const InteractionBehaviorSchema = z.enum([
+  'SOLO',
+  'FACE_TO_FACE',
+  'PARALLEL_WALK',
+  'DUET_PERFORMANCE',
+  'PURSUIT_AND_CONFRONTATION'
+]);
+export type InteractionBehavior = z.infer<typeof InteractionBehaviorSchema>;
 
 export const StageWaypointSchema = z
   .object({
@@ -6,7 +27,7 @@ export const StageWaypointSchema = z
     stagePosNorm: z.tuple([
       z.number().finite().min(-1.5).max(1.5), // X: -1.0 left edge, +1.0 right edge
       z.number().finite().min(-1.0).max(1.0), // Y: elevation
-      z.number().finite().min(0.0).max(3.0) // Z: depth layer
+      z.number().finite().min(-1.0).max(3.0) // Z: depth layer
     ])
   })
   .strict();
@@ -15,7 +36,15 @@ export type StageWaypoint = z.infer<typeof StageWaypointSchema>;
 export const CastSpecItemSchema = z
   .object({
     instanceId: z.string().min(1),
-    archetypeId: z.enum(['biped_runner', 'quadruped_beast', 'aerial_drone']),
+    archetypeId: z.enum([
+      'biped_runner',
+      'biped_frontal',
+      'biped_three_quarters',
+      'quadruped_beast',
+      'aerial_drone'
+    ]),
+    role: CastRoleSchema.optional(),
+    viewAngle: z.enum(['front', 'three_quarter', 'profile']).optional(),
     scale: z.number().finite().min(0.2).max(3.0).default(1.0),
     paletteOverrides: z
       .object({
@@ -47,7 +76,18 @@ export const CastDirectiveSchema = z
       'idle',
       'dive',
       'gallop',
-      'pounce'
+      'pounce',
+      'pop_vocal_sway',
+      'stage_spin',
+      'rhythmic_step',
+      'crowd_cheer',
+      'acoustic_strum',
+      'rain_umbrella_walk',
+      'bench_contemplation',
+      'gazing_out_window',
+      'slow_waltz',
+      'headbang_riff',
+      'collapse_to_knees'
     ]),
     waypoints: z.array(StageWaypointSchema).min(1)
   })
@@ -82,6 +122,10 @@ export const SectionStagingSpecSchema = z
     narrativeIntent: z.string().min(1),
     emotionalTone: EmotionalToneSchema.default('reflective'),
     lyricMotifs: z.array(z.string()).max(5).default([]),
+    stagingMode: StagingModeSchema.optional(),
+    theatricalSetId: TheatricalSetIdSchema.optional(),
+    transitionIn: SceneTransitionTypeSchema.optional(),
+    interactionBehavior: InteractionBehaviorSchema.optional(),
     environmentKitId: z.enum(['industrial_city', 'orbital_station', 'neon_chasm', 'synth_grid']),
     kitParams: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
     colorThemeId: z.enum([

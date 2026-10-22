@@ -8,6 +8,7 @@ import type { CameraTransform } from '../../schemas/primitives.schema.js';
 import { computeCameraBasis } from '../camera/camera-3d.js';
 import { ShotSequencer } from '../director/shot-sequencer.js';
 import { shadeHexColor } from '../math/color.js';
+import { StageEnvironmentGenerator } from './stage-environment-generator.js';
 import {
   type EnvironmentBuildOptions,
   type EnvironmentKitId,
@@ -207,6 +208,19 @@ export class EnvironmentKit {
     const xMin = options.xMin ?? (centerX - 600);
     const xMax = options.xMax ?? (centerX + 900);
     const isCloseUp = framing === 'CLOSE_UP';
+
+    if (section.theatricalSetId) {
+      return StageEnvironmentGenerator.buildSet({
+        setId: section.theatricalSetId,
+        centerX,
+        palette,
+        isCloseUp,
+        xMin,
+        xMax,
+        tierBounds,
+        kitParams: section.kitParams
+      });
+    }
 
     return EnvironmentKit.buildTiledParallaxEnvironment(
       xMin,

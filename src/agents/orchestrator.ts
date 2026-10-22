@@ -268,7 +268,14 @@ export class StudioAgentOrchestrator {
                 });
                 rMap.set(rig.id, rig);
               }
-              const choreo = solveChoreography(candidateSpec, sb, rMap, undefined, solver);
+              const choreo = solveChoreography(
+                candidateSpec,
+                sb,
+                rMap,
+                undefined,
+                solver,
+                options.audioManifest.lyrics
+              );
 
               const projRep = validateProjectContracts(
                 options.audioManifest,
@@ -325,7 +332,8 @@ export class StudioAgentOrchestrator {
         compiledStoryboard,
         compiledRigs,
         undefined,
-        solver
+        solver,
+        options.audioManifest.lyrics
       );
       projectValidationReport = validateProjectContracts(
         options.audioManifest,

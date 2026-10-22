@@ -479,16 +479,6 @@ export function validateProjectContracts(
     }
     rigIds.add(rig.id);
 
-    // Deferred viewAngle warning
-    if (rig.viewAngle !== undefined) {
-      errors.push({
-        code: 'VIEW_ANGLE_DEFERRED',
-        path: `rigs[${mapKey}].viewAngle`,
-        severity: 'warning',
-        message: `Rig "${rig.id}" specifies viewAngle "${rig.viewAngle}" which is deferred in Phase 2.`
-      });
-    }
-
     const skeletonJointIds = new Set<string>();
     if (rig.skeleton) {
       const joints = rig.skeleton.joints;

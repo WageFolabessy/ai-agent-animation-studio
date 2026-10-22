@@ -31,6 +31,7 @@ export const FrameStateContractSchema = z.object({
   palette: ColorLightingPaletteSchema,
   audio: AudioFrameFeatureSchema,
   lyric: ActiveLyricStateSchema.nullable(),
-  entities: z.array(ActiveEntityStateSchema)
+  entities: z.array(ActiveEntityStateSchema),
+  transitionOverlayOpacity: z.number().finite().min(0).max(1).optional()
 }).strict();
 export type FrameStateContract = z.infer<typeof FrameStateContractSchema>;

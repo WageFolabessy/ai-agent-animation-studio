@@ -601,7 +601,22 @@ export class SceneCompositor {
       }
     }
 
-    // 5. Screen-space overlays (Lyric Caption) — appended after all depth-sorted drawables
+    // 5. Screen-space overlays (Theatrical Cross-Fade & Lyric Caption) — appended after all depth-sorted drawables
+    if (
+      frameState.transitionOverlayOpacity !== undefined &&
+      frameState.transitionOverlayOpacity > 0.01
+    ) {
+      stats.drawablesCount++;
+      builder.addRect(
+        0,
+        0,
+        this.width,
+        this.height,
+        frameState.palette.background,
+        Math.min(1, frameState.transitionOverlayOpacity)
+      );
+    }
+
     if (
       frameState.lyric &&
       frameState.lyric.text.trim().length > 0 &&
@@ -735,11 +750,11 @@ export class SceneCompositor {
         const ryLocal = ryRaw * (1 - 0.85 * blinkWeight);
         if (
           Math.abs(rxLocal - ryLocal) < 1e-4 &&
-          Math.abs(ctx.entityScale[0] - ctx.entityScale[1]) < 1e-4 &&
+          Math.abs(Math.abs(ctx.entityScale[0]) - Math.abs(ctx.entityScale[1])) < 1e-4 &&
           !optionalStroke
         ) {
           const center = transformPoint([0, 0]);
-          const rScreen = rxLocal * ctx.scaleFactor * ctx.entityScale[0];
+          const rScreen = rxLocal * ctx.scaleFactor * Math.abs(ctx.entityScale[0]);
           if (
             center[0] + rScreen < -strokeMargin ||
             center[0] - rScreen > this.width + strokeMargin ||

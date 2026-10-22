@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FiniteNumberSchema, HexColorSchema, Vec2Schema, Vec3Schema } from './primitives.schema.js';
+import { RigSocketSchema } from './prop.contract.js';
 
 export const AssetRigTypeEnum = z.enum([
   'character', 'parallax_background', 'parallax_midground', 'parallax_foreground', 'prop', 'particle_emitter'
@@ -206,6 +207,7 @@ export const AssetRigContractSchema = z.object({
     rootJointId: z.string().min(1),
     joints: z.array(PlanarJointSchema).min(1)
   }).strict().optional(),
+  sockets: z.array(RigSocketSchema).optional(),
   parts: z.array(RigPartSchema).default([]),
   emitter: ParticleEmitterSchema.optional(),
   secondaryMotion: z.array(SecondaryMotionSchema).default([]),

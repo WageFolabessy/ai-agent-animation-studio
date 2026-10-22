@@ -46,6 +46,8 @@ export type EnvironmentKitId =
 
 export type CharacterArchetypeId =
   | 'biped_runner'
+  | 'biped_frontal'
+  | 'biped_three_quarters'
   | 'quadruped_beast'
   | 'aerial_drone';
 

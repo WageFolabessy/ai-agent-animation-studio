@@ -83,8 +83,34 @@ export class FrameStateBuilder {
     // 1. Identify active shot & normalized progress
     const { shot, normalizedProgress } = this.sequencer.getShotForFrame(frameIndex);
 
-    // 2. Base interpolated camera
-    const baseCamera = this.sequencer.interpolateCamera(shot, normalizedProgress);
+    // 2. Base interpolated camera (with optional theatrical CAMERA_PAN transition-in)
+    let baseCamera = this.sequencer.interpolateCamera(shot, normalizedProgress);
+    let transitionOverlayOpacity: number | undefined;
+
+    if (shot.transitionIn && shot.transitionIn.durationFrames > 0) {
+      const localFrame = frameIndex - shot.frameRange.startFrameInclusive;
+      if (localFrame >= 0 && localFrame < shot.transitionIn.durationFrames) {
+        const u = localFrame / shot.transitionIn.durationFrames;
+        if (shot.transitionIn.type === 'CROSS_FADE') {
+          transitionOverlayOpacity = Number(((1 - u) * 0.85).toFixed(3));
+        } else if (shot.transitionIn.type === 'CAMERA_PAN') {
+          const panShift = (1 - u) * (1 - u) * -40;
+          baseCamera = {
+            ...baseCamera,
+            position: [
+              baseCamera.position[0] + panShift,
+              baseCamera.position[1],
+              baseCamera.position[2]
+            ],
+            target: [
+              baseCamera.target[0] + panShift,
+              baseCamera.target[1],
+              baseCamera.target[2]
+            ]
+          };
+        }
+      }
+    }
 
     // 3. Audio-reactive camera trauma shake
     const camera = this.shakeSystem.applyShake(
@@ -160,7 +186,8 @@ export class FrameStateBuilder {
       palette: shot.palette,
       audio,
       lyric,
-      entities
+      entities,
+      ...(transitionOverlayOpacity !== undefined ? { transitionOverlayOpacity } : {})
     };
   }
 }

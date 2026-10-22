@@ -13,6 +13,10 @@ import { formatRepairFeedbackPrompt } from './repair-helper.js';
 import type { ValidationErrorItem } from '../schemas/invariants.js';
 import { analyzeSectionLyrics, extractLyricKeywords } from '../engine/audio/lyric-profile.js';
 import { classifyGenreProfile } from '../engine/audio/genre-classifier.js';
+import {
+  getGenreDirectingProfile,
+  type CanonicalGenreName
+} from '../engine/director/genre-directing-matrix.js';
 
 export const STORY_SPEC_JSON_SCHEMA = JSON.stringify(
   z.toJSONSchema(StorySpecContractSchema, { target: 'draft-07' })
@@ -30,14 +34,23 @@ export interface StorySpecAgentInput {
   readonly noLyricsInPrompt?: boolean;
 }
 
+export interface DeterministicStorySpecOptions {
+  readonly mode?: 'runner' | 'theatrical';
+  readonly genreOverride?: CanonicalGenreName;
+}
+
 /**
  * Deterministically synthesizes a StorySpecContract conditioned directly on the
  * audio manifest features (multi-factor genre classifier, tempo, spectral bands, lyrics).
  */
 export function buildDeterministicStorySpec(
   manifest: AudioAnalysisManifest,
-  projectId = 'autonomous-cinema'
+  projectId = 'autonomous-cinema',
+  options?: DeterministicStorySpecOptions
 ): StorySpecContract {
+  if (options?.mode === 'theatrical') {
+    return buildTheatricalStorySpec(manifest, projectId, options.genreOverride);
+  }
   const { durationSeconds, totalFrames } = manifest.metadata;
   const rawSections = manifest.sections ?? [];
   const lyricCount = manifest.lyrics.length;
@@ -359,6 +372,201 @@ export function buildDeterministicStorySpec(
 
 function isSoloClashOrLeap(preset: string): boolean {
   return preset === 'combat_clash' || preset === 'evade_leap';
+}
+
+/**
+ * Synthesizes an ALPOH-inspired 3-Act Theatrical Narrative StorySpecContract
+ * driven by the Universal Genre Directing Matrix (Pillars 1-6 of Theatrical Narrative Architecture).
+ */
+export function buildTheatricalStorySpec(
+  manifest: AudioAnalysisManifest,
+  projectId = 'theatrical-cinema',
+  genreOverride?: CanonicalGenreName
+): StorySpecContract {
+  const { durationSeconds, totalFrames } = manifest.metadata;
+  const rawSections = manifest.sections ?? [];
+  const lyricCount = manifest.lyrics.length;
+
+  const genreResult = classifyGenreProfile(manifest);
+  const directingProfile = getGenreDirectingProfile(genreOverride ?? genreResult.genre);
+  const genre: GenreProfile = directingProfile.genreProfile;
+
+  const allLyricText = manifest.lyrics.map((l) => l.text).join(' ');
+  const globalLyricAnalysis = analyzeSectionLyrics(allLyricText);
+  const rawThemes = extractLyricKeywords(allLyricText, 6);
+  const themes =
+    rawThemes.length > 0
+      ? rawThemes
+      : genre === 'rock_metal'
+        ? ['conflict', 'defiance', 'catharsis']
+        : genre === 'pop_dance'
+          ? ['connection', 'charisma', 'euphoria']
+          : ['memory', 'reflection', 'reconciliation'];
+
+  const leadProp = directingProfile.defaultProps[0] ?? 'microphone';
+  const partnerProp = directingProfile.defaultProps[1] ?? 'rose';
+
+  const cast: CastSpecItem[] = [
+    {
+      instanceId: 'protagonist_lead',
+      archetypeId: genre === 'pop_dance' ? 'biped_frontal' : 'biped_three_quarters',
+      role: 'PROTAGONIST',
+      viewAngle: genre === 'pop_dance' ? 'front' : 'three_quarter',
+      scale: 1.0,
+      paletteOverrides: { primary: '#00f0ff', accent: '#ff0055' },
+      accessories: [leadProp]
+    },
+    {
+      instanceId: 'narrative_partner',
+      archetypeId: 'biped_three_quarters',
+      role: genre === 'rock_metal' ? 'ANTAGONIST' : 'PARTNER',
+      viewAngle: 'three_quarter',
+      scale: 1.0,
+      paletteOverrides: { primary: '#ffaa00', accent: '#7c4dff' },
+      accessories: [partnerProp]
+    }
+  ];
+
+  // Partition into >= 3 contiguous section spans aligned to 3-Act arc (0-25%, 25-75%, 75-100%)
+  interface TheatricalSpan {
+    id: string;
+    startFrame: number;
+    endFrame: number;
+    relativeEnergy: number;
+    hasVocals: boolean;
+  }
+
+  const spans: TheatricalSpan[] = [];
+  if (rawSections.length >= 3 && rawSections.length <= 32) {
+    for (const s of rawSections) {
+      spans.push({
+        id: s.id,
+        startFrame: s.startFrame,
+        endFrame: s.endFrame,
+        relativeEnergy: s.relativeEnergy,
+        hasVocals: s.hasVocals
+      });
+    }
+  } else {
+    const b1 = Math.max(1, Math.floor(totalFrames * 0.25));
+    const b2 = Math.max(b1 + 1, Math.floor(totalFrames * 0.75));
+    spans.push(
+      {
+        id: 'act1-setup',
+        startFrame: 0,
+        endFrame: b1,
+        relativeEnergy: genre === 'ballad_acoustic' ? 0.28 : 0.42,
+        hasVocals: lyricCount > 0
+      },
+      {
+        id: 'act2-conflict',
+        startFrame: b1,
+        endFrame: b2,
+        relativeEnergy: genre === 'rock_metal' ? 0.88 : genre === 'pop_dance' ? 0.76 : 0.52,
+        hasVocals: lyricCount > 0
+      },
+      {
+        id: 'act3-resolution',
+        startFrame: b2,
+        endFrame: totalFrames,
+        relativeEnergy: genre === 'ballad_acoustic' ? 0.35 : 0.65,
+        hasVocals: lyricCount > 0
+      }
+    );
+  }
+
+  const kitFallbackMap: Record<string, 'industrial_city' | 'orbital_station' | 'neon_chasm' | 'synth_grid'> = {
+    INTERIOR_ROOM: 'orbital_station',
+    RAINY_STREET: 'industrial_city',
+    PARK_BENCH: 'neon_chasm',
+    CONCERT_STAGE: 'synth_grid',
+    GOTHIC_CATHEDRAL: 'industrial_city'
+  };
+
+  const sectionSpecs: SectionStagingSpec[] = [];
+  for (let i = 0; i < spans.length; i++) {
+    const sp = spans[i];
+    const progressMid = (sp.startFrame + sp.endFrame) / (2 * Math.max(1, totalFrames));
+    const actIndex: 0 | 1 | 2 = progressMid < 0.25 ? 0 : progressMid < 0.75 ? 1 : 2;
+
+    const theatricalSetId =
+      directingProfile.preferredSets[actIndex % directingProfile.preferredSets.length];
+    const colorThemeId =
+      directingProfile.colorHarmonies[i % directingProfile.colorHarmonies.length];
+    const interactionBehavior =
+      actIndex === 0
+        ? directingProfile.interactionArc.act1
+        : actIndex === 1
+          ? directingProfile.interactionArc.act2
+          : directingProfile.interactionArc.act3;
+
+    const leadPreset =
+      actIndex === 0
+        ? directingProfile.actingPresets.act1
+        : actIndex === 2
+          ? directingProfile.actingPresets.act3
+          : sp.hasVocals
+            ? directingProfile.actingPresets.chorus
+            : directingProfile.actingPresets.act2;
+
+    const sectionLyrics = manifest.lyrics.filter(
+      (l) =>
+        l.frameRange.startFrameInclusive >= sp.startFrame &&
+        l.frameRange.startFrameInclusive < sp.endFrame
+    );
+    const secText = sectionLyrics.map((l) => l.text).join(' ');
+    const secLyricAnalysis = analyzeSectionLyrics(secText, globalLyricAnalysis.emotionalTone);
+
+    const transitionIn = i === 0 ? 'CUT' : actIndex !== (i > 0 && (spans[i - 1].startFrame + spans[i - 1].endFrame) / (2 * totalFrames) < 0.25 ? 0 : 1) ? 'CROSS_FADE' : 'CUT';
+
+    const castDirectives = cast.map((c, idx) => ({
+      instanceId: c.instanceId,
+      motionPreset: leadPreset,
+      waypoints: [
+        {
+          frameProgress: 0,
+          stagePosNorm: [idx === 0 ? 0 : 0.35, 0, 0] as [number, number, number]
+        },
+        {
+          frameProgress: 1,
+          stagePosNorm: [idx === 0 ? 0 : 0.35, 0, 0] as [number, number, number]
+        }
+      ]
+    }));
+
+    sectionSpecs.push({
+      sectionId: sp.id,
+      startFrame: sp.startFrame,
+      endFrame: sp.endFrame,
+      narrativeIntent: `Act ${actIndex + 1} (${directingProfile.genreName} in ${theatricalSetId}, ${interactionBehavior})`,
+      emotionalTone: secLyricAnalysis.emotionalTone,
+      lyricMotifs: secLyricAnalysis.lyricMotifs,
+      stagingMode: 'theatrical',
+      theatricalSetId,
+      transitionIn,
+      interactionBehavior,
+      environmentKitId: kitFallbackMap[theatricalSetId] ?? 'industrial_city',
+      kitParams: { theatricalSet: theatricalSetId },
+      colorThemeId,
+      cameraIntensity: Number(
+        Math.max(
+          0.15,
+          Math.min(1.0, sp.relativeEnergy * directingProfile.cameraPacing.traumaShakeMultiplier + 0.2)
+        ).toFixed(2)
+      ),
+      castDirectives
+    });
+  }
+
+  return {
+    projectId,
+    title: `Theatrical ${directingProfile.genreName} Cinema (${durationSeconds.toFixed(1)}s)`,
+    overallMood: `${directingProfile.genreName} Theatrical Narrative`,
+    themes,
+    genreProfile: genre,
+    cast,
+    sections: sectionSpecs
+  };
 }
 
 export class StorySpecAgent {

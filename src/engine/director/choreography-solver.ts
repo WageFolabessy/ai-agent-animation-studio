@@ -17,6 +17,11 @@ import {
   globalTrajectorySolver,
   ARCHETYPE_CANONICAL_BASE_Y
 } from './trajectory-solver.js';
+import { RelationalBlockingSolver } from './relational-blocking-solver.js';
+import {
+  synthesizeVocalPerformanceKeyframes,
+  type VocalLyricSpan
+} from '../rigging/vocal-performance-solver.js';
 
 function resolveClipIdForSection(
   sectionType?: string,
@@ -42,7 +47,8 @@ export function solveChoreography(
   storyboard: DirectorStoryboardContract,
   rigs: Map<string, AssetRigContract>,
   framesPerBeat?: number,
-  solver?: TrajectorySolver
+  solver?: TrajectorySolver,
+  lyrics?: readonly VocalLyricSpan[]
 ): ChoreographyContract {
   const activeSolver = solver ?? new TrajectorySolver();
   const tracks: EntityTrack[] = [];
@@ -273,15 +279,40 @@ export function solveChoreography(
         let rootSpeed: number;
         let startPos: [number, number, number];
         let endPos: [number, number, number];
+        let trackScale: [number, number] = [1, 1];
+
+        const isTheatrical = Boolean(
+          sectionSpec?.stagingMode === 'theatrical' || sectionSpec?.theatricalSetId
+        );
+        const interactionBehavior = sectionSpec?.interactionBehavior ?? 'SOLO';
 
         if (isLead && leadPlan) {
           clipId = leadPlan.clipId;
           timeScale = leadPlan.timeScale;
           rootSpeed = leadPlan.rootSpeed;
-          startPos = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
-          endPos = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
+          const rawStartPos = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
+          const rawEndPos = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
+
+          if (
+            spec.cast.length >= 2 &&
+            (interactionBehavior === 'FACE_TO_FACE' || interactionBehavior === 'DUET_PERFORMANCE')
+          ) {
+            const blocking = RelationalBlockingSolver.solve({
+              behavior: interactionBehavior,
+              protagonistStartPos: rawStartPos,
+              protagonistEndPos: rawEndPos,
+              partnerBaseY: 75,
+              isTheatrical
+            });
+            startPos = blocking.protagonistStartPos;
+            endPos = blocking.protagonistEndPos;
+            trackScale = blocking.protagonistScale;
+          } else {
+            startPos = rawStartPos;
+            endPos = rawEndPos;
+          }
         } else {
-          // Companion biped runner
+          // Companion / Partner / Antagonist biped character
           const directive = sectionSpec?.castDirectives?.find((d) => d.instanceId === rigId);
           const rawPreset = directive?.motionPreset;
           const canonicalBipedPresets = new Set([
@@ -290,7 +321,18 @@ export function solveChoreography(
             'evade_leap',
             'defiant_scream',
             'combat_clash',
-            'exhausted_walk'
+            'exhausted_walk',
+            'pop_vocal_sway',
+            'stage_spin',
+            'rhythmic_step',
+            'crowd_cheer',
+            'acoustic_strum',
+            'rain_umbrella_walk',
+            'bench_contemplation',
+            'gazing_out_window',
+            'slow_waltz',
+            'headbang_riff',
+            'collapse_to_knees'
           ]);
 
           if (rawPreset && canonicalBipedPresets.has(rawPreset)) {
@@ -321,9 +363,25 @@ export function solveChoreography(
           timeScale = motion.timeScale;
           rootSpeed = motion.rootSpeed;
 
-          const companionOffset = -40;
-          startPos = [leadStartX + companionOffset, 75, 0];
-          endPos = [leadStartX + companionOffset + rootSpeed * (lastFrame - startFrame), 75, 0];
+          if (interactionBehavior !== 'SOLO' || isTheatrical) {
+            const leadStartVec = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
+            const leadEndVec = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
+            const blocking = RelationalBlockingSolver.solve({
+              behavior: interactionBehavior,
+              protagonistStartPos: leadStartVec,
+              protagonistEndPos: leadEndVec,
+              partnerBaseY: 75,
+              partnerRole: castItem?.role,
+              isTheatrical
+            });
+            startPos = blocking.partnerStartPos;
+            endPos = blocking.partnerEndPos;
+            trackScale = blocking.partnerScale;
+          } else {
+            const companionOffset = -40;
+            startPos = [leadStartX + companionOffset, 75, 0];
+            endPos = [leadStartX + companionOffset + rootSpeed * (lastFrame - startFrame), 75, 0];
+          }
         }
 
         const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;
@@ -355,7 +413,7 @@ export function solveChoreography(
             frame: startFrame,
             position: [Number(startPos[0].toFixed(2)), startPos[1], startPos[2]],
             rotationZDegrees: 0,
-            scale: [1, 1],
+            scale: trackScale,
             opacity: 1,
             easing: 'linear'
           },
@@ -363,13 +421,13 @@ export function solveChoreography(
             frame: lastFrame,
             position: [Number(endPos[0].toFixed(2)), endPos[1], endPos[2]],
             rotationZDegrees: 0,
-            scale: [1, 1],
+            scale: trackScale,
             opacity: 1,
             easing: 'linear'
           }
         ];
 
-        // Morph bindings and blinks
+        // Morph bindings, phoneme lip-sync, and blinks
         const morphBindings: MorphBinding[] = [];
         const morphKeyframes: Record<string, MorphKeyframeItem[]> = {};
 
@@ -393,6 +451,19 @@ export function solveChoreography(
               gain: 0.9,
               bias: 0.1
             });
+          }
+
+          if (lyrics && lyrics.length > 0) {
+            const vocalMorphs = synthesizeVocalPerformanceKeyframes({
+              lyrics,
+              shotStartFrame: startFrame,
+              shotEndFrame: endFrame,
+              emotionalTone: sectionSpec?.emotionalTone,
+              availableTargets: targetNames
+            });
+            for (const [mName, mKeys] of Object.entries(vocalMorphs)) {
+              morphKeyframes[mName] = mKeys;
+            }
           }
 
           if (targetNames.has('blink')) {
