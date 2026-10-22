@@ -408,12 +408,19 @@ export function solveChoreography(
         entityPoseClocks.set(rigId, nextClock);
         entityLastClips.set(rigId, { clipId, loopFrames });
 
+        const effectiveTrackScale: [number, number] =
+          endPos[0] < startPos[0] - 1e-3 && trackScale[0] > 0
+            ? [-Math.abs(trackScale[0]), trackScale[1]]
+            : endPos[0] > startPos[0] + 1e-3 && trackScale[0] < 0
+              ? [Math.abs(trackScale[0]), trackScale[1]]
+              : trackScale;
+
         const keyframes: EntityTrackKeyframe[] = [
           {
             frame: startFrame,
             position: [Number(startPos[0].toFixed(2)), startPos[1], startPos[2]],
             rotationZDegrees: 0,
-            scale: trackScale,
+            scale: effectiveTrackScale,
             opacity: 1,
             easing: 'linear'
           },
@@ -421,7 +428,7 @@ export function solveChoreography(
             frame: lastFrame,
             position: [Number(endPos[0].toFixed(2)), endPos[1], endPos[2]],
             rotationZDegrees: 0,
-            scale: trackScale,
+            scale: effectiveTrackScale,
             opacity: 1,
             easing: 'linear'
           }

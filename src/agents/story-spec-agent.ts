@@ -502,14 +502,121 @@ export function buildTheatricalStorySpec(
           ? directingProfile.interactionArc.act2
           : directingProfile.interactionArc.act3;
 
-    const leadPreset =
-      actIndex === 0
-        ? directingProfile.actingPresets.act1
-        : actIndex === 2
-          ? directingProfile.actingPresets.act3
-          : sp.hasVocals
-            ? directingProfile.actingPresets.chorus
-            : directingProfile.actingPresets.act2;
+    const isFirst = i === 0;
+    const isLast = i === spans.length - 1;
+
+    // Theatrical Spatial Movement Generator (Pillar 2 & Stage 2)
+    // Avoids static [0, 0, 0] by orchestrating active spatial blocking across stage zones:
+    // Stage Left (-0.5), Center (0.0), Stage Right (+0.5), Depth: Upstage (-0.3) -> Apron (+0.3)
+    let leadMotionPreset: any;
+    let partnerMotionPreset: any;
+    let leadWaypoints: Array<{ frameProgress: number; stagePosNorm: [number, number, number] }>;
+    let partnerWaypoints: Array<{ frameProgress: number; stagePosNorm: [number, number, number] }>;
+
+    if (actIndex === 0) {
+      if (isFirst) {
+        // Act I Intro: Stage Left entrance moving toward mid-left
+        leadMotionPreset = directingProfile.actingPresets.act1;
+        partnerMotionPreset = directingProfile.actingPresets.act1;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.55, 0, -0.1] },
+          { frameProgress: 1, stagePosNorm: [-0.15, 0, 0.0] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.4, 0, -0.25] },
+          { frameProgress: 1, stagePosNorm: [0.45, 0, -0.25] }
+        ];
+      } else {
+        // Act I Build: Advancing to Center Stage and stepping toward apron
+        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act1;
+        partnerMotionPreset = directingProfile.actingPresets.act2;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.15, 0, 0.0] },
+          { frameProgress: 1, stagePosNorm: [0.0, 0, 0.2] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.35, 0, -0.25] },
+          { frameProgress: 1, stagePosNorm: [0.4, 0, -0.1] }
+        ];
+      }
+    } else if (actIndex === 1) {
+      // Act II: Dynamic interaction across stage
+      const cycle = i % 4;
+      if (interactionBehavior === 'PURSUIT_AND_CONFRONTATION') {
+        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
+        partnerMotionPreset = directingProfile.actingPresets.act2;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.1] },
+          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.25] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.45, 0, -0.1] },
+          { frameProgress: 1, stagePosNorm: [-0.15, 0, 0.2] }
+        ];
+      } else if (interactionBehavior === 'FACE_TO_FACE') {
+        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
+        partnerMotionPreset = sp.hasVocals ? directingProfile.actingPresets.act2 : directingProfile.actingPresets.chorus;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [-0.1, 0, 0.25] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.3, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.3, 0, 0.25] }
+        ];
+      } else if (cycle === 0) {
+        // Stage Traversal to Stage Right
+        leadMotionPreset = directingProfile.actingPresets.act2;
+        partnerMotionPreset = directingProfile.actingPresets.act1;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.0, 0, 0.1] },
+          { frameProgress: 1, stagePosNorm: [0.35, 0, 0.0] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.25, 0, -0.15] },
+          { frameProgress: 1, stagePosNorm: [0.0, 0, 0.1] }
+        ];
+      } else {
+        // Center apron performance
+        leadMotionPreset = sp.hasVocals ? directingProfile.actingPresets.chorus : directingProfile.actingPresets.act2;
+        partnerMotionPreset = directingProfile.actingPresets.act2;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.15, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.0, 0, 0.3] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.15, 0, 0.1] },
+          { frameProgress: 1, stagePosNorm: [0.25, 0, 0.25] }
+        ];
+      }
+    } else {
+      // Act III: Climax and Resolution
+      if (isLast) {
+        // Outro: Dramatic collapse/freeze at center stage while partner retreats
+        leadMotionPreset = directingProfile.actingPresets.act3;
+        partnerMotionPreset = directingProfile.actingPresets.act1;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.0, 0, 0.2] },
+          { frameProgress: 1, stagePosNorm: [0.0, 0, 0.1] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.25, 0, 0.1] },
+          { frameProgress: 1, stagePosNorm: [0.45, 0, -0.3] }
+        ];
+      } else {
+        // Act III Climax: Full Stage energy
+        leadMotionPreset = directingProfile.actingPresets.chorus;
+        partnerMotionPreset = directingProfile.actingPresets.act2;
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.2] },
+          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.35] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [0.15, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.35, 0, 0.25] }
+        ];
+      }
+    }
 
     const sectionLyrics = manifest.lyrics.filter(
       (l) =>
@@ -523,17 +630,8 @@ export function buildTheatricalStorySpec(
 
     const castDirectives = cast.map((c, idx) => ({
       instanceId: c.instanceId,
-      motionPreset: leadPreset,
-      waypoints: [
-        {
-          frameProgress: 0,
-          stagePosNorm: [idx === 0 ? 0 : 0.35, 0, 0] as [number, number, number]
-        },
-        {
-          frameProgress: 1,
-          stagePosNorm: [idx === 0 ? 0 : 0.35, 0, 0] as [number, number, number]
-        }
-      ]
+      motionPreset: idx === 0 ? leadMotionPreset : partnerMotionPreset,
+      waypoints: idx === 0 ? leadWaypoints : partnerWaypoints
     }));
 
     sectionSpecs.push({

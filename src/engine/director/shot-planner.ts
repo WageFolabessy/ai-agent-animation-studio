@@ -212,6 +212,185 @@ export const CINEMATIC_ANGLES: readonly CinematicAngleFormula[] = [
   }
 ];
 
+export const THEATRICAL_CINEMATIC_ANGLES: readonly CinematicAngleFormula[] = [
+  {
+    name: 'LINGERING_DOLLY_INTRO',
+    framing: 'EXTREME_WIDE',
+    movement: 'DOLLY',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 54,
+    rollDegrees: 0,
+    camOffsetStart: [0, 55, 620],
+    camOffsetEnd: [0, 35, 480],
+    targetOffsetStart: [0, 35, 0],
+    targetOffsetEnd: [0, 35, 0],
+    easing: 'easeInOutCubic'
+  },
+  {
+    name: 'FRONTAL_VOCAL_MEDIUM',
+    framing: 'MEDIUM',
+    movement: 'DOLLY',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 44,
+    rollDegrees: 0,
+    camOffsetStart: [0, 25, 230],
+    camOffsetEnd: [0, 20, 200],
+    targetOffsetStart: [0, 42, 0],
+    targetOffsetEnd: [0, 42, 0],
+    easing: 'linear'
+  },
+  {
+    name: 'INTIMATE_DUET_TWO_SHOT',
+    framing: 'WIDE',
+    movement: 'DOLLY',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 48,
+    rollDegrees: 0,
+    camOffsetStart: [0, 30, 310],
+    camOffsetEnd: [0, 30, 270],
+    targetOffsetStart: [0, 40, 0],
+    targetOffsetEnd: [0, 40, 0],
+    easing: 'easeInOutSine'
+  },
+  {
+    name: 'HEROIC_LOW_ANGLE_SOLO',
+    framing: 'MEDIUM',
+    movement: 'CRANE',
+    viewpoint: 'LOW_ANGLE',
+    fov: 46,
+    rollDegrees: 0,
+    camOffsetStart: [15, -25, 205],
+    camOffsetEnd: [20, -15, 185],
+    targetOffsetStart: [15, 45, 0],
+    targetOffsetEnd: [15, 45, 0],
+    easing: 'linear'
+  },
+  {
+    name: 'CLIMACTIC_ORBIT_SWEEP',
+    framing: 'WIDE',
+    movement: 'ORBIT',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 50,
+    rollDegrees: 0,
+    camOffsetStart: [-155, 45, 275],
+    camOffsetEnd: [155, 45, 275],
+    targetOffsetStart: [0, 40, 0],
+    targetOffsetEnd: [0, 40, 0],
+    easing: 'linear'
+  },
+  {
+    name: 'DRAMATIC_DUTCH_TILT',
+    framing: 'CLOSE_UP',
+    movement: 'TRACKING',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 34,
+    rollDegrees: -7,
+    camOffsetStart: [10, 45, 155],
+    camOffsetEnd: [15, 48, 145],
+    targetOffsetStart: [10, 45, 0],
+    targetOffsetEnd: [10, 45, 0],
+    easing: 'linear'
+  },
+  {
+    name: 'STAGE_APRON_TRACKING',
+    framing: 'WIDE',
+    movement: 'TRACKING',
+    viewpoint: 'OBJECTIVE_THIRD_PERSON',
+    fov: 48,
+    rollDegrees: 0,
+    camOffsetStart: [-35, 30, 285],
+    camOffsetEnd: [35, 30, 285],
+    targetOffsetStart: [-35, 35, 0],
+    targetOffsetEnd: [35, 35, 0],
+    easing: 'easeInOutSine'
+  },
+  {
+    name: 'OUTRO_PULLBACK_CRANE',
+    framing: 'EXTREME_WIDE',
+    movement: 'CRANE',
+    viewpoint: 'HIGH_ANGLE',
+    fov: 58,
+    rollDegrees: 0,
+    camOffsetStart: [0, 35, 260],
+    camOffsetEnd: [0, 110, 680],
+    targetOffsetStart: [0, 35, 0],
+    targetOffsetEnd: [0, 35, 0],
+    easing: 'easeInOutCubic'
+  }
+];
+
+export function selectTheatricalCameraAngle(params: {
+  shotIndex: number;
+  totalShots?: number;
+  actNumber: number;
+  secSpec: SectionStagingSpec;
+  isFirstInSong: boolean;
+  isLastInSong: boolean;
+  prevFraming?: string;
+  prevAngleName?: string;
+}): CinematicAngleFormula {
+  const { isFirstInSong, isLastInSong, secSpec, prevFraming, prevAngleName, shotIndex } = params;
+
+  if (isFirstInSong) {
+    return THEATRICAL_CINEMATIC_ANGLES[0]; // LINGERING_DOLLY_INTRO (EXTREME_WIDE)
+  }
+
+  if (isLastInSong) {
+    return THEATRICAL_CINEMATIC_ANGLES[7]; // OUTRO_PULLBACK_CRANE (EXTREME_WIDE)
+  }
+
+  const isDuoOrConfrontation =
+    secSpec.interactionBehavior === 'FACE_TO_FACE' ||
+    secSpec.interactionBehavior === 'DUET_PERFORMANCE' ||
+    secSpec.interactionBehavior === 'PURSUIT_AND_CONFRONTATION';
+
+  const isHighEnergy =
+    secSpec.cameraIntensity >= 0.7 ||
+    secSpec.emotionalTone === 'defiant' ||
+    secSpec.emotionalTone === 'chaotic';
+
+  let candidate: CinematicAngleFormula;
+
+  if (isDuoOrConfrontation) {
+    if (prevFraming === 'WIDE') {
+      candidate = isHighEnergy
+        ? THEATRICAL_CINEMATIC_ANGLES[5] // DRAMATIC_DUTCH_TILT (CLOSE_UP)
+        : THEATRICAL_CINEMATIC_ANGLES[1]; // FRONTAL_VOCAL_MEDIUM (MEDIUM)
+    } else if (prevFraming === 'CLOSE_UP') {
+      candidate = THEATRICAL_CINEMATIC_ANGLES[2]; // INTIMATE_DUET_TWO_SHOT (WIDE)
+    } else {
+      candidate = isHighEnergy
+        ? THEATRICAL_CINEMATIC_ANGLES[4] // CLIMACTIC_ORBIT_SWEEP (WIDE)
+        : THEATRICAL_CINEMATIC_ANGLES[2]; // INTIMATE_DUET_TWO_SHOT (WIDE)
+    }
+  } else if (isHighEnergy) {
+    if (prevFraming === 'MEDIUM') {
+      candidate = THEATRICAL_CINEMATIC_ANGLES[5]; // DRAMATIC_DUTCH_TILT (CLOSE_UP)
+    } else if (prevFraming === 'CLOSE_UP') {
+      candidate = THEATRICAL_CINEMATIC_ANGLES[4]; // CLIMACTIC_ORBIT_SWEEP (WIDE)
+    } else {
+      candidate = THEATRICAL_CINEMATIC_ANGLES[3]; // HEROIC_LOW_ANGLE_SOLO (MEDIUM)
+    }
+  } else {
+    if (prevFraming === 'WIDE') {
+      candidate = THEATRICAL_CINEMATIC_ANGLES[1]; // FRONTAL_VOCAL_MEDIUM (MEDIUM)
+    } else {
+      candidate = THEATRICAL_CINEMATIC_ANGLES[6]; // STAGE_APRON_TRACKING (WIDE)
+    }
+  }
+
+  if (candidate.name === prevAngleName || candidate.framing === prevFraming) {
+    const alternatives = THEATRICAL_CINEMATIC_ANGLES.filter(
+      (a) => a.name !== prevAngleName && a.framing !== prevFraming
+    );
+    if (alternatives.length > 0) {
+      candidate = alternatives[shotIndex % alternatives.length];
+    }
+  }
+
+  return candidate;
+}
+
 export interface SnappedBoundariesResult {
   readonly snappedFrames: readonly number[];
   readonly diagnostics: readonly string[];
@@ -349,7 +528,27 @@ export function compileStorySpecToStoryboard(
       const fEnd = cutPoints[i + 1];
       if (fEnd <= fStart) continue;
 
-      const angle = CINEMATIC_ANGLES[shotIndex % CINEMATIC_ANGLES.length];
+      const isTheatrical = Boolean(
+        secSpec.stagingMode === 'theatrical' || secSpec.theatricalSetId
+      );
+      let angle: CinematicAngleFormula;
+      if (isTheatrical) {
+        const isFirstInSong = shotIndex === 0;
+        const isLastInSong = fEnd >= totalFrames;
+        const prevAngle = skeletons.length > 0 ? skeletons[skeletons.length - 1].angle : undefined;
+        angle = selectTheatricalCameraAngle({
+          shotIndex,
+          totalShots: Math.ceil(totalFrames / targetShotFrames),
+          actNumber,
+          secSpec,
+          isFirstInSong,
+          isLastInSong,
+          prevFraming: prevAngle?.framing,
+          prevAngleName: prevAngle?.name
+        });
+      } else {
+        angle = CINEMATIC_ANGLES[shotIndex % CINEMATIC_ANGLES.length];
+      }
       const framing = angle.framing;
 
       const activeRigIds =

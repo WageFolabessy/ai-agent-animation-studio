@@ -557,14 +557,42 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
     let effectiveRootSpeed = motionParams.rootSpeed;
 
     if (isTheatrical) {
-      const wp0NormX = directive?.waypoints?.[0]?.stagePosNorm[0] ?? 0;
-      const wpLastNormX =
-        directive?.waypoints?.[directive.waypoints.length - 1]?.stagePosNorm[0] ?? wp0NormX;
+      if (directive?.waypoints && directive.waypoints.length > 0) {
+        const secStart = sectionSpec?.startFrame ?? startFrame;
+        const secEnd = sectionSpec?.endFrame ?? endFrame;
+        const secDuration = Math.max(1, secEnd - secStart);
+        const tauStart = Math.max(0, Math.min(1, (startFrame - secStart) / secDuration));
+        const tauEnd = Math.max(0, Math.min(1, (endFrame - secStart) / secDuration));
 
-      if (motionParams.rootSpeed === 0) {
-        startX = Math.max(-95, Math.min(95, wp0NormX * 80));
-        endX = Math.max(-95, Math.min(95, wpLastNormX * 80));
-        effectiveRootSpeed = Number(((endX - startX) / duration).toFixed(4));
+        const evaluateWaypointNormX = (
+          waypoints: NonNullable<typeof directive.waypoints>,
+          tau: number
+        ): number => {
+          if (waypoints.length === 1) return waypoints[0].stagePosNorm[0];
+          let wpA = waypoints[0];
+          let wpB = waypoints[waypoints.length - 1];
+          for (let w = 0; w < waypoints.length - 1; w++) {
+            if (tau >= waypoints[w].frameProgress && tau <= waypoints[w + 1].frameProgress) {
+              wpA = waypoints[w];
+              wpB = waypoints[w + 1];
+              break;
+            }
+          }
+          const span = Math.max(1e-6, wpB.frameProgress - wpA.frameProgress);
+          const alpha = Math.max(0, Math.min(1, (tau - wpA.frameProgress) / span));
+          return wpA.stagePosNorm[0] + (wpB.stagePosNorm[0] - wpA.stagePosNorm[0]) * alpha;
+        };
+
+        const normXStart = evaluateWaypointNormX(directive.waypoints, tauStart);
+        const normXEnd = evaluateWaypointNormX(directive.waypoints, tauEnd);
+
+        startX = Math.max(-95, Math.min(95, normXStart * 80));
+        endX = Math.max(-95, Math.min(95, normXEnd * 80));
+        effectiveRootSpeed = duration > 0 ? Number(((endX - startX) / duration).toFixed(4)) : 0;
+      } else if (motionParams.rootSpeed === 0) {
+        startX = currentX;
+        endX = currentX;
+        effectiveRootSpeed = 0;
       } else {
         const rawTravel = motionParams.rootSpeed * duration;
         if (rawTravel <= 180) {
