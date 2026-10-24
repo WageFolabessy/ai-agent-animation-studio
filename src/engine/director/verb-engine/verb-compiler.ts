@@ -123,7 +123,47 @@ export class VerbCompiler {
       }
     ];
 
-    // 3. Build Storyboard Shots
+    // 3. Pre-simulate character positions per beat for dynamic camera framing
+    const beatCharX: Array<Record<string, number>> = [];
+    let simX: Record<string, number> = {};
+    for (let cIdx = 0; cIdx < storyBeatContract.cast.length; cIdx++) {
+      const c = storyBeatContract.cast[cIdx];
+      simX[c.instanceId] = cIdx === 0 ? -55 : 35;
+    }
+    for (let i = 0; i < beats.length; i++) {
+      beatCharX.push({ ...simX });
+      const beat = beats[i];
+      const nextSimX = { ...simX };
+      for (const a of beat.actions) {
+        const cur = simX[a.instanceId] ?? 0;
+        const otherId = beat.presentCharacters.find(id => id !== a.instanceId);
+        const otherCur = otherId ? simX[otherId] : undefined;
+        if (a.verb === 'walk_to') {
+          const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
+          if (tPos !== undefined) nextSimX[a.instanceId] = tPos;
+          else if (otherCur !== undefined) nextSimX[a.instanceId] = cur <= otherCur ? (cur + otherCur) / 2 - 25 : (cur + otherCur) / 2 + 25;
+          else nextSimX[a.instanceId] = -22;
+        } else if (a.verb === 'run_to') {
+          const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
+          if (tPos !== undefined) nextSimX[a.instanceId] = tPos;
+          else if (otherCur !== undefined) nextSimX[a.instanceId] = cur <= otherCur ? (cur + otherCur) / 2 - 20 : (cur + otherCur) / 2 + 20;
+          else nextSimX[a.instanceId] = 35;
+        } else if (a.verb === 'carry_put_down') {
+          const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
+          nextSimX[a.instanceId] = tPos !== undefined ? tPos : -58;
+        } else if (a.verb === 'gesture_point') {
+          nextSimX[a.instanceId] = cur < -50 ? -45 : cur;
+        } else if (a.verb === 'embrace_push_away') {
+          if (otherCur !== undefined) {
+            const mid = (cur + otherCur) / 2;
+            nextSimX[a.instanceId] = cur <= otherCur ? mid - 30 : mid + 30;
+          }
+        }
+      }
+      simX = nextSimX;
+    }
+
+    // 4. Build Storyboard Shots
     const shots: CinematicShot[] = [];
     const leadId = storyBeatContract.cast[0].instanceId;
 
@@ -150,6 +190,15 @@ export class VerbCompiler {
       let effectiveFraming = framing;
       let effectiveDistZ = distZ;
 
+      const lookOffset = beat.camera.lookRoom === 'left' ? -18 : beat.camera.lookRoom === 'right' ? 18 : 0;
+      const charPositions = beatCharX[i];
+      const focalId = beat.camera.focalCharacterId;
+      const focalPos = charPositions[focalId] ?? (focalId === 'narrative_partner' ? 35 : -22);
+      const otherPresentId = beat.presentCharacters.find((id) => id !== focalId);
+      const isTwoShot =
+        beat.presentCharacters.length >= 2 &&
+        (effectiveFraming === 'WIDE' || effectiveFraming === 'MEDIUM');
+
       if (isReachGrasp) {
         // beat_02_reach_grasp: CLOSE_UP framing targeting [-10, 88, 0] so head, torso, arm and desk top (Y = 68) are visible
         effectiveFraming = 'CLOSE_UP';
@@ -164,10 +213,25 @@ export class VerbCompiler {
         focalX = -45;
         targetY = 117;
         camY = 127;
+      } else if (isTwoShot && otherPresentId) {
+        const otherPos = charPositions[otherPresentId] ?? 0;
+        const midX = (focalPos + otherPos) / 2;
+        focalX = midX + lookOffset;
+        targetY = effectiveFraming === 'WIDE' ? 95 : 105;
+        camY = targetY + 10;
       } else {
-        const lookOffset = beat.camera.lookRoom === 'left' ? -18 : beat.camera.lookRoom === 'right' ? 18 : 0;
-        focalX = 0 + lookOffset;
-        targetY = framing === 'EXTREME_CLOSE_UP' ? 88 : framing === 'CLOSE_UP' ? 117 : 95;
+        focalX = focalPos + lookOffset;
+        const isPartnerFocal = focalId === 'narrative_partner';
+        targetY =
+          effectiveFraming === 'EXTREME_CLOSE_UP'
+            ? isPartnerFocal
+              ? 80
+              : 88
+            : effectiveFraming === 'CLOSE_UP'
+              ? isPartnerFocal
+                ? 103
+                : 117
+              : 95;
         camY = targetY + 10;
       }
 
@@ -698,12 +762,20 @@ export class VerbCompiler {
       }
 
       case 'gesture_point': {
-        nextX = currentX;
+        const targetPos = action.target?.kind === 'position' ? action.target.pos[0] : undefined;
+        let targetX = currentX;
+        if (targetPos !== undefined) {
+          targetX = targetPos;
+        } else if (currentX < -50) {
+          // Lead standing near Desk 2 steps to -45 to clear placed desk prop at -80
+          targetX = -45;
+        }
+        nextX = targetX;
         clipId = 'gesture_point';
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, baseY, 0],
+            position: [targetX, baseY, 0],
             rotationZDegrees: 0,
             scale: [scaleXBase, scaleYBase],
             opacity: 1,
@@ -711,7 +783,7 @@ export class VerbCompiler {
           },
           {
             frame: lastF,
-            position: [currentX, baseY, 0],
+            position: [targetX, baseY, 0],
             rotationZDegrees: 0,
             scale: [scaleXBase, scaleYBase],
             opacity: 1,

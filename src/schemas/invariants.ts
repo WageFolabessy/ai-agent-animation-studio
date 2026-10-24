@@ -604,7 +604,7 @@ export function validateProjectContracts(
 
       if (part.shape.kind === 'morph') {
         morphPartCount++;
-        if (part.id.includes('hand')) {
+        if (part.id.includes('hand') || part.id.includes('clamp')) {
           handMorphPartCount++;
         } else {
           facialMorphPartCount++;

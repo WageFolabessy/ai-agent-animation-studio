@@ -214,6 +214,12 @@ const VERB_FALLBACK_MAP: Record<string, ActionVerbType> = {
   hug: 'embrace_push_away',
   embrace: 'embrace_push_away',
   push: 'embrace_push_away',
+  give_and_receive: 'embrace_push_away',
+  handoff: 'embrace_push_away',
+  confront_step_in: 'embrace_push_away',
+  confront: 'embrace_push_away',
+  parallel_stride: 'walk_to',
+  walk_together: 'walk_to',
   fall: 'fall_recover',
   collapse: 'fall_recover',
   stumble: 'fall_recover'

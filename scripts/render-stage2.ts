@@ -367,6 +367,9 @@ async function main() {
   console.log(`✓ Video rendered: ${renderResult.finalOutputPath} (${(renderResult.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB)`);
   console.log(`  Effective FPS: ${renderResult.effectiveFps.toFixed(2)} | Peak Aggregate Memory: ${renderResult.peakAggregateRssMb.toFixed(2)} MB`);
 
+  const bilateralAliasMp4 = path.resolve(process.cwd(), 'output', 'stage2_bilateral_final.mp4');
+  fs.copyFileSync(outputMp4, bilateralAliasMp4);
+
   // 5. Generate Review Sheets & Manifest
   console.log('\n[5/5] Generating Review Sheets & Review Package...');
   await execFileAsync('npx', [

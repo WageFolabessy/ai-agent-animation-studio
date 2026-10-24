@@ -968,7 +968,7 @@ async function main(): Promise<void> {
         const t = shotLookup.normalizedProgress;
         headPos = [
           k0.position[0] + (k1.position[0] - k0.position[0]) * t,
-          k0.position[1] + (k1.position[1] - k0.position[1]) * t + 38,
+          k0.position[1] + (k1.position[1] - k0.position[1]) * t + 52,
           k0.position[2] + (k1.position[2] - k0.position[2]) * t,
         ];
       }
@@ -1173,10 +1173,27 @@ async function main(): Promise<void> {
     for (const s of targetSections) {
       const durSec = ((s.endFrame - s.startFrame) / meta.fps).toFixed(2);
       const timeRange = `${formatMmSs(s.startFrame / meta.fps)} - ${formatMmSs(s.endFrame / meta.fps)}`;
-      const leadDirective = s.castDirectives?.find(c => c.instanceId === 'protagonist_lead')?.motionPreset || 'unknown';
-      const partnerDirective = s.castDirectives?.find(c => c.instanceId === 'narrative_partner')?.motionPreset || 'unknown';
+      const midFrame = Math.floor((s.startFrame + s.endFrame) / 2);
+      const matchingShot = storyboard.shots.find(
+        shot => (midFrame >= shot.frameRange.startFrameInclusive && midFrame < shot.frameRange.endFrameExclusive) || shot.id === s.sectionId
+      );
+      let leadClip = 'unknown';
+      let partnerClip = 'none';
+      if (matchingShot) {
+        const leadTrack = choreography.tracks.find(t => t.shotId === matchingShot.id && t.rigId === 'protagonist_lead');
+        if (leadTrack?.pose?.clipId) leadClip = leadTrack.pose.clipId;
+        const partnerTrack = choreography.tracks.find(t => t.shotId === matchingShot.id && t.rigId === 'narrative_partner');
+        if (partnerTrack?.pose?.clipId) partnerClip = partnerTrack.pose.clipId;
+      }
+      if (leadClip === 'unknown') {
+        leadClip = s.castDirectives?.find(c => c.instanceId === 'protagonist_lead')?.motionPreset || 'unknown';
+      }
+      if (partnerClip === 'none' && s.castDirectives?.some(c => c.instanceId === 'narrative_partner')) {
+        const pPreset = s.castDirectives.find(c => c.instanceId === 'narrative_partner')?.motionPreset;
+        if (pPreset) partnerClip = pPreset;
+      }
       const propsStr = getPropsSummary(storySpec, s.sectionId);
-      md += `| \`${s.sectionId}\` | ${timeRange} | ${durSec}s | \`${s.theatricalSetId}\` | \`${s.interactionBehavior}\` | \`${leadDirective}\` | \`${partnerDirective}\` | ${propsStr} | \`${s.emotionalTone}\` |\n`;
+      md += `| \`${s.sectionId}\` | ${timeRange} | ${durSec}s | \`${s.theatricalSetId}\` | \`${s.interactionBehavior}\` | \`${leadClip}\` | \`${partnerClip}\` | ${propsStr} | \`${s.emotionalTone}\` |\n`;
     }
     md += '\n';
 

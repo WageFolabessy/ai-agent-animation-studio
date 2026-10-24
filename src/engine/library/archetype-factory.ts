@@ -2236,38 +2236,110 @@ export class ArchetypeFactory {
           }
         };
       }
-      // 6. Chunky gauntleted clamps replacing hand grips
-      if (p.id === 'hand_l_grip') {
+      // 6. Broader rounded shoulders replacing pauldrons
+      if (p.id === 'pauldron_l') {
         return {
           ...p,
-          id: 'gauntlet_clamp_l',
-          shape: { kind: 'rect' as const, size: [10, 10], rx: 2, ry: 2 },
+          id: 'companion_pauldron_l',
+          localOffset2D: [-12, 16],
+          shape: { kind: 'ellipse' as const, radius: [10, 8] },
           style: {
-            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.2 },
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: 0.1 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.5 },
             opacity: 1,
             lit: true
           }
         };
       }
-      if (p.id === 'hand_r_grip') {
+      if (p.id === 'pauldron_r') {
         return {
           ...p,
-          id: 'gauntlet_clamp_r',
-          shape: { kind: 'rect' as const, size: [10, 10], rx: 2, ry: 2 },
+          id: 'companion_pauldron_r',
+          localOffset2D: [12, 16],
+          shape: { kind: 'ellipse' as const, radius: [10, 8] },
           style: {
-            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.2 },
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: 0.1 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.5 },
             opacity: 1,
             lit: true
           }
         };
       }
-      // 7. Heavy block boots with treaded base plate replacing boot_l / boot_r
-      if (p.id === 'boot_l') {
+      // 7. Articulated gauntlet forearms and heavy clamps
+      if (p.id === 'arm_l_forearm') {
+        return {
+          ...p,
+          id: 'arm_l_gauntlet_forearm',
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [-3.6, 8],
+              [3.6, 8],
+              [3.2, -8],
+              [-3.2, -8]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.3 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'arm_r_forearm') {
+        return {
+          ...p,
+          id: 'arm_r_gauntlet_forearm',
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [-3.6, 8],
+              [3.6, 8],
+              [3.2, -8],
+              [-3.2, -8]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.3 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'arm_l_hand_morph' || p.id === 'hand_l_grip') {
+        return {
+          ...p,
+          id: 'hand_l_gauntlet_clamp',
+          shape: { kind: 'morph' as const },
+          style: {
+            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.4 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'arm_r_hand_morph' || p.id === 'hand_r_grip') {
+        return {
+          ...p,
+          id: 'hand_r_gauntlet_clamp',
+          shape: { kind: 'morph' as const },
+          style: {
+            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.4 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      // 8. Heavy block boots with treaded base plate replacing leg feet
+      if (p.id === 'leg_l_foot' || p.id === 'boot_l') {
         return {
           ...p,
           id: 'boot_tread_l',
+          localOffset2D: [0, -22],
           shape: { kind: 'rect' as const, size: [18, 7], rx: 2, ry: 1 },
           style: {
             fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.4 },
@@ -2277,10 +2349,11 @@ export class ArchetypeFactory {
           }
         };
       }
-      if (p.id === 'boot_r') {
+      if (p.id === 'leg_r_foot' || p.id === 'boot_r') {
         return {
           ...p,
           id: 'boot_tread_r',
+          localOffset2D: [0, -22],
           shape: { kind: 'rect' as const, size: [18, 7], rx: 2, ry: 1 },
           style: {
             fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.4 },
@@ -2291,6 +2364,18 @@ export class ArchetypeFactory {
         };
       }
       return p;
+    });
+
+    companionParts.push({
+      id: 'companion_iris_optic',
+      jointId: 'head',
+      localOffset2D: [7.0, 5.5],
+      shape: { kind: 'ellipse' as const, radius: [2.2, 2.2] },
+      style: {
+        fill: { kind: 'palette' as const, role: 'accent' as const, shade: 0.6 },
+        opacity: 1.0,
+        lit: false
+      }
     });
 
     return {
