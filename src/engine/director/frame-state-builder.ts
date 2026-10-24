@@ -149,7 +149,8 @@ export class FrameStateBuilder {
           shot.frameRange.startFrameInclusive,
           trackState.timeScale,
           trackState.startPoseFrame,
-          trackState.clipId
+          trackState.clipId,
+          trackState.vRoot
         );
 
         const jointAngles = evaluateSecondaryMotion(

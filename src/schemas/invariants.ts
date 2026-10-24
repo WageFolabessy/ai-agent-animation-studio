@@ -926,7 +926,9 @@ export function validateChoreography(
         }
 
         // Facing direction vs lateral translation check (Moonwalk guard)
-        if (k > 0 && (rig.facingDirection === 'right' || rig.facingDirection === 'left')) {
+        // Intentional recoil actions (embrace_push_away, fall_recover) push characters backwards while facing each other
+        const isRecoil = track.pose?.clipId === 'embrace_push_away' || track.pose?.clipId === 'fall_recover';
+        if (!isRecoil && k > 0 && (rig.facingDirection === 'right' || rig.facingDirection === 'left')) {
           const prevKf = keyframes[k - 1];
           const dx = kf.position[0] - prevKf.position[0];
           const scaleX = kf.scale?.[0] ?? rig.baseTransform.scale[0];

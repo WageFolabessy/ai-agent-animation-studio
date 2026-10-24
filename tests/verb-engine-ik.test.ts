@@ -9,9 +9,10 @@ import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
 import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinematics.js';
 import { BipedPoseClips } from '../src/engine/library/archetype-factory.js';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
+import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
 import { validateProjectContracts, validateChoreography } from '../src/schemas/invariants.js';
 import { createRenderConfig } from '../src/config/render-config.js';
-import type { AudioAnalysisManifest } from '../src/schemas/audio.contract.js';
+import type { AudioAnalysisManifest, AudioFrameFeature } from '../src/schemas/audio.contract.js';
 import type { StoryBeatContract } from '../src/schemas/story-beat.contract.js';
 
 test('Verb Engine & Analytical IK Suite', async (t) => {
@@ -482,6 +483,8 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     assert.deepEqual(fatalChoreo, [], `Choreography validation must pass: ${JSON.stringify(fatalChoreo)}`);
   });
 
+  let sharedStage1Contract: StoryBeatContract;
+
   await t.test('Stage 1 Solo Acting Remediation: 5 Runtime Invariants Across 1,050 Frames', () => {
     const stage1Contract: StoryBeatContract = {
       projectId: 'stage1_solo_acting',
@@ -713,6 +716,8 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       }
     };
 
+    sharedStage1Contract = stage1Contract;
+
     const production = VerbCompiler.compile(stage1Contract, syntheticManifest);
     const leadRig = production.rigs.get('protagonist_lead')!;
     assert.ok(leadRig, 'protagonist_lead rig must exist');
@@ -770,12 +775,12 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const putDownFk = computeSkeletonFK(leadRig.skeleton!, putDownJointAngles, putDownJointOffsets);
     const armLowerAff2 = putDownFk.get('arm_r_lower')!;
     const putDownWrist = applyAffine2D(armLowerAff2, [0, -16]);
-    // Character facing left (-1.35) at stopped position X = -58
-    const worldWrist785: [number, number] = [-58 + (-1.35) * putDownWrist[0], 75 + 1.45 * putDownWrist[1]];
-    const distDesk2 = Math.hypot(worldWrist785[0] - (-80), worldWrist785[1] - 68);
+    // Character facing left (-1.35) at stopped position X = -68
+    const worldWrist785: [number, number] = [-68 + (-1.35) * putDownWrist[0], 75 + 1.45 * putDownWrist[1]];
+    const distDesk2 = Math.hypot(worldWrist785[0] - (-90), worldWrist785[1] - 68);
     assert.ok(
       distDesk2 <= 2.5,
-      `At release frame 785, wrist must be within 2.5 units of Desk 2 cup [-80, 68], got ${distDesk2}`
+      `At release frame 785, wrist must be within 2.5 units of Desk 2 cup [-90, 68], got ${distDesk2}`
     );
 
     // Invariant 3: In beat_03_snap_turn, scale[0] is +1.35 at frame 420 and flips to -1.35 between 460 and 480
@@ -842,5 +847,247 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       projectedScreenHeight >= 6.0,
       `Projected mouth opening screen height must be >= 6.0 px, got ${projectedScreenHeight.toFixed(2)} px`
     );
+  });
+
+  await t.test('Anti-Treadmill Test Gate: Root displacement >= 45, stance foot drift <= 1.5, stopped damping, and separation >= 26', () => {
+    const stage2Contract: StoryBeatContract = {
+      projectId: 'stage2_two_characters',
+      songDurationSec: 35,
+      fps: 30,
+      sliceFrameRange: { startFrame: 0, endFrame: 1050 },
+      cast: [
+        {
+          instanceId: 'protagonist_lead',
+          role: 'PROTAGONIST',
+          archetypeId: 'hero_silhouette',
+          palette: { primary: '#0a1128', accent: '#00f0ff' }
+        },
+        {
+          instanceId: 'narrative_partner',
+          role: 'PARTNER',
+          archetypeId: 'companion_silhouette',
+          palette: { primary: '#3d1c06', accent: '#ff9100' }
+        }
+      ],
+      beats: [
+        {
+          beatId: 'beat_01_interior_approach',
+          startFrame: 0,
+          endFrame: 210,
+          lyricSnippet: 'Di balik jendela senja redup memudar',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'Two contrasting silhouettes approach the central meeting table',
+          presentCharacters: ['protagonist_lead', 'narrative_partner'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: ['desk'],
+            atmosphericDensity: 0.5
+          },
+          actions: [
+            { instanceId: 'protagonist_lead', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7 },
+            { instanceId: 'narrative_partner', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7 }
+          ],
+          camera: { framing: 'WIDE', movement: 'DOLLY', focalCharacterId: 'protagonist_lead', lookRoom: 'center', dutchAngleDeg: 0 }
+        },
+        {
+          beatId: 'beat_02_interior_confront',
+          startFrame: 210,
+          endFrame: 420,
+          lyricSnippet: 'Bertemu tatap bayang di balik tiang megah',
+          emotionalTone: 'melancholic',
+          narrativeSubtext: 'Tense confrontation across the desk surface',
+          presentCharacters: ['protagonist_lead', 'narrative_partner'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'dramatic_twilight',
+            landmarkProps: ['desk', 'coffee_cup'],
+            atmosphericDensity: 0.6
+          },
+          actions: [
+            { instanceId: 'protagonist_lead', verb: 'reach_and_grasp', speedNorm: 1.0, intensityNorm: 0.8, associatedPropId: 'coffee_cup' },
+            { instanceId: 'narrative_partner', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.8 }
+          ],
+          camera: { framing: 'INSERT', movement: 'STATIC', focalCharacterId: 'protagonist_lead', lookRoom: 'center', dutchAngleDeg: 0 }
+        },
+        {
+          beatId: 'beat_03_embrace_push',
+          startFrame: 420,
+          endFrame: 630,
+          lyricSnippet: 'Pelukan sesaat lalu terhempas berjarak',
+          emotionalTone: 'defiant',
+          narrativeSubtext: 'Bilateral embrace and dramatic push-away recoil with guaranteed clearance',
+          presentCharacters: ['protagonist_lead', 'narrative_partner'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'dramatic_twilight',
+            landmarkProps: [],
+            atmosphericDensity: 0.6
+          },
+          actions: [
+            { instanceId: 'protagonist_lead', verb: 'embrace_push_away', speedNorm: 1.1, intensityNorm: 0.95 },
+            { instanceId: 'narrative_partner', verb: 'embrace_push_away', speedNorm: 1.1, intensityNorm: 0.95 }
+          ],
+          camera: { framing: 'MEDIUM', movement: 'PAN', focalCharacterId: 'protagonist_lead', lookRoom: 'center', dutchAngleDeg: 3 }
+        },
+        {
+          beatId: 'beat_04_exterior_run',
+          startFrame: 630,
+          endFrame: 840,
+          lyricSnippet: 'Berlari keluar menembus dingin lampu kota',
+          emotionalTone: 'chaotic',
+          narrativeSubtext: 'Characters transition outdoors onto the rainy urban street overlook',
+          presentCharacters: ['protagonist_lead', 'narrative_partner'],
+          set: {
+            kitId: 'EXTERIOR_URBAN_VISTA',
+            variantId: 'storm_overcast',
+            landmarkProps: ['umbrella'],
+            atmosphericDensity: 0.7
+          },
+          actions: [
+            { instanceId: 'protagonist_lead', verb: 'run_to', speedNorm: 1.3, intensityNorm: 0.9, target: { kind: 'position', pos: [65, 0, 0] } },
+            { instanceId: 'narrative_partner', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, target: { kind: 'position', pos: [35, 0, 0] } }
+          ],
+          camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'protagonist_lead', lookRoom: 'right', dutchAngleDeg: -2 }
+        },
+        {
+          beatId: 'beat_05_exterior_outlook',
+          startFrame: 840,
+          endFrame: 1050,
+          lyricSnippet: 'Menatap menara langit menjulang menanti fajar',
+          emotionalTone: 'euphoric',
+          narrativeSubtext: 'Pointing together towards the towering skyline towers as dawn approaches',
+          presentCharacters: ['protagonist_lead', 'narrative_partner'],
+          set: {
+            kitId: 'EXTERIOR_URBAN_VISTA',
+            variantId: 'clean_minimal',
+            landmarkProps: ['umbrella'],
+            atmosphericDensity: 0.4
+          },
+          actions: [
+            { instanceId: 'protagonist_lead', verb: 'gesture_point', speedNorm: 1.0, intensityNorm: 0.85, target: { kind: 'position', pos: [65, 0, 0] } },
+            { instanceId: 'narrative_partner', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.75, target: { kind: 'position', pos: [35, 0, 0] } }
+          ],
+          camera: { framing: 'CLOSE_UP', movement: 'STATIC', focalCharacterId: 'protagonist_lead', lookRoom: 'right', dutchAngleDeg: 0 }
+        }
+      ],
+      unfulfilledRequests: []
+    };
+
+    const syntheticManifest: AudioAnalysisManifest = {
+      metadata: { audioFilePath: 'synthetic.wav', sampleRate: 44100, durationSeconds: 35, totalFrames: 1050, fps: 30 },
+      normalization: { globalRmsMax: 1.0, localWindowFrames: 30 },
+      lyrics: [],
+      beatEvents: [],
+      storageReference: { type: 'memory_columnar', columnLayoutVersion: 1 }
+    };
+
+    const dummyAudioFeature = (f: number): AudioFrameFeature => ({
+      frameIndex: f,
+      timestamp: f / 30,
+      rms: 0,
+      rmsRelativeGlobal: 0,
+      rmsRelativeLocal: 0,
+      localWindowFrames: 30,
+      spectralFlux: 0,
+      onsetStrength: 0,
+      isOnset: false,
+      bands: { subBass: 0, bass: 0, lowMid: 0, mid: 0, highMid: 0, presence: 0, brilliance: 0 }
+    });
+
+    const stage1Production = VerbCompiler.compile(sharedStage1Contract, syntheticManifest);
+    const stage2Production = VerbCompiler.compile(stage2Contract, syntheticManifest);
+
+    const s1Builder = new FrameStateBuilder({
+      storyboard: stage1Production.storyboard,
+      choreography: stage1Production.choreography,
+      rigs: stage1Production.rigs,
+      audioManifest: syntheticManifest,
+      getAudioFeatureAtFrame: dummyAudioFeature
+    });
+
+    const s2Builder = new FrameStateBuilder({
+      storyboard: stage2Production.storyboard,
+      choreography: stage2Production.choreography,
+      rigs: stage2Production.rigs,
+      audioManifest: syntheticManifest,
+      getAudioFeatureAtFrame: dummyAudioFeature
+    });
+
+    // 1. Total root horizontal displacement |Delta X_root| >= 45.0 world units for every locomotion span
+    const s1WalkTrack = stage1Production.choreography.tracks.find(t => t.shotId === 'beat_01_walk' && t.rigId === 'protagonist_lead')!;
+    const s1WalkKfs = s1WalkTrack.transform.keyframes;
+    const s1WalkDisp = Math.abs(s1WalkKfs[1].position[0] - s1WalkKfs[0].position[0]);
+    assert.ok(s1WalkDisp >= 45.0, `Stage 1 walk displacement must be >= 45.0, got ${s1WalkDisp}`);
+
+    const s1CarryTrack = stage1Production.choreography.tracks.find(t => t.shotId === 'beat_04_carry_put_down' && t.rigId === 'protagonist_lead')!;
+    const s1CarryKfs = s1CarryTrack.transform.keyframes;
+    const s1CarryDisp = Math.abs(s1CarryKfs[1].position[0] - s1CarryKfs[0].position[0]);
+    assert.ok(s1CarryDisp >= 45.0, `Stage 1 carry walk displacement must be >= 45.0, got ${s1CarryDisp}`);
+
+    const s2ApproachLeadTrack = stage2Production.choreography.tracks.find(t => t.shotId === 'beat_01_interior_approach' && t.rigId === 'protagonist_lead')!;
+    const s2ApproachLeadDisp = Math.abs(s2ApproachLeadTrack.transform.keyframes[1].position[0] - s2ApproachLeadTrack.transform.keyframes[0].position[0]);
+    assert.ok(s2ApproachLeadDisp >= 45.0, `Stage 2 approach lead displacement must be >= 45.0, got ${s2ApproachLeadDisp}`);
+
+    const s2ApproachPartnerTrack = stage2Production.choreography.tracks.find(t => t.shotId === 'beat_01_interior_approach' && t.rigId === 'narrative_partner')!;
+    const s2ApproachPartnerDisp = Math.abs(s2ApproachPartnerTrack.transform.keyframes[1].position[0] - s2ApproachPartnerTrack.transform.keyframes[0].position[0]);
+    assert.ok(s2ApproachPartnerDisp >= 45.0, `Stage 2 approach partner displacement must be >= 45.0, got ${s2ApproachPartnerDisp}`);
+
+    const s2RunLeadTrack = stage2Production.choreography.tracks.find(t => t.shotId === 'beat_04_exterior_run' && t.rigId === 'protagonist_lead')!;
+    const s2RunLeadDisp = Math.abs(s2RunLeadTrack.transform.keyframes[1].position[0] - s2RunLeadTrack.transform.keyframes[0].position[0]);
+    assert.ok(s2RunLeadDisp >= 45.0, `Stage 2 exterior run lead displacement must be >= 45.0, got ${s2RunLeadDisp}`);
+
+    const s2RunPartnerTrack = stage2Production.choreography.tracks.find(t => t.shotId === 'beat_04_exterior_run' && t.rigId === 'narrative_partner')!;
+    const s2RunPartnerDisp = Math.abs(s2RunPartnerTrack.transform.keyframes[1].position[0] - s2RunPartnerTrack.transform.keyframes[0].position[0]);
+    assert.ok(s2RunPartnerDisp >= 45.0, `Stage 2 exterior run partner displacement must be >= 45.0, got ${s2RunPartnerDisp}`);
+
+    // 2. World-space stance foot drift during ground contact frames <= 1.5 world units
+    const leadRig = stage1Production.rigs.get('protagonist_lead')!;
+    const walkClip = BipedPoseClips['walk_to'];
+    const loopFrames = walkClip.loopFrames ?? 36;
+    const timeScale = s1WalkTrack.pose?.timeScale ?? 1.0;
+
+    for (let f = 10; f < 150; f++) {
+      const state0 = s1Builder.buildFrameState(f);
+      const state1 = s1Builder.buildFrameState(f + 1);
+      const e0 = state0.entities.find(e => e.rigId === 'protagonist_lead')!;
+      const e1 = state1.entities.find(e => e.rigId === 'protagonist_lead')!;
+
+      // Check left foot stance drift
+      const clock = (f * timeScale) % loopFrames;
+      if (clock >= 0 && clock <= 20) {
+        const fk0 = computeSkeletonFK(leadRig.skeleton!, e0.jointAngles, e0.jointOffsets);
+        const fk1 = computeSkeletonFK(leadRig.skeleton!, e1.jointAngles, e1.jointOffsets);
+        const footLocal0 = applyAffine2D(fk0.get('leg_l_lower')!, [0, -22]);
+        const footLocal1 = applyAffine2D(fk1.get('leg_l_lower')!, [0, -22]);
+        const worldFootX0 = e0.worldPosition[0] + e0.scale[0] * footLocal0[0];
+        const worldFootX1 = e1.worldPosition[0] + e1.scale[0] * footLocal1[0];
+        const drift = Math.abs(worldFootX1 - worldFootX0);
+        assert.ok(drift <= 1.5, `Stance foot drift at frame ${f} must be <= 1.5, got ${drift.toFixed(3)}`);
+      }
+    }
+
+    // 3. Whenever v_root(f) < 0.05, leg swing amplitude is damped to 0 (standing feet planted)
+    for (let f = 175; f < 205; f++) {
+      const state = s1Builder.buildFrameState(f);
+      const e = state.entities.find(e => e.rigId === 'protagonist_lead')!;
+      assert.equal(e.jointAngles['leg_l_upper'], 10, `Frame ${f}: Stopped leg_l_upper must be damped to rest 10 deg, got ${e.jointAngles['leg_l_upper']}`);
+      assert.equal(e.jointAngles['leg_l_lower'], -15, `Frame ${f}: Stopped leg_l_lower must be damped to rest -15 deg, got ${e.jointAngles['leg_l_lower']}`);
+      assert.equal(e.jointAngles['leg_r_upper'], -10, `Frame ${f}: Stopped leg_r_upper must be damped to rest -10 deg, got ${e.jointAngles['leg_r_upper']}`);
+      assert.equal(e.jointAngles['leg_r_lower'], -20, `Frame ${f}: Stopped leg_r_lower must be damped to rest -20 deg, got ${e.jointAngles['leg_r_lower']}`);
+    }
+
+    // 4. In Stage 2 two-character beats, horizontal separation |X_hero(f) - X_partner(f)| >= 26.0 world units on every frame
+    for (let f = 0; f < 1050; f++) {
+      const state = s2Builder.buildFrameState(f);
+      const hero = state.entities.find(e => e.rigId === 'protagonist_lead')!;
+      const partner = state.entities.find(e => e.rigId === 'narrative_partner')!;
+      assert.ok(hero && partner, `Frame ${f}: Both hero and partner must exist in frame state`);
+      const separation = Math.abs(hero.worldPosition[0] - partner.worldPosition[0]);
+      assert.ok(
+        separation >= 26.0,
+        `Frame ${f} (shot "${state.shotId}"): Horizontal separation must be >= 26.0 world units, got ${separation.toFixed(2)} (hero X=${hero.worldPosition[0].toFixed(1)}, partner X=${partner.worldPosition[0].toFixed(1)})`
+      );
+    }
   });
 });

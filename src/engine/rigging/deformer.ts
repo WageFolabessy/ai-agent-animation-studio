@@ -31,7 +31,8 @@ export function samplePoseTrack(
   shotStartFrame: number,
   timeScale = 1.0,
   startPoseFrame = 0,
-  clipId?: string
+  clipId?: string,
+  rootSpeed?: number
 ): SampledPoseResult {
   const jointAngles: Record<string, number> = {};
   const jointOffsets: Record<string, Vec2> = {};
@@ -179,6 +180,28 @@ export function samplePoseTrack(
         hermiteInterpolate(o0[0], mx0, o1[0], mx1, deltaF, u),
         hermiteInterpolate(o0[1], my0, o1[1], my1, deltaF, u)
       ];
+    }
+  }
+
+  const isLocomotionClip = clipId === 'walk_to' || clipId === 'sprint_frenzy' || clipId === 'run_to';
+  if (rootSpeed !== undefined && isLocomotionClip) {
+    const STANDING_REST_LEG_ANGLES: Record<string, number> = {
+      leg_l_upper: 10,
+      leg_l_lower: -15,
+      leg_r_upper: -10,
+      leg_r_lower: -20
+    };
+    if (rootSpeed < 0.05) {
+      for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {
+        jointAngles[jId] = angle;
+      }
+      jointOffsets['pelvis'] = [0, 0];
+    } else if (rootSpeed < 0.20) {
+      const blendFactor = (rootSpeed - 0.05) / 0.15;
+      for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {
+        jointAngles[jId] = lerp(angle, jointAngles[jId] ?? angle, blendFactor);
+      }
+      jointOffsets['pelvis'] = lerpVec2([0, 0], jointOffsets['pelvis'] ?? [0, 0], blendFactor);
     }
   }
 

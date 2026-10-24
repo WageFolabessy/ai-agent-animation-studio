@@ -755,15 +755,15 @@ export class StageEnvironmentGenerator {
               }
             );
 
-            // Desk 2: centered at X = -86
+            // Desk 2: centered at X = -96 (cup placement [-90, 68, 0])
             polygons.push(
               {
                 // Desk 2 top
                 vertices: [
-                  [-116, 65, 0],
-                  [-60, 65, 0],
-                  [-60, 68, 0],
-                  [-116, 68, 0]
+                  [-126, 65, 0],
+                  [-66, 65, 0],
+                  [-66, 68, 0],
+                  [-126, 68, 0]
                 ],
                 fill: shadeHexColor(palette.secondary, 0.25),
                 opacity: 1.0,
@@ -772,10 +772,10 @@ export class StageEnvironmentGenerator {
               {
                 // Desk 2 left pedestal cabinet
                 vertices: [
-                  [-116, 0, 0],
-                  [-94, 0, 0],
-                  [-94, 65, 0],
-                  [-116, 65, 0]
+                  [-126, 0, 0],
+                  [-104, 0, 0],
+                  [-104, 65, 0],
+                  [-126, 65, 0]
                 ],
                 fill: shadeHexColor(palette.background, 0.1),
                 opacity: 1.0,
@@ -784,10 +784,10 @@ export class StageEnvironmentGenerator {
               {
                 // Desk 2 right leg
                 vertices: [
-                  [-66, 0, 0],
-                  [-62, 0, 0],
-                  [-62, 65, 0],
-                  [-66, 65, 0]
+                  [-72, 0, 0],
+                  [-68, 0, 0],
+                  [-68, 65, 0],
+                  [-72, 65, 0]
                 ],
                 fill: shadeHexColor(palette.background, 0.1),
                 opacity: 1.0,
@@ -796,10 +796,10 @@ export class StageEnvironmentGenerator {
               {
                 // Desk 2 middle shelf
                 vertices: [
-                  [-94, 32, 0],
-                  [-66, 32, 0],
-                  [-66, 35, 0],
-                  [-94, 35, 0]
+                  [-104, 32, 0],
+                  [-72, 32, 0],
+                  [-72, 35, 0],
+                  [-104, 35, 0]
                 ],
                 fill: shadeHexColor(palette.background, 0.15),
                 opacity: 0.95,
@@ -808,8 +808,8 @@ export class StageEnvironmentGenerator {
             );
             lines.push(
               {
-                p0: [-116, 68, 1],
-                p1: [-60, 68, 1],
+                p0: [-126, 68, 1],
+                p1: [-66, 68, 1],
                 stroke: palette.primary,
                 strokeWidth: 2.0,
                 opacity: 0.95,

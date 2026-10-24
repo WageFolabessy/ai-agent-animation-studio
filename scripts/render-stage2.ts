@@ -209,13 +209,15 @@ async function main() {
             instanceId: 'protagonist_lead',
             verb: 'run_to',
             speedNorm: 1.3,
-            intensityNorm: 0.9
+            intensityNorm: 0.9,
+            target: { kind: 'position', pos: [65, 0, 0] }
           },
           {
             instanceId: 'narrative_partner',
             verb: 'walk_to',
             speedNorm: 1.0,
-            intensityNorm: 0.7
+            intensityNorm: 0.7,
+            target: { kind: 'position', pos: [35, 0, 0] }
           }
         ],
         camera: {
@@ -245,13 +247,15 @@ async function main() {
             instanceId: 'protagonist_lead',
             verb: 'gesture_point',
             speedNorm: 1.0,
-            intensityNorm: 0.85
+            intensityNorm: 0.85,
+            target: { kind: 'position', pos: [65, 0, 0] }
           },
           {
             instanceId: 'narrative_partner',
             verb: 'look_at',
             speedNorm: 1.0,
-            intensityNorm: 0.75
+            intensityNorm: 0.75,
+            target: { kind: 'position', pos: [35, 0, 0] }
           }
         ],
         camera: {

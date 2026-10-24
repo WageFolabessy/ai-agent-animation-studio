@@ -75,7 +75,7 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
   await t.test('samplePoseTrack resolves clipId dynamically from rig.poseClips', () => {
     // 1. Without clipId, samples default poseInterpolation (sprint_frenzy)
     const defaultSample = samplePoseTrack(runner, 0, 0, 1.0, 0);
-    assert.equal(defaultSample.jointAngles.torso, -18);
+    assert.equal(defaultSample.jointAngles.torso, -14);
 
     // 2. With clipId = 'stalk_crouch', torso should lean -24°
     const crouchSample = samplePoseTrack(runner, 0, 0, 1.0, 0, 'stalk_crouch');
@@ -137,9 +137,9 @@ test('Pose Clips & Motion State Machine Suite', async (t) => {
         sprint_frenzy: {
           loopFrames: 18,
           stanceFrames: 8,
-          strideLengthUnits: 68.0,
+          strideLengthUnits: 23.0,
           groundY: -41.0,
-          swingLift: 12.0
+          swingLift: 8.5
         },
         exhausted_walk: {
           loopFrames: 42,

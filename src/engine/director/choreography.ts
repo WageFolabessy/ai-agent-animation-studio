@@ -21,6 +21,7 @@ export interface EvaluatedTrackState {
   clipId?: string;
   morphWeights: Record<string, number>;
   activeAttachmentSpan?: PropAttachmentSpan;
+  vRoot?: number;
 }
 
 function evaluateTrackTransform(
@@ -152,6 +153,9 @@ export function evaluateEntityTrack(
     (s) => frameIndex >= s.startFrame && frameIndex < s.endFrame
   );
 
+  const pNext = evaluateTrackTransform(track.transform.keyframes, frameIndex + 1).position;
+  const vRoot = Math.hypot(pNext[0] - transform.position[0], pNext[1] - transform.position[1]);
+
   return {
     rigId: track.rigId,
     worldPosition: transform.position,
@@ -162,7 +166,8 @@ export function evaluateEntityTrack(
     startPoseFrame: track.pose?.startPoseFrame ?? 0,
     clipId: track.pose?.clipId,
     morphWeights,
-    ...(activeAttachmentSpan ? { activeAttachmentSpan } : {})
+    ...(activeAttachmentSpan ? { activeAttachmentSpan } : {}),
+    vRoot
   };
 }
 

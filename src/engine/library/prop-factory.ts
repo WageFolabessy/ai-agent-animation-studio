@@ -86,10 +86,10 @@ export class PropFactory {
           {
             id: 'prop_umbrella_shaft',
             jointId: 'arm_r_lower',
-            localOffset2D: [3, -15],
+            localOffset2D: [0, 16],
             shape: {
               kind: 'rect',
-              size: [1.6, 46]
+              size: [2.0, 52]
             },
             style: {
               fill: { kind: 'palette', role: 'secondary', shade: 0.3 },
@@ -100,18 +100,22 @@ export class PropFactory {
           {
             id: 'prop_umbrella_canopy',
             jointId: 'arm_r_lower',
-            localOffset2D: [3, 8],
+            localOffset2D: [0, 42],
             shape: {
               kind: 'polygon',
               points: [
-                [-28, 0],
-                [-14, 4],
-                [0, 0],
-                [14, 4],
-                [28, 0],
-                [18, 14],
-                [0, 18],
-                [-18, 14]
+                [-30, -6],
+                [-28, -2],
+                [-22, 5],
+                [-14, 10],
+                [-5, 12],
+                [0, 12.5],
+                [5, 12.5],
+                [14, 10],
+                [22, 5],
+                [28, -2],
+                [30, -6],
+                [0, -2]
               ]
             },
             style: {
@@ -362,8 +366,8 @@ export class PropFactory {
             {
               id: `${instanceId}_shaft`,
               jointId: null,
-              localOffset2D: [0, 0],
-              shape: { kind: 'rect', size: [2.0, 48] },
+              localOffset2D: [0, 16],
+              shape: { kind: 'rect', size: [2.0, 52] },
               style: {
                 fill: { kind: 'palette', role: 'secondary', shade: 0.25 },
                 opacity: 1,
@@ -373,14 +377,22 @@ export class PropFactory {
             {
               id: `${instanceId}_canopy`,
               jointId: null,
-              localOffset2D: [0, 24],
+              localOffset2D: [0, 42],
               shape: {
                 kind: 'polygon',
                 points: [
-                  [-24, 0],
-                  [24, 0],
-                  [18, 16],
-                  [-18, 16]
+                  [-30, -6],
+                  [-28, -2],
+                  [-22, 5],
+                  [-14, 10],
+                  [-5, 12],
+                  [0, 12.5],
+                  [5, 12.5],
+                  [14, 10],
+                  [22, 5],
+                  [28, -2],
+                  [30, -6],
+                  [0, -2]
                 ]
               },
               style: {
