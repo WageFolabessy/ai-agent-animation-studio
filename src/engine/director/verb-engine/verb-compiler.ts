@@ -72,9 +72,11 @@ export class VerbCompiler {
       rigs.set(rig.id, rig);
     }
 
-    // Always include coffee_cup prop
-    const propRig = PropFactory.buildStandalonePropRig('coffee_cup', 'coffee_cup', [25, 35, 0]);
-    rigs.set(propRig.id, propRig);
+    // Always include coffee_cup and umbrella props
+    const coffeeCupRig = PropFactory.buildStandalonePropRig('coffee_cup', 'coffee_cup', [25, 35, 0]);
+    rigs.set(coffeeCupRig.id, coffeeCupRig);
+    const umbrellaRig = PropFactory.buildStandalonePropRig('umbrella', 'umbrella', [-30, 24, 0]);
+    rigs.set(umbrellaRig.id, umbrellaRig);
 
     // 2. Pre-compute shot frame ranges to snap Act boundaries to shot cuts
     const shotRanges: Array<{ startFrame: number; endFrame: number }> = [];
@@ -140,7 +142,8 @@ export class VerbCompiler {
 
       const activeRigIds = [
         ...beat.presentCharacters,
-        'coffee_cup'
+        ...(rigs.has('coffee_cup') ? ['coffee_cup'] : []),
+        ...(beat.set.landmarkProps.includes('umbrella') ? ['umbrella'] : [])
       ].filter((id, idx, arr) => arr.indexOf(id) === idx && rigs.has(id));
 
       const actNumber: 1 | 2 | 3 = i < idx1 ? 1 : i < idx2 ? 2 : 3;
@@ -187,9 +190,19 @@ export class VerbCompiler {
 
     // 4. Compile Choreography Tracks
     const tracks: EntityTrack[] = [];
-    let leadCurrentX = -50;
-    let propHeld = false;
-    let propHeldBy: string | null = null;
+    const charCurrentX: Record<string, number> = {};
+    const charArchetypes: Record<string, string> = {};
+
+    for (let cIdx = 0; cIdx < storyBeatContract.cast.length; cIdx++) {
+      const c = storyBeatContract.cast[cIdx];
+      charCurrentX[c.instanceId] = cIdx === 0 ? -45 : 35;
+      charArchetypes[c.instanceId] = c.archetypeId;
+    }
+
+    let coffeeCupHeld = false;
+    let coffeeCupHeldBy: string | null = null;
+    let umbrellaHeld = false;
+    let umbrellaHeldBy: string | null = null;
 
     for (let i = 0; i < beats.length; i++) {
       const beat = beats[i];
@@ -197,40 +210,90 @@ export class VerbCompiler {
       const startF = shot.frameRange.startFrameInclusive;
       const endF = shot.frameRange.endFrameExclusive;
 
-      const action = beat.actions.find((a) => a.instanceId === leadId) ?? {
-        instanceId: leadId,
-        verb: 'walk_to' as const,
-        speedNorm: 1.0,
-        intensityNorm: 0.7
-      };
-
-      const characterTracks = VerbCompiler.compileCharacterAction(
-        leadId,
-        shot.id,
-        startF,
-        endF,
-        action,
-        leadCurrentX
+      const presentList = storyBeatContract.cast.filter((c) =>
+        beat.presentCharacters.includes(c.instanceId)
       );
 
-      leadCurrentX = characterTracks.nextX;
-      tracks.push(characterTracks.track);
+      const shotStartPositions = { ...charCurrentX };
+      const nextPositions: Record<string, number> = {};
 
-      // Handle prop state & track
-      const propTrackResult = VerbCompiler.compilePropAction(
-        'coffee_cup',
-        shot.id,
-        startF,
-        endF,
-        leadId,
-        action,
-        propHeld,
-        propHeldBy
-      );
+      for (let cIdx = 0; cIdx < presentList.length; cIdx++) {
+        const char = presentList[cIdx];
+        const otherChar = presentList.find((other) => other.instanceId !== char.instanceId);
+        const otherX = otherChar ? shotStartPositions[otherChar.instanceId] : undefined;
 
-      propHeld = propTrackResult.propHeld;
-      propHeldBy = propTrackResult.propHeldBy;
-      tracks.push(propTrackResult.track);
+        const action = beat.actions.find((a) => a.instanceId === char.instanceId) ?? {
+          instanceId: char.instanceId,
+          verb: 'walk_to' as const,
+          speedNorm: 1.0,
+          intensityNorm: 0.7
+        };
+
+        const charTrack = VerbCompiler.compileCharacterAction(
+          char.instanceId,
+          shot.id,
+          startF,
+          endF,
+          action,
+          shotStartPositions[char.instanceId] ?? 0,
+          otherX,
+          charArchetypes[char.instanceId]
+        );
+
+        nextPositions[char.instanceId] = charTrack.nextX;
+        tracks.push(charTrack.track);
+      }
+
+      for (const [id, nX] of Object.entries(nextPositions)) {
+        charCurrentX[id] = nX;
+      }
+
+      // Handle coffee_cup prop track
+      if (shot.activeRigIds.includes('coffee_cup')) {
+        const cupAction = beat.actions.find((a) => a.instanceId === leadId) ?? {
+          instanceId: leadId,
+          verb: 'walk_to' as const,
+          speedNorm: 1.0,
+          intensityNorm: 0.7
+        };
+        const cupResult = VerbCompiler.compilePropAction(
+          'coffee_cup',
+          shot.id,
+          startF,
+          endF,
+          leadId,
+          cupAction,
+          coffeeCupHeld,
+          coffeeCupHeldBy
+        );
+        coffeeCupHeld = cupResult.propHeld;
+        coffeeCupHeldBy = cupResult.propHeldBy;
+        tracks.push(cupResult.track);
+      }
+
+      // Handle umbrella prop track
+      if (shot.activeRigIds.includes('umbrella')) {
+        const carrierId = presentList[presentList.length - 1]?.instanceId ?? leadId;
+        const carrierAction = beat.actions.find((a) => a.instanceId === carrierId) ?? {
+          instanceId: carrierId,
+          verb: 'walk_to' as const,
+          speedNorm: 1.0,
+          intensityNorm: 0.7
+        };
+        const umbResult = VerbCompiler.compilePropAction(
+          'umbrella',
+          shot.id,
+          startF,
+          endF,
+          carrierId,
+          carrierAction,
+          umbrellaHeld,
+          umbrellaHeldBy
+        );
+        umbrellaHeld = umbResult.propHeld;
+        umbrellaHeldBy = umbResult.propHeldBy;
+        tracks.push(umbResult.track);
+      }
     }
 
     const storyboard: DirectorStoryboardContract = {
@@ -260,7 +323,9 @@ export class VerbCompiler {
     startF: number,
     endF: number,
     action: CharacterActionDirective,
-    currentX: number
+    currentX: number,
+    otherCharX?: number,
+    archetypeId?: string
   ): { track: EntityTrack; nextX: number } {
     const lastF = endF - 1;
     const keyframes: EntityTrackKeyframe[] = [];
@@ -268,27 +333,105 @@ export class VerbCompiler {
     let nextX = currentX;
     let clipId = 'pop_vocal_sway';
 
+    const baseY = archetypeId === 'companion_silhouette' ? 65 : 75;
+    const [scaleXBase, scaleYBase] =
+      archetypeId === 'companion_silhouette' ? [1.6, 1.15] : [1.35, 1.45];
+
     switch (action.verb) {
       case 'walk_to': {
-        const targetX = 15; // Walk toward desk at X = 25
+        const targetPos = action.target?.kind === 'position' ? action.target.pos[0] : undefined;
+        let targetX: number;
+        if (targetPos !== undefined) {
+          targetX = targetPos;
+        } else if (otherCharX !== undefined) {
+          const midX = (currentX + otherCharX) / 2;
+          const isLeft = currentX <= otherCharX;
+          targetX = isLeft ? midX - 15 : midX + 15;
+        } else {
+          targetX = 15;
+        }
         nextX = targetX;
-        const sX = targetX >= currentX ? 1.35 : -1.35;
+        const sX = targetX >= currentX ? scaleXBase : -scaleXBase;
         clipId = 'pop_vocal_sway';
 
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [sX, 1.45],
+            scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: lastF,
-            position: [targetX, 75, 0],
+            position: [targetX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [sX, 1.45],
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          }
+        );
+        break;
+      }
+
+      case 'run_to': {
+        const targetPos = action.target?.kind === 'position' ? action.target.pos[0] : undefined;
+        let targetX: number;
+        if (targetPos !== undefined) {
+          targetX = targetPos;
+        } else if (otherCharX !== undefined) {
+          const midX = (currentX + otherCharX) / 2;
+          const isLeft = currentX <= otherCharX;
+          targetX = isLeft ? midX - 20 : midX + 20;
+        } else {
+          targetX = 35;
+        }
+        nextX = targetX;
+        const sX = targetX >= currentX ? scaleXBase : -scaleXBase;
+        clipId = 'sprint_frenzy';
+
+        keyframes.push(
+          {
+            frame: startF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: sX > 0 ? 14 : -14,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: lastF,
+            position: [targetX, baseY, 0],
+            rotationZDegrees: sX > 0 ? 14 : -14,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          }
+        );
+        break;
+      }
+
+      case 'look_at': {
+        nextX = currentX;
+        const faceRight = otherCharX !== undefined ? otherCharX >= currentX : true;
+        const sX = faceRight ? scaleXBase : -scaleXBase;
+        clipId = 'pop_vocal_sway';
+
+        keyframes.push(
+          {
+            frame: startF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: 0,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: lastF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: faceRight ? 4 : -4,
+            scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
@@ -297,30 +440,29 @@ export class VerbCompiler {
       }
 
       case 'reach_and_grasp': {
-        nextX = 15;
+        nextX = currentX;
         clipId = 'pop_vocal_sway';
         const reachF = startF + Math.floor((endF - startF) * 0.4);
 
         keyframes.push(
           {
             frame: startF,
-            position: [15, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: lastF,
-            position: [15, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
         );
 
-        // Hand morphs to grasp fist
         morphKeyframes.grasp_fist = [
           { frame: startF, weight: 0 },
           { frame: reachF, weight: 1.0 },
@@ -336,65 +478,65 @@ export class VerbCompiler {
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: turnF0,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: turnF0 + 1,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [0.95, 1.42],
+            scale: [scaleXBase * 0.7, scaleYBase * 0.98],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: turnF0 + 2,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [0.45, 1.40],
+            scale: [scaleXBase * 0.35, scaleYBase * 0.96],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: turnF0 + 3,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-0.45, 1.40],
+            scale: [-scaleXBase * 0.35, scaleYBase * 0.96],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: turnF0 + 4,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-0.95, 1.42],
+            scale: [-scaleXBase * 0.7, scaleYBase * 0.98],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: turnF0 + 5,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-1.35, 1.45],
+            scale: [-scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: lastF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-1.35, 1.45],
+            scale: [-scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
@@ -403,32 +545,33 @@ export class VerbCompiler {
       }
 
       case 'carry_put_down': {
-        const destX = -35;
+        const destPos = action.target?.kind === 'position' ? action.target.pos[0] : undefined;
+        const destX = destPos !== undefined ? destPos : -35;
         nextX = destX;
         const releaseF = startF + Math.floor((endF - startF) * 0.7);
 
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-1.35, 1.45],
+            scale: [-scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: releaseF,
-            position: [destX, 75, 0],
+            position: [destX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-1.35, 1.45],
+            scale: [-scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: lastF,
-            position: [destX, 75, 0],
+            position: [destX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [-1.35, 1.45],
+            scale: [-scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
@@ -443,22 +586,64 @@ export class VerbCompiler {
         break;
       }
 
-      case 'gesture_point': {
+      case 'sit_stand': {
         nextX = currentX;
+        const sitF = startF + Math.floor((endF - startF) * 0.35);
+        const standF = startF + Math.floor((endF - startF) * 0.75);
+
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: sitF,
+            position: [currentX, baseY - 20, 0],
+            rotationZDegrees: -5,
+            scale: [scaleXBase, scaleYBase * 0.85],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: standF,
+            position: [currentX, baseY - 20, 0],
+            rotationZDegrees: -5,
+            scale: [scaleXBase, scaleYBase * 0.85],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: lastF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          }
+        );
+        break;
+      }
+
+      case 'gesture_point': {
+        nextX = currentX;
+        keyframes.push(
+          {
+            frame: startF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: 0,
+            scale: [scaleXBase, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: lastF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: 0,
+            scale: [scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
@@ -472,21 +657,124 @@ export class VerbCompiler {
         break;
       }
 
-      default: {
+      case 'embrace_push_away': {
+        clipId = 'pop_vocal_sway';
+        // Interpersonal clearance guarantee:
+        // Midpoint between the two interacting characters
+        const midX = otherCharX !== undefined ? (currentX + otherCharX) / 2 : currentX;
+        const isLeft = otherCharX !== undefined ? currentX <= otherCharX : true;
+        // Closest approach: 5 units on each side of midX (total 10.0 >= MIN_INTERPERSONAL_CLEARANCE 8.0)
+        const contactX = isLeft ? midX - 5.0 : midX + 5.0;
+        // Separation after push away: 30 units on each side (total 60.0 units clearance)
+        const pushedX = isLeft ? midX - 30.0 : midX + 30.0;
+        nextX = pushedX;
+
+        const f1 = startF + Math.floor((endF - startF) * 0.35); // Contact / embrace
+        const f2 = startF + Math.floor((endF - startF) * 0.65); // Hold embrace, start push
+        const sXApproach = isLeft ? scaleXBase : -scaleXBase;
+        const sXRecoil = isLeft ? -scaleXBase : scaleXBase;
+
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, 75, 0],
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [sXApproach, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: f1,
+            position: [contactX, baseY, 0],
+            rotationZDegrees: isLeft ? 4 : -4,
+            scale: [sXApproach, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: f2,
+            position: [contactX, baseY, 0],
+            rotationZDegrees: isLeft ? 4 : -4,
+            scale: [sXApproach, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: lastF,
-            position: [currentX, 75, 0],
+            position: [pushedX, baseY, 0],
+            rotationZDegrees: isLeft ? -8 : 8,
+            scale: [sXRecoil, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          }
+        );
+
+        morphKeyframes.point = [
+          { frame: startF, weight: 0.0 },
+          { frame: f1, weight: 0.7 },
+          { frame: f2, weight: 0.7 },
+          { frame: lastF, weight: 0.0 }
+        ];
+        break;
+      }
+
+      case 'fall_recover': {
+        nextX = currentX;
+        const dropF = startF + Math.floor((endF - startF) * 0.3);
+        const riseF = startF + Math.floor((endF - startF) * 0.7);
+
+        keyframes.push(
+          {
+            frame: startF,
+            position: [currentX, baseY, 0],
             rotationZDegrees: 0,
-            scale: [1.35, 1.45],
+            scale: [scaleXBase, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: dropF,
+            position: [currentX, baseY - 35, 0],
+            rotationZDegrees: -25,
+            scale: [scaleXBase, scaleYBase * 0.7],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: riseF,
+            position: [currentX, baseY - 35, 0],
+            rotationZDegrees: -25,
+            scale: [scaleXBase, scaleYBase * 0.7],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: lastF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: 0,
+            scale: [scaleXBase, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          }
+        );
+        break;
+      }
+
+      default: {
+        keyframes.push(
+          {
+            frame: startF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: 0,
+            scale: [scaleXBase, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
+            frame: lastF,
+            position: [currentX, baseY, 0],
+            rotationZDegrees: 0,
+            scale: [scaleXBase, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }

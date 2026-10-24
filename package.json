@@ -18,6 +18,7 @@
     "demo:phase4": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase4-orchestration.ts",
     "produce:video": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts --produce",
     "render:stage1": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/render-stage1.ts",
+    "render:stage2": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/render-stage2.ts",
     "studio": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts",
     "studio:theatrical": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts --theatrical",
     "review:sheets": "tsx scripts/review-sheets.ts"

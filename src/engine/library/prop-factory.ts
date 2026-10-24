@@ -354,6 +354,87 @@ export class PropFactory {
     instanceId: string,
     basePosition: [number, number, number] = [0, 35, 0]
   ): AssetRigContract {
+    const parts: RigPart[] =
+      propId === 'umbrella'
+        ? [
+            {
+              id: `${instanceId}_shaft`,
+              jointId: null,
+              localOffset2D: [0, 0],
+              shape: { kind: 'rect', size: [2.0, 48] },
+              style: {
+                fill: { kind: 'palette', role: 'secondary', shade: 0.25 },
+                opacity: 1,
+                lit: false
+              }
+            },
+            {
+              id: `${instanceId}_canopy`,
+              jointId: null,
+              localOffset2D: [0, 24],
+              shape: {
+                kind: 'polygon',
+                points: [
+                  [-24, 0],
+                  [24, 0],
+                  [18, 16],
+                  [-18, 16]
+                ]
+              },
+              style: {
+                fill: { kind: 'palette', role: 'primary', shade: -0.3 },
+                stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.2 }, width: 1.4 },
+                opacity: 1,
+                lit: true
+              }
+            }
+          ]
+        : [
+            {
+              id: `${instanceId}_body`,
+              jointId: null,
+              localOffset2D: [0, 0],
+              shape: {
+                kind: 'polygon',
+                points: [
+                  [-3.0, 0.0],
+                  [3.0, 0.0],
+                  [3.6, 7.0],
+                  [-3.6, 7.0]
+                ]
+              },
+              style: {
+                fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+                stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
+                opacity: 1,
+                lit: true
+              }
+            },
+            {
+              id: `${instanceId}_handle`,
+              jointId: null,
+              localOffset2D: [3.4, 3.5],
+              shape: {
+                kind: 'path',
+                segments: [
+                  {
+                    p0: [0, -2.5],
+                    p1: [2.5, -2.5],
+                    p2: [2.5, 2.5],
+                    p3: [0, 2.5]
+                  }
+                ],
+                closed: false
+              },
+              style: {
+                fill: { kind: 'palette', role: 'accent', shade: 0.1 },
+                stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.3 }, width: 1.2 },
+                opacity: 1,
+                lit: true
+              }
+            }
+          ];
+
     return {
       id: instanceId,
       name: `Prop ${propId} (${instanceId})`,
@@ -365,51 +446,7 @@ export class PropFactory {
         scale: [1, 1]
       },
       secondaryMotion: [],
-      parts: [
-        {
-          id: `${instanceId}_body`,
-          jointId: null,
-          localOffset2D: [0, 0],
-          shape: {
-            kind: 'polygon',
-            points: [
-              [-3.0, 0.0],
-              [3.0, 0.0],
-              [3.6, 7.0],
-              [-3.6, 7.0]
-            ]
-          },
-          style: {
-            fill: { kind: 'palette', role: 'accent', shade: 0.2 },
-            stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
-            opacity: 1,
-            lit: true
-          }
-        },
-        {
-          id: `${instanceId}_handle`,
-          jointId: null,
-          localOffset2D: [3.4, 3.5],
-          shape: {
-            kind: 'path',
-            segments: [
-              {
-                p0: [0, -2.5],
-                p1: [2.5, -2.5],
-                p2: [2.5, 2.5],
-                p3: [0, 2.5]
-              }
-            ],
-            closed: false
-          },
-          style: {
-            fill: { kind: 'palette', role: 'accent', shade: 0.1 },
-            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.3 }, width: 1.2 },
-            opacity: 1,
-            lit: true
-          }
-        }
-      ],
+      parts,
       svgAsset: {
         idNamespace: `prop_${instanceId}`
       }

@@ -187,60 +187,103 @@ export class StageEnvironmentGenerator {
         }
 
         case 'ARCHITECTURAL_INTERIOR': {
-          // Vast circular lunette window + moonlit night sky
-          polygons.push({
-            vertices: [
-              [bx - 80, 80, z1],
-              [bx + 80, 80, z1],
-              [bx + 80, 320, z1],
-              [bx - 80, 320, z1]
-            ],
-            fill: shadeHexColor(palette.background, 0.45),
-            opacity: 0.94,
-            tier: 1
-          });
-          lines.push(
-            {
-              p0: [bx - 80, 200, z1 + 5],
-              p1: [bx + 80, 200, z1 + 5],
-              stroke: palette.primary,
-              strokeWidth: 2.0,
-              opacity: 0.85,
+          // One monumental central lunette arched window at center (k === 0), with moonlit sky
+          if (k === 0) {
+            polygons.push({
+              vertices: [
+                [-140, 60, z1],
+                [140, 60, z1],
+                [140, 260, z1],
+                [90, 340, z1],
+                [-90, 340, z1],
+                [-140, 260, z1]
+              ],
+              fill: shadeHexColor(palette.background, 0.45),
+              opacity: 0.94,
               tier: 1
-            },
-            {
-              p0: [bx, 80, z1 + 5],
-              p1: [bx, 320, z1 + 5],
-              stroke: palette.accent,
-              strokeWidth: 2.0,
-              opacity: 0.85,
-              tier: 1
-            }
-          );
+            });
+            lines.push(
+              {
+                p0: [-140, 200, z1 + 5],
+                p1: [140, 200, z1 + 5],
+                stroke: palette.primary,
+                strokeWidth: 2.2,
+                opacity: 0.85,
+                tier: 1
+              },
+              {
+                p0: [0, 60, z1 + 5],
+                p1: [0, 340, z1 + 5],
+                stroke: palette.accent,
+                strokeWidth: 2.2,
+                opacity: 0.85,
+                tier: 1
+              },
+              {
+                p0: [-100, 100, z1 + 5],
+                p1: [100, 300, z1 + 5],
+                stroke: palette.accent,
+                strokeWidth: 1.8,
+                opacity: 0.75,
+                tier: 1
+              },
+              {
+                p0: [100, 100, z1 + 5],
+                p1: [-100, 300, z1 + 5],
+                stroke: palette.accent,
+                strokeWidth: 1.8,
+                opacity: 0.75,
+                tier: 1
+              }
+            );
+          }
           break;
         }
 
         case 'EXTERIOR_URBAN_VISTA': {
-          // Horizon skyline with bridge cables and dusk glow
-          polygons.push({
-            vertices: [
-              [bx - 100, 0, z1],
-              [bx + 100, 0, z1],
-              [bx + 90, 280, z1],
-              [bx - 90, 280, z1]
-            ],
-            fill: shadeHexColor(palette.background, 0.38),
-            opacity: 0.92,
-            tier: 1
-          });
-          lines.push({
-            p0: [bx - 100, 160, z1 + 5],
-            p1: [bx + 100, 220, z1 + 5],
-            stroke: palette.primary,
-            strokeWidth: 1.8,
-            opacity: 0.8,
-            tier: 1
-          });
+          // Continuous distant skyline backdrop & suspension bridge cables
+          polygons.push(
+            {
+              vertices: [
+                [bx - 220, 0, z1],
+                [bx + 220, 0, z1],
+                [bx + 220, 180, z1],
+                [bx - 220, 180, z1]
+              ],
+              fill: shadeHexColor(palette.background, 0.35),
+              opacity: 0.94,
+              tier: 1
+            },
+            {
+              vertices: [
+                [bx - 25, 0, z1 + 2],
+                [bx + 25, 0, z1 + 2],
+                [bx + 18, 380, z1 + 2],
+                [bx - 18, 380, z1 + 2]
+              ],
+              fill: shadeHexColor(palette.secondary, -0.3),
+              opacity: 0.92,
+              tier: 1
+            }
+          );
+          lines.push(
+            {
+              p0: [bx - 220, 140, z1 + 6],
+              p1: [bx, 370, z1 + 6],
+              stroke: palette.primary,
+              strokeWidth: 2.2,
+              opacity: 0.88,
+              tier: 1
+            },
+            {
+              p0: [bx, 370, z1 + 6],
+              p1: [bx + 220, 140, z1 + 6],
+              stroke: palette.primary,
+              strokeWidth: 2.2,
+              opacity: 0.88,
+              tier: 1
+            }
+          );
           break;
         }
       }
@@ -404,27 +447,61 @@ export class StageEnvironmentGenerator {
         }
 
         case 'EXTERIOR_URBAN_VISTA': {
-          // Tiered geometric skyscraper silhouettes
-          const h2 = (Math.abs(k) % 3) === 0 ? 320 : (Math.abs(k) % 3) === 1 ? 380 : 260;
-          polygons.push({
-            vertices: [
-              [bx - 60, 0, z2],
-              [bx + 60, 0, z2],
-              [bx + 55, h2, z2],
-              [bx - 55, h2, z2]
-            ],
-            fill: shadeHexColor(palette.secondary, -0.25),
-            opacity: 0.95,
-            tier: 2
-          });
-          lines.push({
-            p0: [bx, 0, z2 + 6],
-            p1: [bx, h2, z2 + 6],
-            stroke: palette.primary,
-            strokeWidth: 2.0,
-            opacity: 0.85,
-            tier: 2
-          });
+          // Asymmetric skyline towers with angled chisel roofs & antenna spires
+          const isChisel = (Math.abs(k) % 2) === 1;
+          const h2 = (Math.abs(k) % 3) === 0 ? 320 : (Math.abs(k) % 3) === 1 ? 400 : 260;
+          polygons.push(
+            {
+              vertices: isChisel
+                ? [
+                    [bx - 120, 0, z2],
+                    [bx + 120, 0, z2],
+                    [bx + 110, h2 - 60, z2],
+                    [bx - 110, h2, z2]
+                  ]
+                : [
+                    [bx - 120, 0, z2],
+                    [bx + 120, 0, z2],
+                    [bx + 110, h2, z2],
+                    [bx - 110, h2, z2]
+                  ],
+              fill: shadeHexColor(palette.secondary, -0.25),
+              opacity: 0.95,
+              tier: 2
+            },
+            {
+              // Upper setback crown with chisel slope
+              vertices: [
+                [bx - 55, h2, z2 + 2],
+                [bx + 55, h2, z2 + 2],
+                [bx + 35, h2 + 70, z2 + 2],
+                [bx - 45, h2 + 70, z2 + 2]
+              ],
+              fill: shadeHexColor(palette.secondary, -0.35),
+              opacity: 0.95,
+              tier: 2
+            }
+          );
+          lines.push(
+            {
+              // Spire antenna on top
+              p0: [bx - 5, h2 + 70, z2 + 4],
+              p1: [bx - 5, h2 + 130, z2 + 4],
+              stroke: palette.accent,
+              strokeWidth: 2.0,
+              opacity: 0.9,
+              tier: 2
+            },
+            {
+              // Diagonal building facade strut
+              p0: [bx - 100, 60, z2 + 4],
+              p1: [bx + 100, 220, z2 + 4],
+              stroke: palette.primary,
+              strokeWidth: 1.8,
+              opacity: 0.85,
+              tier: 2
+            }
+          );
           break;
         }
       }
@@ -826,15 +903,25 @@ export class StageEnvironmentGenerator {
           }
 
           case 'EXTERIOR_URBAN_VISTA': {
-            // Overhead utility wires
-            lines.push({
-              p0: [bx - 95, 250, z4],
-              p1: [bx + 185, 235, z4],
-              stroke: palette.secondary,
-              strokeWidth: 1.8,
-              opacity: 0.85,
-              tier: 3
-            });
+            // Overhead angled utility wires crisscrossing
+            lines.push(
+              {
+                p0: [bx - 160, 260, z4],
+                p1: [bx + 240, 210, z4],
+                stroke: palette.secondary,
+                strokeWidth: 1.8,
+                opacity: 0.85,
+                tier: 3
+              },
+              {
+                p0: [bx - 140, 220, z4],
+                p1: [bx + 260, 255, z4],
+                stroke: palette.primary,
+                strokeWidth: 1.5,
+                opacity: 0.75,
+                tier: 3
+              }
+            );
             break;
           }
         }

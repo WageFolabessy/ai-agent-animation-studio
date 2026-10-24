@@ -1850,15 +1850,188 @@ export class ArchetypeFactory {
     const base = ArchetypeFactory.buildBipedRunner(options);
     const s = options.spec.scale ?? 1.0;
 
+    const companionParts: RigPart[] = base.parts.map((p) => {
+      // 1. Heavy draped cloak replacing coat_wing
+      if (p.id === 'coat_wing') {
+        return {
+          ...p,
+          id: 'heavy_cloak_drape',
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [0, 0],
+              [-26, -6],
+              [-32, -32],
+              [-10, -34],
+              [4, -12]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.3 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: -0.2 }, width: 1.5 },
+            opacity: 0.96,
+            lit: true
+          }
+        };
+      }
+      // 2. Heavy mantle shawl replacing coat_tatter
+      if (p.id === 'coat_tatter') {
+        return {
+          ...p,
+          id: 'mantle_shawl',
+          jointId: 'torso',
+          localOffset2D: [0, 10],
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [-16, -10],
+              [16, -10],
+              [18, 12],
+              [-18, 12]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.1 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.4 },
+            opacity: 0.98,
+            lit: true
+          }
+        };
+      }
+      // 3. Folded cowl hood drape replacing hair_ribbon
+      if (p.id === 'hair_ribbon') {
+        return {
+          ...p,
+          id: 'cowl_hood_drape',
+          jointId: 'head',
+          localOffset2D: [0, 0],
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [0, 0],
+              [-14, -6],
+              [-12, -18],
+              [-2, -14]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.2 },
+            opacity: 0.95,
+            lit: true
+          }
+        };
+      }
+      // 4. Textured hood / headwrap replacing head_cranium
+      if (p.id === 'head_cranium') {
+        return {
+          ...p,
+          id: 'hood_headwrap',
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [-10, -6],
+              [12, -6],
+              [14, 8],
+              [6, 14],
+              [-10, 12]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.15 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.1 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      // 5. Furrowed hood shadow replacing head_visor
+      if (p.id === 'head_visor') {
+        return {
+          ...p,
+          id: 'furrowed_hood_shadow',
+          shape: {
+            kind: 'polygon' as const,
+            points: [
+              [-6, -1],
+              [8, -1],
+              [10, 4],
+              [-4, 4]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.5 },
+            opacity: 0.85,
+            lit: false
+          }
+        };
+      }
+      // 6. Chunky gauntleted clamps replacing hand grips
+      if (p.id === 'hand_l_grip') {
+        return {
+          ...p,
+          id: 'gauntlet_clamp_l',
+          shape: { kind: 'rect' as const, size: [10, 10], rx: 2, ry: 2 },
+          style: {
+            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'hand_r_grip') {
+        return {
+          ...p,
+          id: 'gauntlet_clamp_r',
+          shape: { kind: 'rect' as const, size: [10, 10], rx: 2, ry: 2 },
+          style: {
+            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      // 7. Heavy block boots with treaded base plate replacing boot_l / boot_r
+      if (p.id === 'boot_l') {
+        return {
+          ...p,
+          id: 'boot_tread_l',
+          shape: { kind: 'rect' as const, size: [18, 7], rx: 2, ry: 1 },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.4 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: -0.2 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'boot_r') {
+        return {
+          ...p,
+          id: 'boot_tread_r',
+          shape: { kind: 'rect' as const, size: [18, 7], rx: 2, ry: 1 },
+          style: {
+            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.4 },
+            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: -0.2 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      return p;
+    });
+
     return {
       ...base,
       name: `Companion Silhouette (${options.instanceId})`,
       baseTransform: {
         position: [0, 65, 0],
         rotationZDegrees: 0,
-        scale: [1.55 * s, 1.15 * s]
+        scale: [1.60 * s, 1.15 * s]
       },
       sockets: [...CANONICAL_BIPED_SOCKETS],
+      parts: companionParts,
       morphTopology: {
         baseSegments: baseMouthSegments,
         targets: [
