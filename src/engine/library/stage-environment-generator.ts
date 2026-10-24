@@ -185,6 +185,64 @@ export class StageEnvironmentGenerator {
           });
           break;
         }
+
+        case 'ARCHITECTURAL_INTERIOR': {
+          // Vast circular lunette window + moonlit night sky
+          polygons.push({
+            vertices: [
+              [bx - 80, 80, z1],
+              [bx + 80, 80, z1],
+              [bx + 80, 320, z1],
+              [bx - 80, 320, z1]
+            ],
+            fill: shadeHexColor(palette.background, 0.45),
+            opacity: 0.94,
+            tier: 1
+          });
+          lines.push(
+            {
+              p0: [bx - 80, 200, z1 + 5],
+              p1: [bx + 80, 200, z1 + 5],
+              stroke: palette.primary,
+              strokeWidth: 2.0,
+              opacity: 0.85,
+              tier: 1
+            },
+            {
+              p0: [bx, 80, z1 + 5],
+              p1: [bx, 320, z1 + 5],
+              stroke: palette.accent,
+              strokeWidth: 2.0,
+              opacity: 0.85,
+              tier: 1
+            }
+          );
+          break;
+        }
+
+        case 'EXTERIOR_URBAN_VISTA': {
+          // Horizon skyline with bridge cables and dusk glow
+          polygons.push({
+            vertices: [
+              [bx - 100, 0, z1],
+              [bx + 100, 0, z1],
+              [bx + 90, 280, z1],
+              [bx - 90, 280, z1]
+            ],
+            fill: shadeHexColor(palette.background, 0.38),
+            opacity: 0.92,
+            tier: 1
+          });
+          lines.push({
+            p0: [bx - 100, 160, z1 + 5],
+            p1: [bx + 100, 220, z1 + 5],
+            stroke: palette.primary,
+            strokeWidth: 1.8,
+            opacity: 0.8,
+            tier: 1
+          });
+          break;
+        }
       }
     }
 
@@ -320,6 +378,55 @@ export class StageEnvironmentGenerator {
           });
           break;
         }
+
+        case 'ARCHITECTURAL_INTERIOR': {
+          // Monumental fluted interior pillar & arched transom cornice
+          polygons.push({
+            vertices: [
+              [bx - 50, 0, z2],
+              [bx + 50, 0, z2],
+              [bx + 50, 240, z2],
+              [bx - 50, 240, z2]
+            ],
+            fill: shadeHexColor(palette.secondary, -0.2),
+            opacity: 0.94,
+            tier: 2
+          });
+          lines.push({
+            p0: [bx - 50, 180, z2 + 6],
+            p1: [bx + 50, 180, z2 + 6],
+            stroke: palette.accent,
+            strokeWidth: 2.2,
+            opacity: 0.88,
+            tier: 2
+          });
+          break;
+        }
+
+        case 'EXTERIOR_URBAN_VISTA': {
+          // Tiered geometric skyscraper silhouettes
+          const h2 = (Math.abs(k) % 3) === 0 ? 320 : (Math.abs(k) % 3) === 1 ? 380 : 260;
+          polygons.push({
+            vertices: [
+              [bx - 60, 0, z2],
+              [bx + 60, 0, z2],
+              [bx + 55, h2, z2],
+              [bx - 55, h2, z2]
+            ],
+            fill: shadeHexColor(palette.secondary, -0.25),
+            opacity: 0.95,
+            tier: 2
+          });
+          lines.push({
+            p0: [bx, 0, z2 + 6],
+            p1: [bx, h2, z2 + 6],
+            stroke: palette.primary,
+            strokeWidth: 2.0,
+            opacity: 0.85,
+            tier: 2
+          });
+          break;
+        }
       }
     }
 
@@ -344,7 +451,7 @@ export class StageEnvironmentGenerator {
         p0: [xMin - floorPad, 0.3, z],
         p1: [xMax + floorPad, 0.3, z],
         stroke:
-          setId === 'RAINY_STREET' || setId === 'CONCERT_STAGE'
+          setId === 'RAINY_STREET' || setId === 'CONCERT_STAGE' || setId === 'EXTERIOR_URBAN_VISTA'
             ? palette.primary
             : shadeHexColor(palette.secondary, -0.35),
         strokeWidth: 1.5,
@@ -483,6 +590,82 @@ export class StageEnvironmentGenerator {
           });
           break;
         }
+
+        case 'ARCHITECTURAL_INTERIOR': {
+          // Interactive Study Desk at Stage Space (Z = 0, top at Y = 35)
+          polygons.push(
+            {
+              // Desk top
+              vertices: [
+                [bx - 40, 32, 0],
+                [bx + 40, 32, 0],
+                [bx + 40, 35, 0],
+                [bx - 40, 35, 0]
+              ],
+              fill: shadeHexColor(palette.secondary, 0.25),
+              opacity: 1.0,
+              tier: 2
+            },
+            {
+              // Left Desk Leg
+              vertices: [
+                [bx - 36, 0, 0],
+                [bx - 30, 0, 0],
+                [bx - 30, 32, 0],
+                [bx - 36, 32, 0]
+              ],
+              fill: shadeHexColor(palette.background, 0.1),
+              opacity: 1.0,
+              tier: 2
+            },
+            {
+              // Right Desk Leg
+              vertices: [
+                [bx + 30, 0, 0],
+                [bx + 36, 0, 0],
+                [bx + 36, 32, 0],
+                [bx + 30, 32, 0]
+              ],
+              fill: shadeHexColor(palette.background, 0.1),
+              opacity: 1.0,
+              tier: 2
+            }
+          );
+          lines.push({
+            p0: [bx - 40, 35, 1],
+            p1: [bx + 40, 35, 1],
+            stroke: palette.primary,
+            strokeWidth: 2.0,
+            opacity: 0.95,
+            tier: 2
+          });
+          break;
+        }
+
+        case 'EXTERIOR_URBAN_VISTA': {
+          // Street curb at Z = 0 and tall streetlamp at Z = -120
+          polygons.push({
+            vertices: [
+              [bx - 20, 0, z3],
+              [bx + 20, 0, z3],
+              [bx + 8, 130, z3],
+              [bx - 8, 130, z3]
+            ],
+            fill: palette.primary,
+            opacity: 0.2,
+            tier: 2,
+            isTwoSided: true
+          });
+          lines.push({
+            p0: [bx, 0, z3],
+            p1: [bx, 135, z3],
+            stroke: palette.secondary,
+            strokeWidth: 2.4,
+            opacity: 0.9,
+            tier: 2
+          });
+          break;
+        }
       }
     }
 
@@ -613,6 +796,43 @@ export class StageEnvironmentGenerator {
               stroke: palette.primary,
               strokeWidth: 1.8,
               opacity: 0.82,
+              tier: 3
+            });
+            break;
+          }
+
+          case 'ARCHITECTURAL_INTERIOR': {
+            // Overhead vaulted ceiling rafters
+            polygons.push({
+              vertices: [
+                [bx - 90, 240, z4],
+                [bx + 180, 240, z4],
+                [bx + 180, 255, z4],
+                [bx - 90, 255, z4]
+              ],
+              fill: shadeHexColor(palette.background, 0.22),
+              opacity: 0.92,
+              tier: 3
+            });
+            lines.push({
+              p0: [bx + 45, 255, z4],
+              p1: [bx + 45, 350, z4],
+              stroke: palette.secondary,
+              strokeWidth: 1.6,
+              opacity: 0.82,
+              tier: 3
+            });
+            break;
+          }
+
+          case 'EXTERIOR_URBAN_VISTA': {
+            // Overhead utility wires
+            lines.push({
+              p0: [bx - 95, 250, z4],
+              p1: [bx + 185, 235, z4],
+              stroke: palette.secondary,
+              strokeWidth: 1.8,
+              opacity: 0.85,
               tier: 3
             });
             break;

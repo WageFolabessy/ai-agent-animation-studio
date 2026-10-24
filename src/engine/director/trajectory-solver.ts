@@ -10,7 +10,9 @@ export const ARCHETYPE_CANONICAL_BASE_Y: Record<CharacterArchetypeId, number> = 
   biped_frontal: 75,
   biped_three_quarters: 75,
   quadruped_beast: 50,
-  aerial_drone: 140
+  aerial_drone: 140,
+  hero_silhouette: 75,
+  companion_silhouette: 65
 };
 
 export interface AnatomicalFocusSpec {
@@ -67,6 +69,22 @@ export const ANATOMICAL_FOCUS_OFFSETS: Record<CharacterArchetypeId, AnatomicalFo
     fkFocusJointId: 'chassis_core',
     fkFocusLocalPoint: [0, 0],
     fkBodyCenterJointId: 'chassis_core'
+  },
+  hero_silhouette: {
+    cameraFocusDeltaFromRoot: [0, 0, 0],
+    worldHeadOffsetFromRoot: [0, 60, 0],
+    worldBodyCenterOffsetX: 0,
+    fkFocusJointId: 'head',
+    fkFocusLocalPoint: [0, 20],
+    fkBodyCenterJointId: 'pelvis'
+  },
+  companion_silhouette: {
+    cameraFocusDeltaFromRoot: [0, 0, 0],
+    worldHeadOffsetFromRoot: [0, 56, 0],
+    worldBodyCenterOffsetX: 0,
+    fkFocusJointId: 'head',
+    fkFocusLocalPoint: [0, 18],
+    fkBodyCenterJointId: 'pelvis'
   }
 };
 

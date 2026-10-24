@@ -41,7 +41,9 @@ export const CastSpecItemSchema = z
       'biped_frontal',
       'biped_three_quarters',
       'quadruped_beast',
-      'aerial_drone'
+      'aerial_drone',
+      'hero_silhouette',
+      'companion_silhouette'
     ]),
     role: CastRoleSchema.optional(),
     viewAngle: z.enum(['front', 'three_quarter', 'profile']).optional(),

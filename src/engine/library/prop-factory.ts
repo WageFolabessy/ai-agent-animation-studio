@@ -1,4 +1,4 @@
-import type { RigPart } from '../../schemas/rig.contract.js';
+import type { AssetRigContract, RigPart } from '../../schemas/rig.contract.js';
 import type { NarrativePropId, RigSocket } from '../../schemas/prop.contract.js';
 import { NarrativePropIdSchema } from '../../schemas/prop.contract.js';
 
@@ -347,5 +347,72 @@ export class PropFactory {
           }
         ];
     }
+  }
+
+  public static buildStandalonePropRig(
+    propId: NarrativePropId,
+    instanceId: string,
+    basePosition: [number, number, number] = [0, 35, 0]
+  ): AssetRigContract {
+    return {
+      id: instanceId,
+      name: `Prop ${propId} (${instanceId})`,
+      type: 'prop',
+      renderMode: 'billboard',
+      baseTransform: {
+        position: basePosition,
+        rotationZDegrees: 0,
+        scale: [1, 1]
+      },
+      secondaryMotion: [],
+      parts: [
+        {
+          id: `${instanceId}_body`,
+          jointId: null,
+          localOffset2D: [0, 0],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [-3.0, 0.0],
+              [3.0, 0.0],
+              [3.6, 7.0],
+              [-3.6, 7.0]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+            stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
+            opacity: 1,
+            lit: true
+          }
+        },
+        {
+          id: `${instanceId}_handle`,
+          jointId: null,
+          localOffset2D: [3.4, 3.5],
+          shape: {
+            kind: 'path',
+            segments: [
+              {
+                p0: [0, -2.5],
+                p1: [2.5, -2.5],
+                p2: [2.5, 2.5],
+                p3: [0, 2.5]
+              }
+            ],
+            closed: false
+          },
+          style: {
+            fill: { kind: 'palette', role: 'accent', shade: 0.1 },
+            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.3 }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        }
+      ],
+      svgAsset: {
+        idNamespace: `prop_${instanceId}`
+      }
+    };
   }
 }

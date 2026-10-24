@@ -49,7 +49,9 @@ export type CharacterArchetypeId =
   | 'biped_frontal'
   | 'biped_three_quarters'
   | 'quadruped_beast'
-  | 'aerial_drone';
+  | 'aerial_drone'
+  | 'hero_silhouette'
+  | 'companion_silhouette';
 
 export interface ArchetypeBuildOptions {
   readonly instanceId: string;

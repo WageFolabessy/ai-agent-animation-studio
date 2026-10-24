@@ -14,41 +14,39 @@ export interface TwoBoneIKResult {
 }
 
 /**
- * Solves analytic 2-bone planar Inverse Kinematics for a right-facing character limb
- * with backward knee/hock flexion (lowerAngleDeg <= 0).
+ * Solves analytic 2-bone planar Inverse Kinematics for a 2D limb.
  *
  * Coordinate convention (matching computeSkeletonFK):
  * - Bone at local angle 0 points straight down [0, -L].
  * - Positive rotationZDegrees swings the bone forward (+X, right).
  * - Negative rotationZDegrees swings the bone backward (-X, left).
- * - Given hip world position H = (Hx, Hy), parent world angle thetaP (degrees),
- *   and target foot tip F = (Fx, Fy), returns exact joint rotations (upperAngleDeg, lowerAngleDeg)
- *   such that forward kinematics places the lower bone tip [0, -l2] at F within 1e-12 when reachable.
+ * - bendDirection: -1 for knee/hock (backward flexion <= 0), +1 for arm/elbow (forward flexion >= 0).
  */
-export function solveTwoBoneLegIK(
-  hipPos: Vec2,
-  footTarget: Vec2,
+export function solveTwoBoneIK(
+  rootPos: Vec2,
+  targetPos: Vec2,
   l1: number,
   l2: number,
   parentWorldAngleDeg = 0,
+  bendDirection: -1 | 1 = -1,
   constraintsUpperDeg?: readonly [number, number],
   constraintsLowerDeg?: readonly [number, number]
 ): TwoBoneIKResult {
-  const dx = footTarget[0] - hipPos[0];
-  const dy = footTarget[1] - hipPos[1];
+  const dx = targetPos[0] - rootPos[0];
+  const dy = targetPos[1] - rootPos[1];
   const rawDist = Math.hypot(dx, dy);
 
   const minReach = Math.abs(l1 - l2) + 1e-6;
   const maxReach = l1 + l2 - 1e-6;
   const r = Math.max(minReach, Math.min(maxReach, rawDist));
 
-  // Law of cosines for knee/hock angle (backward flexion branch <= 0)
+  // Law of cosines for middle joint angle
   const cosLower = Math.max(-1, Math.min(1, (r * r - l1 * l1 - l2 * l2) / (2 * l1 * l2)));
-  const lowerRad = -Math.acos(cosLower);
+  const lowerRad = bendDirection * Math.acos(cosLower);
 
-  // Angle of hip-to-foot chord measured from downward (-Y) axis toward +X
+  // Angle of root-to-target chord measured from downward (-Y) axis toward +X
   const phi = Math.atan2(dx, -dy);
-  // Interior triangle angle at the hip (>= 0 because lowerRad <= 0)
+  // Interior triangle angle at the root
   const beta = Math.atan2(-l2 * Math.sin(lowerRad), l1 + l2 * Math.cos(lowerRad));
 
   const worldUpperDeg = ((phi + beta) * 180) / Math.PI;
@@ -73,6 +71,74 @@ export function solveTwoBoneLegIK(
     lowerAngleDeg,
     clampedDistance: r
   };
+}
+
+/**
+ * Solves analytic 2-bone planar Inverse Kinematics for a right-facing character leg
+ * with backward knee/hock flexion (lowerAngleDeg <= 0).
+ */
+export function solveTwoBoneLegIK(
+  hipPos: Vec2,
+  footTarget: Vec2,
+  l1: number,
+  l2: number,
+  parentWorldAngleDeg = 0,
+  constraintsUpperDeg?: readonly [number, number],
+  constraintsLowerDeg?: readonly [number, number],
+  bendDirection: -1 | 1 = -1
+): TwoBoneIKResult {
+  return solveTwoBoneIK(
+    hipPos,
+    footTarget,
+    l1,
+    l2,
+    parentWorldAngleDeg,
+    bendDirection,
+    constraintsUpperDeg,
+    constraintsLowerDeg
+  );
+}
+
+/**
+ * Solves analytic 2-bone planar Inverse Kinematics for a character arm
+ * with forward/upward elbow flexion (bendDirection = +1, lowerAngleDeg >= 0).
+ */
+export function solveTwoBoneArmIK(
+  shoulderPos: Vec2,
+  handTarget: Vec2,
+  l1: number,
+  l2: number,
+  parentWorldAngleDeg = 0,
+  bendDirection: -1 | 1 = 1,
+  constraintsUpperDeg?: readonly [number, number],
+  constraintsLowerDeg?: readonly [number, number]
+): TwoBoneIKResult {
+  return solveTwoBoneIK(
+    shoulderPos,
+    handTarget,
+    l1,
+    l2,
+    parentWorldAngleDeg,
+    bendDirection,
+    constraintsUpperDeg ?? [-140, 140],
+    constraintsLowerDeg ?? (bendDirection === 1 ? [0, 140] : [-140, 0])
+  );
+}
+
+/**
+ * Converts world-space 2D coordinates to local coordinates of a character rig.
+ */
+export function worldToRigLocal(
+  worldPos: readonly [number, number],
+  rigPos: readonly [number, number, number] | readonly [number, number],
+  rigScale: readonly [number, number]
+): Vec2 {
+  const sx = rigScale[0] !== 0 ? rigScale[0] : 1;
+  const sy = rigScale[1] !== 0 ? rigScale[1] : 1;
+  return [
+    (worldPos[0] - rigPos[0]) / sx,
+    (worldPos[1] - rigPos[1]) / sy
+  ];
 }
 
 export interface BipedLocomotionClipConfig {

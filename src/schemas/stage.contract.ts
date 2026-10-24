@@ -5,7 +5,9 @@ export const TheatricalSetIdSchema = z.enum([
   'RAINY_STREET',
   'PARK_BENCH',
   'CONCERT_STAGE',
-  'GOTHIC_CATHEDRAL'
+  'GOTHIC_CATHEDRAL',
+  'ARCHITECTURAL_INTERIOR',
+  'EXTERIOR_URBAN_VISTA'
 ]);
 export type TheatricalSetId = z.infer<typeof TheatricalSetIdSchema>;
 

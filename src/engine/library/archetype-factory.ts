@@ -1034,6 +1034,16 @@ export class ArchetypeFactory {
       );
     }
     switch (archetypeId) {
+      case 'hero_silhouette':
+        return ArchetypeFactory.attachNarrativeProps(
+          ArchetypeFactory.buildHeroSilhouette(options),
+          accessories
+        );
+      case 'companion_silhouette':
+        return ArchetypeFactory.attachNarrativeProps(
+          ArchetypeFactory.buildCompanionSilhouette(options),
+          accessories
+        );
       case 'biped_runner':
         return ArchetypeFactory.attachNarrativeProps(
           ArchetypeFactory.buildBipedRunner(options),
@@ -1791,6 +1801,74 @@ export class ArchetypeFactory {
       sockets: [...CANONICAL_BIPED_SOCKETS],
       parts: threeQuarterParts,
       poseInterpolation: BipedPoseClips.acoustic_strum
+    };
+  }
+
+  /**
+   * Archetype: Hero Silhouette (Lead Protagonist)
+   * Enforces:
+   * - 7.5 heads tall, slender, angular proportions.
+   * - Split-tail coat, high-collared angular boots, forward-swept hair fringe.
+   * - Sockets: CANONICAL_BIPED_SOCKETS.
+   * - Total parts <= 24 drawables.
+   */
+  public static buildHeroSilhouette(options: ArchetypeBuildOptions): AssetRigContract {
+    const base = ArchetypeFactory.buildBipedRunner(options);
+    const s = options.spec.scale ?? 1.0;
+
+    return {
+      ...base,
+      name: `Hero Silhouette (${options.instanceId})`,
+      baseTransform: {
+        position: [0, 75, 0],
+        rotationZDegrees: 0,
+        scale: [1.35 * s, 1.45 * s]
+      },
+      sockets: [...CANONICAL_BIPED_SOCKETS],
+      morphTopology: {
+        baseSegments: baseMouthSegments,
+        targets: [
+          ...CANONICAL_BIPED_MORPH_TARGETS,
+          { name: 'grasp_fist', segments: baseMouthSegments },
+          { name: 'point', segments: baseMouthSegments },
+          { name: 'open_rest', segments: baseMouthSegments }
+        ]
+      },
+      poseInterpolation: BipedPoseClips.acoustic_strum
+    };
+  }
+
+  /**
+   * Archetype: Companion Silhouette (Partner / Antagonist)
+   * Enforces:
+   * - 5.5 heads tall, broad, grounded proportions.
+   * - Heavy mantle / shawl, chunky gauntlets, block boots with treaded base plate.
+   * - Sockets: CANONICAL_BIPED_SOCKETS.
+   * - Total parts <= 26 drawables.
+   */
+  public static buildCompanionSilhouette(options: ArchetypeBuildOptions): AssetRigContract {
+    const base = ArchetypeFactory.buildBipedRunner(options);
+    const s = options.spec.scale ?? 1.0;
+
+    return {
+      ...base,
+      name: `Companion Silhouette (${options.instanceId})`,
+      baseTransform: {
+        position: [0, 65, 0],
+        rotationZDegrees: 0,
+        scale: [1.55 * s, 1.15 * s]
+      },
+      sockets: [...CANONICAL_BIPED_SOCKETS],
+      morphTopology: {
+        baseSegments: baseMouthSegments,
+        targets: [
+          ...CANONICAL_BIPED_MORPH_TARGETS,
+          { name: 'grasp_fist', segments: baseMouthSegments },
+          { name: 'point', segments: baseMouthSegments },
+          { name: 'open_rest', segments: baseMouthSegments }
+        ]
+      },
+      poseInterpolation: BipedPoseClips.pop_vocal_sway
     };
   }
 

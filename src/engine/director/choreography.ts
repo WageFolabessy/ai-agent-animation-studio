@@ -2,7 +2,8 @@ import type {
   ChoreographyContract,
   EntityTrack,
   EntityTrackKeyframe,
-  MorphBinding
+  MorphBinding,
+  PropAttachmentSpan
 } from '../../schemas/choreography.contract.js';
 import type { Vec2, Vec3 } from '../../schemas/primitives.schema.js';
 import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
@@ -19,6 +20,7 @@ export interface EvaluatedTrackState {
   startPoseFrame: number;
   clipId?: string;
   morphWeights: Record<string, number>;
+  activeAttachmentSpan?: PropAttachmentSpan;
 }
 
 function evaluateTrackTransform(
@@ -96,7 +98,7 @@ export function evaluateEntityTrack(
   const morphWeights: Record<string, number> = {};
 
   // 1. Keyframed morph weights
-  for (const [targetName, keyframes] of Object.entries(track.morphKeyframes)) {
+  for (const [targetName, keyframes] of Object.entries(track.morphKeyframes ?? {})) {
     if (keyframes.length === 0) continue;
     if (keyframes.length === 1 || frameIndex <= keyframes[0].frame) {
       morphWeights[targetName] = keyframes[0].weight;
@@ -119,7 +121,7 @@ export function evaluateEntityTrack(
   }
 
   // 2. Audio-reactive and constant morph bindings
-  for (const binding of track.morphBindings) {
+  for (const binding of track.morphBindings ?? []) {
     let sourceVal: number;
     if (binding.spring) {
       const rawSpringVal = evaluateSpringResponse(
@@ -146,6 +148,10 @@ export function evaluateEntityTrack(
     morphWeights[key] = Math.max(0, Math.min(1, morphWeights[key]));
   }
 
+  const activeAttachmentSpan = (track.attachmentSpans ?? []).find(
+    (s) => frameIndex >= s.startFrame && frameIndex < s.endFrame
+  );
+
   return {
     rigId: track.rigId,
     worldPosition: transform.position,
@@ -155,7 +161,8 @@ export function evaluateEntityTrack(
     timeScale: track.pose?.timeScale ?? 1.0,
     startPoseFrame: track.pose?.startPoseFrame ?? 0,
     clipId: track.pose?.clipId,
-    morphWeights
+    morphWeights,
+    ...(activeAttachmentSpan ? { activeAttachmentSpan } : {})
   };
 }
 

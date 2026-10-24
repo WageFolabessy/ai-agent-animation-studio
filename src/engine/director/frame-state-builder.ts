@@ -9,8 +9,11 @@ import type {
 } from '../../schemas/frame.contract.js';
 import { ShotSequencer } from './shot-sequencer.js';
 import { CameraShakeSystem } from './camera-shake.js';
-import { ChoreographySystem, evaluateEntityTrack } from './choreography.js';
+import { ChoreographySystem, evaluateEntityTrack, type EvaluatedTrackState } from './choreography.js';
 import { samplePoseTrack, evaluateSecondaryMotion } from '../rigging/deformer.js';
+import { computeCameraBasis } from '../camera/camera-3d.js';
+import { computeSkeletonFK, applyAffine2D } from '../rigging/kinematics.js';
+import { CANONICAL_BIPED_SOCKETS } from '../library/prop-factory.js';
 
 export interface FrameStateBuilderOptions {
   storyboard: DirectorStoryboardContract;
@@ -128,6 +131,8 @@ export class FrameStateBuilder {
 
     // 6. Active entities for the shot
     const entities: ActiveEntityState[] = [];
+    const evaluatedTrackMap = new Map<string, EvaluatedTrackState>();
+
     for (const rigId of shot.activeRigIds) {
       const rig = this.rigs.get(rigId);
       if (!rig) continue;
@@ -136,6 +141,8 @@ export class FrameStateBuilder {
 
       if (track) {
         const trackState = evaluateEntityTrack(track, frameIndex, fps, this.getAudioFeature);
+        evaluatedTrackMap.set(rigId, trackState);
+
         const poseResult = samplePoseTrack(
           rig,
           frameIndex,
@@ -175,6 +182,49 @@ export class FrameStateBuilder {
           morphWeights: {},
           opacity: 1
         });
+      }
+    }
+
+    // Dynamic prop attachment pass: project attached props from owner's FK socket in camera plane
+    for (const entity of entities) {
+      const trackState = evaluatedTrackMap.get(entity.rigId);
+      const span = trackState?.activeAttachmentSpan;
+      if (!span) continue;
+
+      const ownerEntity = entities.find((e) => e.rigId === span.ownerRigId);
+      const ownerRig = this.rigs.get(span.ownerRigId);
+      if (!ownerEntity || !ownerRig?.skeleton) continue;
+
+      const fkMap = computeSkeletonFK(ownerRig.skeleton, ownerEntity.jointAngles, ownerEntity.jointOffsets);
+      const socket = ownerRig.sockets?.find((s) => s.id === span.socketId) ??
+        CANONICAL_BIPED_SOCKETS.find((s) => s.id === span.socketId);
+
+      const jointId = socket ? socket.jointId : span.socketId;
+      const localOffset = socket ? socket.localOffset2D : [0, 0];
+      const jointTransform = fkMap.get(jointId);
+
+      if (jointTransform) {
+        const socketLocal = applyAffine2D(jointTransform, localOffset as [number, number]);
+        const sx = ownerEntity.scale[0] !== 0 ? ownerEntity.scale[0] : 1;
+        const sy = ownerEntity.scale[1] !== 0 ? ownerEntity.scale[1] : 1;
+        const scaledX = socketLocal[0] * sx;
+        const scaledY = socketLocal[1] * sy;
+        const rotRad = (ownerEntity.worldRotationZDegrees * Math.PI) / 180;
+        const cosR = Math.cos(rotRad);
+        const sinR = Math.sin(rotRad);
+        const rotX = scaledX * cosR - scaledY * sinR;
+        const rotY = scaledX * sinR + scaledY * cosR;
+
+        const basis = computeCameraBasis(camera);
+        entity.worldPosition = [
+          ownerEntity.worldPosition[0] + rotX * basis.right[0] + rotY * basis.up[0] - 1e-3 * basis.forward[0],
+          ownerEntity.worldPosition[1] + rotX * basis.right[1] + rotY * basis.up[1] - 1e-3 * basis.forward[1],
+          ownerEntity.worldPosition[2] + rotX * basis.right[2] + rotY * basis.up[2] - 1e-3 * basis.forward[2]
+        ];
+        entity.scale = [
+          Math.sign(ownerEntity.scale[0] || 1) * Math.abs(entity.scale[0]),
+          entity.scale[1]
+        ];
       }
     }
 

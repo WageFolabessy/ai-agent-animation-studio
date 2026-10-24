@@ -6,4 +6,6 @@ export * from './storyboard.contract.js';
 export * from './rig.contract.js';
 export * from './choreography.contract.js';
 export * from './frame.contract.js';
+export * from './story-spec.contract.js';
+export * from './story-beat.contract.js';
 export * from './invariants.js';

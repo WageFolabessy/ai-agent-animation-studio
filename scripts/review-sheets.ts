@@ -337,7 +337,7 @@ async function getLuminance(imagePath: string): Promise<number> {
   try {
     const { stderr } = await execFileAsync('ffmpeg', [
       '-i', imagePath,
-      '-vf', 'signalstats',
+      '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YAVG',
       '-f', 'null',
       '-'
     ]);

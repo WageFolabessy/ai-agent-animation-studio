@@ -1,6 +1,17 @@
 import { z } from 'zod';
 import { Vec2Schema, Vec3Schema } from './primitives.schema.js';
 import { CameraEasingEnum } from './storyboard.contract.js';
+import { RigSocketSlotSchema } from './prop.contract.js';
+
+export const PropAttachmentSpanSchema = z.object({
+  startFrame: z.number().int().min(0),
+  endFrame: z.number().int().positive(),
+  ownerRigId: z.string().min(1),
+  socketId: RigSocketSlotSchema
+}).strict().refine(s => s.endFrame > s.startFrame, {
+  message: 'endFrame must be strictly greater than startFrame'
+});
+export type PropAttachmentSpan = z.infer<typeof PropAttachmentSpanSchema>;
 
 export const EntityTrackKeyframeSchema = z.object({
   frame: z.number().int().min(0),
@@ -49,7 +60,8 @@ export const EntityTrackSchema = z.object({
     clipId: z.string().optional()
   }).strict().optional(),
   morphKeyframes: z.record(z.string(), z.array(MorphKeyframeItemSchema)).optional().default({}),
-  morphBindings: z.array(MorphBindingSchema).optional().default([])
+  morphBindings: z.array(MorphBindingSchema).optional().default([]),
+  attachmentSpans: z.array(PropAttachmentSpanSchema).optional()
 }).strict();
 export type EntityTrack = z.infer<typeof EntityTrackSchema>;
 
