@@ -30,7 +30,12 @@ import {
   type Affine2D,
   type BillboardProjectionContext
 } from '../rigging/kinematics.js';
-import { blendMorphTargets, flattenCubicBezier } from '../rigging/morpher.js';
+import {
+  blendMorphTargets,
+  flattenCubicBezier,
+  CANONICAL_HAND_BASE_SEGMENTS,
+  CANONICAL_HAND_MORPH_TARGETS
+} from '../rigging/morpher.js';
 import { evaluateParticleEmitter } from '../effects/particle-emitter.js';
 import { shadeHexColor } from '../math/color.js';
 
@@ -952,10 +957,14 @@ export class SceneCompositor {
       }
 
       case 'morph': {
-        if (!rig.morphTopology) break;
+        const isHand = part.id.includes('hand');
+        const baseSegments = isHand ? CANONICAL_HAND_BASE_SEGMENTS : rig.morphTopology?.baseSegments;
+        const targets = isHand ? CANONICAL_HAND_MORPH_TARGETS : rig.morphTopology?.targets;
+        if (!baseSegments || !targets) break;
+
         const blended = blendMorphTargets(
-          rig.morphTopology.baseSegments,
-          rig.morphTopology.targets,
+          baseSegments,
+          targets,
           entity.morphWeights,
           true
         );
@@ -1049,10 +1058,14 @@ export class SceneCompositor {
         break;
       }
       case 'morph': {
-        if (!rig.morphTopology) return;
+        const isHand = part.id.includes('hand');
+        const baseSegments = isHand ? CANONICAL_HAND_BASE_SEGMENTS : rig.morphTopology?.baseSegments;
+        const targets = isHand ? CANONICAL_HAND_MORPH_TARGETS : rig.morphTopology?.targets;
+        if (!baseSegments || !targets) return;
+
         const blended = blendMorphTargets(
-          rig.morphTopology.baseSegments,
-          rig.morphTopology.targets,
+          baseSegments,
+          targets,
           entity.morphWeights,
           true
         );

@@ -21,6 +21,266 @@ import type { CastSpecItem } from '../../schemas/story-spec.contract.js';
 const baseMouthSegments: NormalizedCubicBezierSegment[] = BASE_MOUTH_REST_SEGMENTS;
 
 export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
+  walk_to: generateBipedLocomotionClip({
+    loopFrames: 36,
+    stanceFrames: 22,
+    strideLengthUnits: 46.0,
+    groundY: -46.0,
+    swingLift: 9.0,
+    pelvisY0: -2,
+    pelvisBobAmp: 1.8,
+    torsoDeg0: -10,
+    torsoAmp: 1.5,
+    headDeg0: -6,
+    headAmp: 1.5,
+    armUpperMid: 0,
+    armUpperAmp: 25,
+    armLowerMid: 25,
+    armLowerAmp: 10,
+    coatDeg0: -16,
+    coatAmp: 4
+  }),
+  reach_and_grasp: {
+    interpolationMode: 'linear',
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 0 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 105,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -10] },
+          { jointId: 'torso', rotationZDegrees: 14 },
+          { jointId: 'head', rotationZDegrees: 8 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: -6.0 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 38.6 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 18 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -28 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -14 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -32 },
+          { jointId: 'coat_tail', rotationZDegrees: -10 }
+        ]
+      },
+      {
+        frame: 210,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      }
+    ]
+  },
+  stop_and_turn: {
+    interpolationMode: 'linear',
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 210,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      }
+    ]
+  },
+  carry_put_down: {
+    interpolationMode: 'linear',
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 20 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -45 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -20 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -15 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 52,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 2] },
+          { jointId: 'torso', rotationZDegrees: -6 },
+          { jointId: 'head', rotationZDegrees: 2 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -20 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 20 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -45 },
+          { jointId: 'coat_tail', rotationZDegrees: -15 }
+        ]
+      },
+      {
+        frame: 105,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 155,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -10] },
+          { jointId: 'torso', rotationZDegrees: 14 },
+          { jointId: 'head', rotationZDegrees: 8 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
+          { jointId: 'arm_r_upper', rotationZDegrees: -6.0 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 38.6 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 18 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -28 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -14 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -32 },
+          { jointId: 'coat_tail', rotationZDegrees: -10 }
+        ]
+      },
+      {
+        frame: 210,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      }
+    ]
+  },
+  gesture_point: {
+    interpolationMode: 'linear',
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 4 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 30 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 30 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 40 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 40,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 12 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 30 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 96.6 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 26.4 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 210,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'head', rotationZDegrees: 12 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 30 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 96.6 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 26.4 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      }
+    ]
+  },
   stalk_crouch: generateBipedLocomotionClip({
     loopFrames: 36,
     stanceFrames: 22,
@@ -1260,14 +1520,23 @@ export class ArchetypeFactory {
             lit: false
           }
         },
-        // 4. Cohesive Close-Up Silhouette: Abdomen Connector (pelvis-torso bridge)
+        // 4. Cohesive Close-Up Silhouette: Abdomen Connector (closes pelvis-to-thigh gap by overlapping down to Y = -10)
         {
           id: 'abdomen_connector',
-          jointId: 'torso',
-          localOffset2D: [0, -6],
-          shape: { kind: 'rect', size: [14, 16], rx: 4, ry: 4 },
+          jointId: 'pelvis',
+          localOffset2D: [0, 0],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [-10, 10],
+              [10, 10],
+              [8, -10],
+              [-8, -10]
+            ]
+          },
           style: {
-            fill: { kind: 'palette', role: 'secondary', shade: -0.4 },
+            fill: { kind: 'palette', role: 'secondary', shade: -0.35 },
+            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.1 }, width: 1.0 },
             opacity: 1,
             lit: true
           }
@@ -1409,9 +1678,9 @@ export class ArchetypeFactory {
           localOffset2D: [7.5, 2.2],
           shape: { kind: 'morph' },
           style: {
-            fill: { kind: 'palette', role: 'accent', shade: 0.25 },
-            stroke: { paint: { kind: 'palette', role: 'primary', shade: 0.35 }, width: 1.2 },
-            opacity: 0.95,
+            fill: { kind: 'palette', role: 'accent', shade: 0.4 },
+            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.7 }, width: 1.4 },
+            opacity: 0.98,
             lit: false
           }
         },
@@ -1476,32 +1745,32 @@ export class ArchetypeFactory {
           shape: { kind: 'rect', size: [6, 18], rx: 3, ry: 3 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: -0.1 }, opacity: 1, lit: true }
         },
-        // 15. Left Arm Forearm
+        // 15. Left Arm Forearm (Tapered from elbow to wrist)
         {
           id: 'arm_l_forearm',
           jointId: 'arm_l_lower',
           localOffset2D: [0, -8],
-          shape: { kind: 'rect', size: [5, 16], rx: 2.5, ry: 2.5 },
-          style: { fill: { kind: 'palette', role: 'primary', shade: -0.2 }, opacity: 1, lit: true }
-        },
-        // 16. Left Forearm Gauntlet
-        {
-          id: 'arm_l_gauntlet',
-          jointId: 'arm_l_lower',
-          localOffset2D: [1, -8],
           shape: {
             kind: 'polygon',
             points: [
-              [-2, 6],
-              [4, 4],
-              [3, -6],
-              [-3, -6]
+              [-2.8, 8],
+              [2.8, 8],
+              [2.0, -8],
+              [-2.0, -8]
             ]
           },
+          style: { fill: { kind: 'palette', role: 'primary', shade: -0.2 }, opacity: 1, lit: true }
+        },
+        // 16. Left Hand Morph (open_rest, grasp_fist, point)
+        {
+          id: 'arm_l_hand_morph',
+          jointId: 'arm_l_lower',
+          localOffset2D: [0, -16],
+          shape: { kind: 'morph' },
           style: {
-            fill: { kind: 'palette', role: 'primary', shade: 0.2 },
-            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.1 }, width: 1.0 },
-            opacity: 0.95,
+            fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+            stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
+            opacity: 1,
             lit: true
           }
         },
@@ -1566,32 +1835,32 @@ export class ArchetypeFactory {
           shape: { kind: 'rect', size: [6, 18], rx: 3, ry: 3 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: -0.1 }, opacity: 1, lit: true }
         },
-        // 21. Right Arm Forearm
+        // 21. Right Arm Forearm (Tapered from elbow to wrist)
         {
           id: 'arm_r_forearm',
           jointId: 'arm_r_lower',
           localOffset2D: [0, -8],
-          shape: { kind: 'rect', size: [5, 16], rx: 2.5, ry: 2.5 },
-          style: { fill: { kind: 'palette', role: 'primary', shade: -0.2 }, opacity: 1, lit: true }
-        },
-        // 22. Right Forearm Gauntlet
-        {
-          id: 'arm_r_gauntlet',
-          jointId: 'arm_r_lower',
-          localOffset2D: [1, -8],
           shape: {
             kind: 'polygon',
             points: [
-              [-2, 6],
-              [4, 4],
-              [3, -6],
-              [-3, -6]
+              [-2.8, 8],
+              [2.8, 8],
+              [2.0, -8],
+              [-2.0, -8]
             ]
           },
+          style: { fill: { kind: 'palette', role: 'primary', shade: -0.2 }, opacity: 1, lit: true }
+        },
+        // 22. Right Hand Morph (open_rest, grasp_fist, point)
+        {
+          id: 'arm_r_hand_morph',
+          jointId: 'arm_r_lower',
+          localOffset2D: [0, -16],
+          shape: { kind: 'morph' },
           style: {
-            fill: { kind: 'palette', role: 'primary', shade: 0.2 },
-            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.1 }, width: 1.0 },
-            opacity: 0.95,
+            fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+            stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
+            opacity: 1,
             lit: true
           }
         }
@@ -1850,7 +2119,9 @@ export class ArchetypeFactory {
     const base = ArchetypeFactory.buildBipedRunner(options);
     const s = options.spec.scale ?? 1.0;
 
-    const companionParts: RigPart[] = base.parts.map((p) => {
+    const companionParts: RigPart[] = base.parts
+      .filter((p) => p.id !== 'eye_optic_core' && p.id !== 'facial_expression_morph')
+      .map((p) => {
       // 1. Heavy draped cloak replacing coat_wing
       if (p.id === 'coat_wing') {
         return {

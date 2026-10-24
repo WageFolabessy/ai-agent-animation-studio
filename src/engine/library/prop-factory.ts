@@ -352,8 +352,10 @@ export class PropFactory {
   public static buildStandalonePropRig(
     propId: NarrativePropId,
     instanceId: string,
-    basePosition: [number, number, number] = [0, 35, 0]
+    basePosition?: [number, number, number]
   ): AssetRigContract {
+    const defaultBasePos: [number, number, number] =
+      basePosition ?? (propId === 'coffee_cup' ? [0, 68, 0] : [0, 35, 0]);
     const parts: RigPart[] =
       propId === 'umbrella'
         ? [
@@ -441,7 +443,7 @@ export class PropFactory {
       type: 'prop',
       renderMode: 'billboard',
       baseTransform: {
-        position: basePosition,
+        position: defaultBasePos,
         rotationZDegrees: 0,
         scale: [1, 1]
       },

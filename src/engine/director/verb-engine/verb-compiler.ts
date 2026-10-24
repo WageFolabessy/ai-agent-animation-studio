@@ -18,9 +18,18 @@ import type {
   EntityTrackKeyframe,
   PropAttachmentSpan
 } from '../../../schemas/choreography.contract.js';
+import type { EmotionalTone } from '../../../schemas/story-spec.contract.js';
 import { ArchetypeFactory } from '../../library/archetype-factory.js';
 import { PropFactory } from '../../library/prop-factory.js';
 import { THEME_PALETTES } from '../../library/environment-kit.js';
+import {
+  synthesizeVocalPerformanceKeyframes,
+  CANONICAL_BIPED_MORPH_TARGETS
+} from '../../rigging/vocal-performance-solver.js';
+
+const CANONICAL_BIPED_TARGET_NAMES = new Set(
+  CANONICAL_BIPED_MORPH_TARGETS.map((t) => t.name)
+);
 
 export interface CompiledStoryBeatProduction {
   readonly storyboard: DirectorStoryboardContract;
@@ -49,7 +58,7 @@ const FRAMING_DISTANCE_MAP: Record<CameraFraming, number> = {
 export class VerbCompiler {
   public static compile(
     storyBeatContract: StoryBeatContract,
-    _audioManifest: AudioAnalysisManifest
+    audioManifest: AudioAnalysisManifest
   ): CompiledStoryBeatProduction {
     const fps: 30 | 60 = storyBeatContract.fps === 60 ? 60 : 30;
     const totalFrames = storyBeatContract.sliceFrameRange.endFrame;
@@ -73,7 +82,7 @@ export class VerbCompiler {
     }
 
     // Always include coffee_cup and umbrella props
-    const coffeeCupRig = PropFactory.buildStandalonePropRig('coffee_cup', 'coffee_cup', [25, 35, 0]);
+    const coffeeCupRig = PropFactory.buildStandalonePropRig('coffee_cup', 'coffee_cup', [0, 68, 0]);
     rigs.set(coffeeCupRig.id, coffeeCupRig);
     const umbrellaRig = PropFactory.buildStandalonePropRig('umbrella', 'umbrella', [-30, 24, 0]);
     rigs.set(umbrellaRig.id, umbrellaRig);
@@ -131,14 +140,40 @@ export class VerbCompiler {
       const palette = PALETTE_TONE_MAP[beat.emotionalTone] ?? THEME_PALETTES.CYBERPUNK_CYAN;
       const distZ = FRAMING_DISTANCE_MAP[framing] ?? 200;
 
-      // Camera focal point and look-room math
-      const lookOffset = beat.camera.lookRoom === 'left' ? -18 : beat.camera.lookRoom === 'right' ? 18 : 0;
-      const focalX = 0 + lookOffset;
-      const targetY = framing === 'EXTREME_CLOSE_UP' ? 45 : 95;
-      const camY = framing === 'EXTREME_CLOSE_UP' ? 55 : 105;
+      const isReachGrasp = beat.actions.some((a) => a.verb === 'reach_and_grasp');
+      const isGesturePoint = beat.actions.some((a) => a.verb === 'gesture_point');
+
+      // Camera focal point, target, and headroom math
+      let focalX: number;
+      let targetY: number;
+      let camY: number;
+      let effectiveFraming = framing;
+      let effectiveDistZ = distZ;
+
+      if (isReachGrasp) {
+        // beat_02_reach_grasp: CLOSE_UP framing targeting [-10, 88, 0] so head, torso, arm and desk top (Y = 68) are visible
+        effectiveFraming = 'CLOSE_UP';
+        effectiveDistZ = 135;
+        focalX = -10;
+        targetY = 88;
+        camY = 98;
+      } else if (isGesturePoint) {
+        // beat_05_gesture_point: CLOSE_UP aiming at rootY + 42 = 117 for natural eye-line and >= 120px top clearance
+        effectiveFraming = 'CLOSE_UP';
+        effectiveDistZ = FRAMING_DISTANCE_MAP.CLOSE_UP;
+        focalX = -45;
+        targetY = 117;
+        camY = 127;
+      } else {
+        const lookOffset = beat.camera.lookRoom === 'left' ? -18 : beat.camera.lookRoom === 'right' ? 18 : 0;
+        focalX = 0 + lookOffset;
+        targetY = framing === 'EXTREME_CLOSE_UP' ? 88 : framing === 'CLOSE_UP' ? 117 : 95;
+        camY = targetY + 10;
+      }
 
       const deltaPan = movement === 'PAN' ? 30 : 0;
       const deltaDolly = movement === 'DOLLY' ? -35 : 0;
+      const dutchAngle = (isReachGrasp || isGesturePoint) ? 0 : (beat.camera.dutchAngleDeg ?? 0);
 
       const activeRigIds = [
         ...beat.presentCharacters,
@@ -156,7 +191,7 @@ export class VerbCompiler {
           startFrameInclusive: startFrame,
           endFrameExclusive: endFrame
         },
-        framing,
+        framing: effectiveFraming,
         movement,
         viewpoint: 'OBJECTIVE_THIRD_PERSON',
         activeRigIds,
@@ -164,21 +199,21 @@ export class VerbCompiler {
         palette,
         narrativeAction: beat.narrativeSubtext || 'Action',
         cameraStart: {
-          position: [focalX - 10, camY, distZ],
+          position: [focalX - 10, camY, effectiveDistZ],
           target: [focalX, targetY, 0],
           up: [0, 1, 0],
           verticalFovDegrees: 50,
-          rollDegrees: beat.camera.dutchAngleDeg ?? 0,
+          rollDegrees: dutchAngle,
           projectionMode: 'perspective',
           nearPlane: 1,
           farPlane: 2000
         },
         cameraEnd: {
-          position: [focalX - 10 + deltaPan, camY, distZ + deltaDolly],
+          position: [focalX - 10 + deltaPan, camY, effectiveDistZ + deltaDolly],
           target: [focalX + deltaPan, targetY, 0],
           up: [0, 1, 0],
           verticalFovDegrees: 50,
-          rollDegrees: beat.camera.dutchAngleDeg ?? 0,
+          rollDegrees: dutchAngle,
           projectionMode: 'perspective',
           nearPlane: 1,
           farPlane: 2000
@@ -195,12 +230,13 @@ export class VerbCompiler {
 
     for (let cIdx = 0; cIdx < storyBeatContract.cast.length; cIdx++) {
       const c = storyBeatContract.cast[cIdx];
-      charCurrentX[c.instanceId] = cIdx === 0 ? -45 : 35;
+      charCurrentX[c.instanceId] = cIdx === 0 ? -55 : 35;
       charArchetypes[c.instanceId] = c.archetypeId;
     }
 
     let coffeeCupHeld = false;
     let coffeeCupHeldBy: string | null = null;
+    let coffeeCupReleased = false;
     let umbrellaHeld = false;
     let umbrellaHeldBy: string | null = null;
 
@@ -237,7 +273,9 @@ export class VerbCompiler {
           action,
           shotStartPositions[char.instanceId] ?? 0,
           otherX,
-          charArchetypes[char.instanceId]
+          charArchetypes[char.instanceId],
+          audioManifest,
+          beat.emotionalTone
         );
 
         nextPositions[char.instanceId] = charTrack.nextX;
@@ -264,10 +302,12 @@ export class VerbCompiler {
           leadId,
           cupAction,
           coffeeCupHeld,
-          coffeeCupHeldBy
+          coffeeCupHeldBy,
+          coffeeCupReleased
         );
         coffeeCupHeld = cupResult.propHeld;
         coffeeCupHeldBy = cupResult.propHeldBy;
+        coffeeCupReleased = cupResult.propReleased;
         tracks.push(cupResult.track);
       }
 
@@ -325,7 +365,9 @@ export class VerbCompiler {
     action: CharacterActionDirective,
     currentX: number,
     otherCharX?: number,
-    archetypeId?: string
+    archetypeId?: string,
+    audioManifest?: AudioAnalysisManifest,
+    emotionalTone?: EmotionalTone
   ): { track: EntityTrack; nextX: number } {
     const lastF = endF - 1;
     const keyframes: EntityTrackKeyframe[] = [];
@@ -348,11 +390,12 @@ export class VerbCompiler {
           const isLeft = currentX <= otherCharX;
           targetX = isLeft ? midX - 15 : midX + 15;
         } else {
-          targetX = 15;
+          // Solo walk beside Desk 1
+          targetX = -22;
         }
         nextX = targetX;
         const sX = targetX >= currentX ? scaleXBase : -scaleXBase;
-        clipId = 'pop_vocal_sway';
+        clipId = 'walk_to';
 
         keyframes.push(
           {
@@ -372,6 +415,11 @@ export class VerbCompiler {
             easing: 'linear'
           }
         );
+
+        morphKeyframes.open_rest = [
+          { frame: startF, weight: 1.0 },
+          { frame: lastF, weight: 1.0 }
+        ];
         break;
       }
 
@@ -441,8 +489,8 @@ export class VerbCompiler {
 
       case 'reach_and_grasp': {
         nextX = currentX;
-        clipId = 'pop_vocal_sway';
-        const reachF = startF + Math.floor((endF - startF) * 0.4);
+        clipId = 'reach_and_grasp';
+        const reachF = startF + Math.floor((endF - startF) * 0.5); // t = 0.50 of beat (~frame 315)
 
         keyframes.push(
           {
@@ -463,8 +511,13 @@ export class VerbCompiler {
           }
         );
 
+        morphKeyframes.open_rest = [
+          { frame: startF, weight: 1.0 },
+          { frame: reachF, weight: 0.0 },
+          { frame: lastF, weight: 0.0 }
+        ];
         morphKeyframes.grasp_fist = [
-          { frame: startF, weight: 0 },
+          { frame: startF, weight: 0.0 },
           { frame: reachF, weight: 1.0 },
           { frame: lastF, weight: 1.0 }
         ];
@@ -473,7 +526,9 @@ export class VerbCompiler {
 
       case 'stop_and_turn': {
         nextX = currentX;
-        const turnF0 = startF + 4;
+        clipId = 'stop_and_turn';
+        // Mid-shot turnaround: hold facing +1 until frame 465, 6-frame snap turn (465-471), face -1 thereafter
+        const turnF0 = startF + 45; // mid-shot 1.5s into beat (frames 465-471)
 
         keyframes.push(
           {
@@ -541,14 +596,22 @@ export class VerbCompiler {
             easing: 'linear'
           }
         );
+
+        morphKeyframes.grasp_fist = [
+          { frame: startF, weight: 1.0 },
+          { frame: lastF, weight: 1.0 }
+        ];
         break;
       }
 
       case 'carry_put_down': {
         const destPos = action.target?.kind === 'position' ? action.target.pos[0] : undefined;
-        const destX = destPos !== undefined ? destPos : -35;
+        // Desk 2 is at -86, standing beside it at -58
+        const destX = destPos !== undefined ? destPos : -58;
         nextX = destX;
-        const releaseF = startF + Math.floor((endF - startF) * 0.7);
+        clipId = 'carry_put_down';
+        const walkEndF = startF + Math.floor((endF - startF) * 0.5); // frame 735 (walking X: -22 -> -58)
+        const releaseF = startF + Math.floor((endF - startF) * 0.74); // frame 785 (releases cup onto Desk 2)
 
         keyframes.push(
           {
@@ -560,7 +623,7 @@ export class VerbCompiler {
             easing: 'linear'
           },
           {
-            frame: releaseF,
+            frame: walkEndF,
             position: [destX, baseY, 0],
             rotationZDegrees: 0,
             scale: [-scaleXBase, scaleYBase],
@@ -580,8 +643,14 @@ export class VerbCompiler {
         morphKeyframes.grasp_fist = [
           { frame: startF, weight: 1.0 },
           { frame: releaseF, weight: 1.0 },
-          { frame: releaseF + 5, weight: 0.0 },
+          { frame: releaseF + 2, weight: 0.0 },
           { frame: lastF, weight: 0.0 }
+        ];
+        morphKeyframes.open_rest = [
+          { frame: startF, weight: 0.0 },
+          { frame: releaseF, weight: 0.0 },
+          { frame: releaseF + 2, weight: 1.0 },
+          { frame: lastF, weight: 1.0 }
         ];
         break;
       }
@@ -630,6 +699,7 @@ export class VerbCompiler {
 
       case 'gesture_point': {
         nextX = currentX;
+        clipId = 'gesture_point';
         keyframes.push(
           {
             frame: startF,
@@ -651,7 +721,7 @@ export class VerbCompiler {
 
         morphKeyframes.point = [
           { frame: startF, weight: 0.0 },
-          { frame: startF + 10, weight: 1.0 },
+          { frame: startF + 15, weight: 1.0 },
           { frame: lastF, weight: 1.0 }
         ];
         break;
@@ -783,6 +853,31 @@ export class VerbCompiler {
       }
     }
 
+    // Synthesize vocal lip-sync and facial expression morph keyframes from lyrics
+    if (audioManifest?.lyrics && audioManifest.lyrics.length > 0) {
+      const vocalMorphs = synthesizeVocalPerformanceKeyframes({
+        lyrics: audioManifest.lyrics,
+        shotStartFrame: startF,
+        shotEndFrame: endF,
+        emotionalTone,
+        availableTargets: CANONICAL_BIPED_TARGET_NAMES
+      });
+      for (const [mName, mKeys] of Object.entries(vocalMorphs)) {
+        morphKeyframes[mName] = mKeys;
+      }
+    }
+
+    // Natural blinking
+    const blinks: Array<{ frame: number; weight: number }> = [];
+    for (let f = startF + 20; f < endF; f += 50) {
+      blinks.push(
+        { frame: f, weight: 0 },
+        { frame: f + 2, weight: 1 },
+        { frame: f + 4, weight: 0 }
+      );
+    }
+    morphKeyframes.blink = blinks;
+
     return {
       track: {
         rigId: instanceId,
@@ -805,23 +900,25 @@ export class VerbCompiler {
     ownerId: string,
     action: CharacterActionDirective,
     currentlyHeld: boolean,
-    currentlyHeldBy: string | null
-  ): { track: EntityTrack; propHeld: boolean; propHeldBy: string | null } {
+    currentlyHeldBy: string | null,
+    currentlyReleased = false
+  ): { track: EntityTrack; propHeld: boolean; propHeldBy: string | null; propReleased: boolean } {
     const lastF = endF - 1;
     const keyframes: EntityTrackKeyframe[] = [];
     const attachmentSpans: PropAttachmentSpan[] = [];
     let nextHeld = currentlyHeld;
     let nextHeldBy = currentlyHeldBy;
+    let nextReleased = currentlyReleased;
 
     if (action.verb === 'reach_and_grasp') {
-      const graspFrame = startF + Math.floor((endF - startF) * 0.4);
+      const graspFrame = startF + Math.floor((endF - startF) * 0.5); // t = 0.50 of beat (~frame 315)
       nextHeld = true;
       nextHeldBy = ownerId;
 
       keyframes.push(
         {
           frame: startF,
-          position: [25, 35, 0],
+          position: [0, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -829,7 +926,7 @@ export class VerbCompiler {
         },
         {
           frame: graspFrame,
-          position: [25, 35, 0],
+          position: [0, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -837,7 +934,7 @@ export class VerbCompiler {
         },
         {
           frame: lastF,
-          position: [25, 35, 0],
+          position: [0, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -852,14 +949,15 @@ export class VerbCompiler {
         socketId: 'hand_r'
       });
     } else if (action.verb === 'carry_put_down') {
-      const releaseFrame = startF + Math.floor((endF - startF) * 0.7);
+      const releaseFrame = startF + Math.floor((endF - startF) * 0.74); // frame 785 (releases cup onto Desk 2)
       nextHeld = false;
       nextHeldBy = null;
+      nextReleased = true;
 
       keyframes.push(
         {
           frame: startF,
-          position: [25, 35, 0],
+          position: [0, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -867,7 +965,7 @@ export class VerbCompiler {
         },
         {
           frame: releaseFrame,
-          position: [-30, 35, 0],
+          position: [-80, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -875,7 +973,7 @@ export class VerbCompiler {
         },
         {
           frame: lastF,
-          position: [-30, 35, 0],
+          position: [-80, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -893,7 +991,7 @@ export class VerbCompiler {
       keyframes.push(
         {
           frame: startF,
-          position: [0, 35, 0],
+          position: [0, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -901,7 +999,7 @@ export class VerbCompiler {
         },
         {
           frame: lastF,
-          position: [0, 35, 0],
+          position: [0, 68, 0],
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -917,10 +1015,11 @@ export class VerbCompiler {
       });
     } else {
       // Resting on desk
+      const restPos: [number, number, number] = currentlyReleased ? [-80, 68, 0] : [0, 68, 0];
       keyframes.push(
         {
           frame: startF,
-          position: [25, 35, 0],
+          position: restPos,
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -928,7 +1027,7 @@ export class VerbCompiler {
         },
         {
           frame: lastF,
-          position: [25, 35, 0],
+          position: restPos,
           rotationZDegrees: 0,
           scale: [1, 1],
           opacity: 1,
@@ -947,7 +1046,8 @@ export class VerbCompiler {
         attachmentSpans
       },
       propHeld: nextHeld,
-      propHeldBy: nextHeldBy
+      propHeldBy: nextHeldBy,
+      propReleased: nextReleased
     };
   }
 }

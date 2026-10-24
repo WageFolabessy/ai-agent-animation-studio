@@ -571,6 +571,8 @@ export function validateProjectContracts(
     // Parts validation
     const partIds = new Set<string>();
     let morphPartCount = 0;
+    let facialMorphPartCount = 0;
+    let handMorphPartCount = 0;
     for (const part of rig.parts) {
       if (partIds.has(part.id)) {
         errors.push({
@@ -602,24 +604,38 @@ export function validateProjectContracts(
 
       if (part.shape.kind === 'morph') {
         morphPartCount++;
+        if (part.id.includes('hand')) {
+          handMorphPartCount++;
+        } else {
+          facialMorphPartCount++;
+        }
       }
     }
 
-    if (morphPartCount > 1) {
+    if (facialMorphPartCount > 1) {
       errors.push({
         code: 'MORPH_PART_DUPLICATE',
         path: `rigs[${mapKey}].parts`,
         severity: 'error',
-        message: `Rig "${rig.id}" contains ${morphPartCount} morph parts; at most one morph part is allowed per rig.`
+        message: `Rig "${rig.id}" contains ${facialMorphPartCount} facial morph parts; at most one facial morph part is allowed per rig.`
       });
     }
 
-    if (morphPartCount === 1 && !rig.morphTopology) {
+    if (handMorphPartCount > 2) {
+      errors.push({
+        code: 'MORPH_PART_DUPLICATE',
+        path: `rigs[${mapKey}].parts`,
+        severity: 'error',
+        message: `Rig "${rig.id}" contains ${handMorphPartCount} hand morph parts; at most 2 hand morph parts are allowed per rig.`
+      });
+    }
+
+    if (facialMorphPartCount === 1 && !rig.morphTopology) {
       errors.push({
         code: 'MORPH_PART_WITHOUT_TOPOLOGY',
         path: `rigs[${mapKey}].parts`,
         severity: 'error',
-        message: `Rig "${rig.id}" contains a morph part but has no morphTopology defined.`
+        message: `Rig "${rig.id}" contains a facial morph part but has no morphTopology defined.`
       });
     }
 
@@ -948,7 +964,12 @@ export function validateChoreography(
       }
 
       // Morph target existence check
-      const rigMorphTargets = new Set(rig.morphTopology?.targets.map((tgt) => tgt.name) ?? []);
+      const rigMorphTargets = new Set([
+        ...(rig.morphTopology?.targets.map((tgt) => tgt.name) ?? []),
+        'open_rest',
+        'grasp_fist',
+        'point'
+      ]);
 
       for (const [targetName, morphKeys] of Object.entries(track.morphKeyframes)) {
         if (!rigMorphTargets.has(targetName)) {

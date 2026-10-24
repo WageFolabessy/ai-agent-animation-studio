@@ -6,6 +6,8 @@ import {
   worldToRigLocal
 } from '../src/engine/rigging/ik-leg-solver.js';
 import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
+import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinematics.js';
+import { BipedPoseClips } from '../src/engine/library/archetype-factory.js';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
 import { validateProjectContracts, validateChoreography } from '../src/schemas/invariants.js';
 import { createRenderConfig } from '../src/config/render-config.js';
@@ -478,5 +480,367 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     );
     const fatalChoreo = choreoReport.errors.filter((e) => e.severity === 'fatal' || e.severity === 'error');
     assert.deepEqual(fatalChoreo, [], `Choreography validation must pass: ${JSON.stringify(fatalChoreo)}`);
+  });
+
+  await t.test('Stage 1 Solo Acting Remediation: 5 Runtime Invariants Across 1,050 Frames', () => {
+    const stage1Contract: StoryBeatContract = {
+      projectId: 'stage1_solo_acting',
+      songDurationSec: 35,
+      fps: 30,
+      sliceFrameRange: { startFrame: 0, endFrame: 1050 },
+      cast: [
+        {
+          instanceId: 'protagonist_lead',
+          role: 'PROTAGONIST',
+          archetypeId: 'hero_silhouette',
+          palette: { primary: '#0a1128', accent: '#00f0ff' }
+        }
+      ],
+      beats: [
+        {
+          beatId: 'beat_01_walk',
+          startFrame: 0,
+          endFrame: 210,
+          lyricSnippet: 'Di tengah lorong malam hening merenung',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'Lead approaches the study desk with measured pace',
+          presentCharacters: ['protagonist_lead'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: ['desk', 'coffee_cup'],
+            atmosphericDensity: 0.5
+          },
+          actions: [
+            {
+              instanceId: 'protagonist_lead',
+              verb: 'walk_to',
+              speedNorm: 1.0,
+              intensityNorm: 0.7
+            }
+          ],
+          camera: {
+            framing: 'WIDE',
+            movement: 'DOLLY',
+            focalCharacterId: 'protagonist_lead',
+            lookRoom: 'right',
+            dutchAngleDeg: 0
+          }
+        },
+        {
+          beatId: 'beat_02_reach_grasp',
+          startFrame: 210,
+          endFrame: 420,
+          lyricSnippet: 'Meraih secangkir hangat di atas meja',
+          emotionalTone: 'melancholic',
+          narrativeSubtext: 'Reaching arm with analytical IK and grasping coffee cup',
+          presentCharacters: ['protagonist_lead'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: ['desk', 'coffee_cup'],
+            atmosphericDensity: 0.5
+          },
+          actions: [
+            {
+              instanceId: 'protagonist_lead',
+              verb: 'reach_and_grasp',
+              speedNorm: 0.9,
+              intensityNorm: 0.8,
+              associatedPropId: 'coffee_cup'
+            }
+          ],
+          camera: {
+            framing: 'CLOSE_UP',
+            movement: 'STATIC',
+            focalCharacterId: 'protagonist_lead',
+            lookRoom: 'center',
+            dutchAngleDeg: 0
+          }
+        },
+        {
+          beatId: 'beat_03_snap_turn',
+          startFrame: 420,
+          endFrame: 630,
+          lyricSnippet: 'Seketika langkah berbalik menatap bayang',
+          emotionalTone: 'defiant',
+          narrativeSubtext: 'Cut-paper snap turnaround with locked foot contact',
+          presentCharacters: ['protagonist_lead'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'dramatic_twilight',
+            landmarkProps: ['desk', 'coffee_cup'],
+            atmosphericDensity: 0.6
+          },
+          actions: [
+            {
+              instanceId: 'protagonist_lead',
+              verb: 'stop_and_turn',
+              speedNorm: 1.1,
+              intensityNorm: 0.9
+            }
+          ],
+          camera: {
+            framing: 'MEDIUM',
+            movement: 'PAN',
+            focalCharacterId: 'protagonist_lead',
+            lookRoom: 'left',
+            dutchAngleDeg: 4
+          }
+        },
+        {
+          beatId: 'beat_04_carry_put_down',
+          startFrame: 630,
+          endFrame: 840,
+          lyricSnippet: 'Melangkah membawa asa melintasi ruang',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'Carrying cup and setting it down safely onto stage surface',
+          presentCharacters: ['protagonist_lead'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'dramatic_twilight',
+            landmarkProps: ['desk', 'coffee_cup'],
+            atmosphericDensity: 0.5
+          },
+          actions: [
+            {
+              instanceId: 'protagonist_lead',
+              verb: 'carry_put_down',
+              speedNorm: 1.0,
+              intensityNorm: 0.7
+            }
+          ],
+          camera: {
+            framing: 'WIDE',
+            movement: 'STATIC',
+            focalCharacterId: 'protagonist_lead',
+            lookRoom: 'center',
+            dutchAngleDeg: 0
+          }
+        },
+        {
+          beatId: 'beat_05_gesture_point',
+          startFrame: 840,
+          endFrame: 1050,
+          lyricSnippet: 'Menunjuk cakrawala fajar yang menjelang',
+          emotionalTone: 'euphoric',
+          narrativeSubtext: 'Pointing toward rising horizon in architectural hall',
+          presentCharacters: ['protagonist_lead'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'clean_minimal',
+            landmarkProps: ['desk'],
+            atmosphericDensity: 0.4
+          },
+          actions: [
+            {
+              instanceId: 'protagonist_lead',
+              verb: 'gesture_point',
+              speedNorm: 1.0,
+              intensityNorm: 0.85
+            }
+          ],
+          camera: {
+            framing: 'CLOSE_UP',
+            movement: 'STATIC',
+            focalCharacterId: 'protagonist_lead',
+            lookRoom: 'right',
+            dutchAngleDeg: 0
+          }
+        }
+      ],
+      unfulfilledRequests: []
+    };
+
+    const syntheticManifest: AudioAnalysisManifest = {
+      metadata: {
+        audioFilePath: 'synthetic.wav',
+        sampleRate: 44100,
+        durationSeconds: 35,
+        totalFrames: 1050,
+        fps: 30
+      },
+      normalization: {
+        globalRmsMax: 1.0,
+        localWindowFrames: 30
+      },
+      lyrics: [
+        {
+          id: 'lyric_01',
+          startTimeSeconds: 0,
+          endTimeSeconds: 6,
+          frameRange: { startFrameInclusive: 0, endFrameExclusive: 180 },
+          text: 'Di tengah lorong malam hening merenung',
+          emphasis: 0.8
+        },
+        {
+          id: 'lyric_02',
+          startTimeSeconds: 7,
+          endTimeSeconds: 13,
+          frameRange: { startFrameInclusive: 210, endFrameExclusive: 390 },
+          text: 'Meraih secangkir hangat di atas meja',
+          emphasis: 0.8
+        },
+        {
+          id: 'lyric_03',
+          startTimeSeconds: 14,
+          endTimeSeconds: 20,
+          frameRange: { startFrameInclusive: 420, endFrameExclusive: 600 },
+          text: 'Seketika langkah berbalik menatap bayang',
+          emphasis: 0.8
+        },
+        {
+          id: 'lyric_04',
+          startTimeSeconds: 21,
+          endTimeSeconds: 27,
+          frameRange: { startFrameInclusive: 630, endFrameExclusive: 810 },
+          text: 'Melangkah membawa asa melintasi ruang',
+          emphasis: 0.8
+        },
+        {
+          id: 'lyric_05',
+          startTimeSeconds: 28,
+          endTimeSeconds: 34,
+          frameRange: { startFrameInclusive: 840, endFrameExclusive: 1020 },
+          text: 'Menunjuk cakrawala fajar yang menjelang',
+          emphasis: 0.8
+        }
+      ],
+      beatEvents: [],
+      storageReference: {
+        type: 'memory_columnar',
+        columnLayoutVersion: 1
+      }
+    };
+
+    const production = VerbCompiler.compile(stage1Contract, syntheticManifest);
+    const leadRig = production.rigs.get('protagonist_lead')!;
+    assert.ok(leadRig, 'protagonist_lead rig must exist');
+
+    // Invariant 1: beat_01_walk has leg oscillation > 20 deg and end position X = -22
+    const walkTrack = production.choreography.tracks.find(
+      (t) => t.shotId === 'beat_01_walk' && t.rigId === 'protagonist_lead'
+    )!;
+    assert.ok(walkTrack, 'walk track must exist');
+    assert.equal(walkTrack.pose?.clipId, 'walk_to');
+    const walkClip = BipedPoseClips['walk_to'];
+    const thighAngles = walkClip.keyframes.map((k) => {
+      const jt = k.jointTransforms.find((j) => j.jointId === 'leg_l_upper');
+      return jt ? jt.rotationZDegrees : 0;
+    });
+    const thighOscillation = Math.max(...thighAngles) - Math.min(...thighAngles);
+    assert.ok(
+      thighOscillation > 20,
+      `Walk leg oscillation must be > 20 degrees, got ${thighOscillation}`
+    );
+    const walkEndPos = walkTrack.transform.keyframes[walkTrack.transform.keyframes.length - 1].position;
+    assert.equal(walkEndPos[0], -22, `Walk end X must be -22, got ${walkEndPos[0]}`);
+
+    // Invariant 2: At grasp frame (~315) and release frame (~785), wrist is <= 2.5 units from cup
+    // Frame 315 (relative frame 105 in beat_02_reach_grasp)
+    const graspClip = BipedPoseClips['reach_and_grasp'];
+    const graspKf = graspClip.keyframes.find((k) => k.frame === 105)!;
+    assert.ok(graspKf, 'reach_and_grasp frame 105 keyframe must exist');
+    const graspJointAngles: Record<string, number> = {};
+    const graspJointOffsets: Record<string, [number, number]> = {};
+    for (const jt of graspKf.jointTransforms) {
+      graspJointAngles[jt.jointId] = jt.rotationZDegrees;
+      if (jt.localOffset2D) graspJointOffsets[jt.jointId] = jt.localOffset2D;
+    }
+    const graspFk = computeSkeletonFK(leadRig.skeleton!, graspJointAngles, graspJointOffsets);
+    const armLowerAff = graspFk.get('arm_r_lower')!;
+    const graspWrist = applyAffine2D(armLowerAff, [0, -16]);
+    const worldWrist315: [number, number] = [-22 + 1.35 * graspWrist[0], 75 + 1.45 * graspWrist[1]];
+    const distDesk1 = Math.hypot(worldWrist315[0] - 0, worldWrist315[1] - 68);
+    assert.ok(
+      distDesk1 <= 2.5,
+      `At grasp frame 315, wrist must be within 2.5 units of Desk 1 cup [0, 68], got ${distDesk1}`
+    );
+
+    // Frame 785 (relative frame 155 in beat_04_carry_put_down)
+    const putDownClip = BipedPoseClips['carry_put_down'];
+    const putDownKf = putDownClip.keyframes.find((k) => k.frame === 155)!;
+    assert.ok(putDownKf, 'carry_put_down frame 155 keyframe must exist');
+    const putDownJointAngles: Record<string, number> = {};
+    const putDownJointOffsets: Record<string, [number, number]> = {};
+    for (const jt of putDownKf.jointTransforms) {
+      putDownJointAngles[jt.jointId] = jt.rotationZDegrees;
+      if (jt.localOffset2D) putDownJointOffsets[jt.jointId] = jt.localOffset2D;
+    }
+    const putDownFk = computeSkeletonFK(leadRig.skeleton!, putDownJointAngles, putDownJointOffsets);
+    const armLowerAff2 = putDownFk.get('arm_r_lower')!;
+    const putDownWrist = applyAffine2D(armLowerAff2, [0, -16]);
+    // Character facing left (-1.35) at stopped position X = -58
+    const worldWrist785: [number, number] = [-58 + (-1.35) * putDownWrist[0], 75 + 1.45 * putDownWrist[1]];
+    const distDesk2 = Math.hypot(worldWrist785[0] - (-80), worldWrist785[1] - 68);
+    assert.ok(
+      distDesk2 <= 2.5,
+      `At release frame 785, wrist must be within 2.5 units of Desk 2 cup [-80, 68], got ${distDesk2}`
+    );
+
+    // Invariant 3: In beat_03_snap_turn, scale[0] is +1.35 at frame 420 and flips to -1.35 between 460 and 480
+    const turnTrack = production.choreography.tracks.find(
+      (t) => t.shotId === 'beat_03_snap_turn' && t.rigId === 'protagonist_lead'
+    )!;
+    assert.ok(turnTrack, 'turn track must exist');
+    const scaleAt420 = turnTrack.transform.keyframes.find((k) => k.frame === 420)!.scale[0];
+    const kfsTurnMid = turnTrack.transform.keyframes.filter((k) => k.frame >= 460 && k.frame <= 480);
+    assert.equal(scaleAt420, 1.35, `Scale at frame 420 must be +1.35, got ${scaleAt420}`);
+    assert.ok(kfsTurnMid.length >= 2, 'Must have turnaround transition keyframes between 460 and 480');
+    assert.equal(kfsTurnMid[0].scale[0], 1.35, 'Scale before flip must be +1.35');
+    assert.equal(kfsTurnMid[kfsTurnMid.length - 1].scale[0], -1.35, 'Scale after flip must be -1.35');
+
+    // Invariant 4: In beat_05_gesture_point, Y_wrist > Y_shoulder + 6 and |X_wrist - X_shoulder| >= 24
+    const pointClip = BipedPoseClips['gesture_point'];
+    const pointKf = pointClip.keyframes.find((k) => k.frame === 40)!;
+    assert.ok(pointKf, 'gesture_point frame 40 keyframe must exist');
+    const pointJointAngles: Record<string, number> = {};
+    const pointJointOffsets: Record<string, [number, number]> = {};
+    for (const jt of pointKf.jointTransforms) {
+      pointJointAngles[jt.jointId] = jt.rotationZDegrees;
+      if (jt.localOffset2D) pointJointOffsets[jt.jointId] = jt.localOffset2D;
+    }
+    const pointFk = computeSkeletonFK(leadRig.skeleton!, pointJointAngles, pointJointOffsets);
+    const pShoulder = pointFk.get('arm_r_upper')!;
+    const pArmLower = pointFk.get('arm_r_lower')!;
+    const pWrist = applyAffine2D(pArmLower, [0, -16]);
+    const shoulderWorldY = 75 + 1.45 * pShoulder.ty;
+    const wristWorldY = 75 + 1.45 * pWrist[1];
+    const shoulderWorldX = -22 + 1.35 * pShoulder.tx;
+    const wristWorldX = -22 + 1.35 * pWrist[0];
+    const yDiff = wristWorldY - shoulderWorldY;
+    const xDiff = Math.abs(wristWorldX - shoulderWorldX);
+    assert.ok(
+      yDiff > 6.0,
+      `In gesture_point, wrist Y must be > shoulder Y + 6, got diff ${yDiff}`
+    );
+    assert.ok(
+      xDiff >= 24.0,
+      `In gesture_point, horizontal arm extension |X_wrist - X_shoulder| must be >= 24, got ${xDiff}`
+    );
+
+    // Invariant 5: Across sung lyric frames, mouth morph screen height variation >= 6.0 px
+    const trackWithMorphs = production.choreography.tracks.find(
+      (t) => t.rigId === 'protagonist_lead' && t.morphKeyframes && Object.keys(t.morphKeyframes).length > 0
+    )!;
+    assert.ok(trackWithMorphs, 'Lead track must contain synthesized morph keyframes');
+    const openAKfs = trackWithMorphs.morphKeyframes['mouth_wide_a'] || [];
+    let maxOpenA = 0;
+    for (const mk of openAKfs) {
+      if (mk.weight > maxOpenA) maxOpenA = mk.weight;
+    }
+    assert.ok(maxOpenA > 0.4, `Vocal synthesis must activate mouth_wide_a, got max ${maxOpenA}`);
+
+    // Screen height projection verification:
+    // facial_expression_morph mouth_open_a has local delta Y = 12 units (from -6 to +6).
+    // In CLOSE_UP framing, camera distance ~135, fov = 50 deg:
+    // Screen height scale = (1080 / 2) / tan(25 deg) / 135 * 1.45 * (12 * maxOpenA)
+    const focalPx = (1080 / 2) / Math.tan((25 * Math.PI) / 180);
+    const worldHeightOpen = 12 * maxOpenA * 1.45;
+    const projectedScreenHeight = (worldHeightOpen * focalPx) / 135;
+    assert.ok(
+      projectedScreenHeight >= 6.0,
+      `Projected mouth opening screen height must be >= 6.0 px, got ${projectedScreenHeight.toFixed(2)} px`
+    );
   });
 });

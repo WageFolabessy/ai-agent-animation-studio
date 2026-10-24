@@ -537,6 +537,18 @@ export class StageEnvironmentGenerator {
       });
     }
 
+    if (setId === 'ARCHITECTURAL_INTERIOR') {
+      // Architectural interior wainscot dado moulding along the rear stage baseline
+      lines.push({
+        p0: [xMin - floorPad, 35, 0],
+        p1: [xMax + floorPad, 35, 0],
+        stroke: shadeHexColor(palette.secondary, -0.35),
+        strokeWidth: 2.0,
+        opacity: 0.85,
+        tier: 2
+      });
+    }
+
     const b3 = tierBounds?.tier3RunwayZ ?? { xMin, xMax };
     const span3 = Math.max(1200, b3.xMax - b3.xMin);
     const s3 = Math.max(220, Math.ceil(span3 / 5));
@@ -669,53 +681,198 @@ export class StageEnvironmentGenerator {
         }
 
         case 'ARCHITECTURAL_INTERIOR': {
-          // Interactive Study Desk at Stage Space (Z = 0, top at Y = 35)
-          polygons.push(
-            {
-              // Desk top
-              vertices: [
-                [bx - 40, 32, 0],
-                [bx + 40, 32, 0],
-                [bx + 40, 35, 0],
-                [bx - 40, 35, 0]
-              ],
-              fill: shadeHexColor(palette.secondary, 0.25),
-              opacity: 1.0,
+          // Interactive Study Desks at Waist Height (Stage Space Z = 0, top at Y = 68)
+          // Exactly two desks: Desk 1 centered at X = +6 (cup pickup [0, 68, 0])
+          // and Desk 2 centered at X = -86 (cup placement [-80, 68, 0])
+          if (k === 0) {
+            // Desk 1: centered at X = +6
+            polygons.push(
+              {
+                // Desk 1 top
+                vertices: [
+                  [-16, 65, 0],
+                  [50, 65, 0],
+                  [50, 68, 0],
+                  [-16, 68, 0]
+                ],
+                fill: shadeHexColor(palette.secondary, 0.25),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Desk 1 left leg
+                vertices: [
+                  [-14, 0, 0],
+                  [-10, 0, 0],
+                  [-10, 65, 0],
+                  [-14, 65, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.1),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Desk 1 right pedestal cabinet
+                vertices: [
+                  [22, 0, 0],
+                  [48, 0, 0],
+                  [48, 65, 0],
+                  [22, 65, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.1),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Desk 1 middle shelf
+                vertices: [
+                  [-10, 32, 0],
+                  [22, 32, 0],
+                  [22, 35, 0],
+                  [-10, 35, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.15),
+                opacity: 0.95,
+                tier: 2
+              }
+            );
+            lines.push(
+              {
+                p0: [-16, 68, 1],
+                p1: [50, 68, 1],
+                stroke: palette.primary,
+                strokeWidth: 2.0,
+                opacity: 0.95,
+                tier: 2
+              },
+              {
+                p0: [-10, 35, 1],
+                p1: [22, 35, 1],
+                stroke: palette.primary,
+                strokeWidth: 1.5,
+                opacity: 0.9,
+                tier: 2
+              }
+            );
+
+            // Desk 2: centered at X = -86
+            polygons.push(
+              {
+                // Desk 2 top
+                vertices: [
+                  [-116, 65, 0],
+                  [-60, 65, 0],
+                  [-60, 68, 0],
+                  [-116, 68, 0]
+                ],
+                fill: shadeHexColor(palette.secondary, 0.25),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Desk 2 left pedestal cabinet
+                vertices: [
+                  [-116, 0, 0],
+                  [-94, 0, 0],
+                  [-94, 65, 0],
+                  [-116, 65, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.1),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Desk 2 right leg
+                vertices: [
+                  [-66, 0, 0],
+                  [-62, 0, 0],
+                  [-62, 65, 0],
+                  [-66, 65, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.1),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Desk 2 middle shelf
+                vertices: [
+                  [-94, 32, 0],
+                  [-66, 32, 0],
+                  [-66, 35, 0],
+                  [-94, 35, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.15),
+                opacity: 0.95,
+                tier: 2
+              }
+            );
+            lines.push(
+              {
+                p0: [-116, 68, 1],
+                p1: [-60, 68, 1],
+                stroke: palette.primary,
+                strokeWidth: 2.0,
+                opacity: 0.95,
+                tier: 2
+              },
+              {
+                p0: [-94, 35, 1],
+                p1: [-66, 35, 1],
+                stroke: palette.primary,
+                strokeWidth: 1.5,
+                opacity: 0.9,
+                tier: 2
+              }
+            );
+          } else {
+            // Study desks in adjacent bays
+            polygons.push(
+              {
+                // Desk top
+                vertices: [
+                  [bx - 40, 32, 0],
+                  [bx + 40, 32, 0],
+                  [bx + 40, 35, 0],
+                  [bx - 40, 35, 0]
+                ],
+                fill: shadeHexColor(palette.secondary, 0.25),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Left Desk Leg
+                vertices: [
+                  [bx - 36, 0, 0],
+                  [bx - 30, 0, 0],
+                  [bx - 30, 32, 0],
+                  [bx - 36, 32, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.1),
+                opacity: 1.0,
+                tier: 2
+              },
+              {
+                // Right Desk Leg
+                vertices: [
+                  [bx + 30, 0, 0],
+                  [bx + 36, 0, 0],
+                  [bx + 36, 32, 0],
+                  [bx + 30, 32, 0]
+                ],
+                fill: shadeHexColor(palette.background, 0.1),
+                opacity: 1.0,
+                tier: 2
+              }
+            );
+            lines.push({
+              p0: [bx - 40, 35, 1],
+              p1: [bx + 40, 35, 1],
+              stroke: palette.primary,
+              strokeWidth: 2.0,
+              opacity: 0.95,
               tier: 2
-            },
-            {
-              // Left Desk Leg
-              vertices: [
-                [bx - 36, 0, 0],
-                [bx - 30, 0, 0],
-                [bx - 30, 32, 0],
-                [bx - 36, 32, 0]
-              ],
-              fill: shadeHexColor(palette.background, 0.1),
-              opacity: 1.0,
-              tier: 2
-            },
-            {
-              // Right Desk Leg
-              vertices: [
-                [bx + 30, 0, 0],
-                [bx + 36, 0, 0],
-                [bx + 36, 32, 0],
-                [bx + 30, 32, 0]
-              ],
-              fill: shadeHexColor(palette.background, 0.1),
-              opacity: 1.0,
-              tier: 2
-            }
-          );
-          lines.push({
-            p0: [bx - 40, 35, 1],
-            p1: [bx + 40, 35, 1],
-            stroke: palette.primary,
-            strokeWidth: 2.0,
-            opacity: 0.95,
-            tier: 2
-          });
+            });
+          }
           break;
         }
 
@@ -882,8 +1039,8 @@ export class StageEnvironmentGenerator {
             // Overhead vaulted ceiling rafters
             polygons.push({
               vertices: [
-                [bx - 90, 240, z4],
-                [bx + 180, 240, z4],
+                [bx - 90, 235, z4],
+                [bx + 180, 235, z4],
                 [bx + 180, 255, z4],
                 [bx - 90, 255, z4]
               ],

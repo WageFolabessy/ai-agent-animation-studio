@@ -129,7 +129,7 @@ async function main() {
           }
         ],
         camera: {
-          framing: 'INSERT',
+          framing: 'CLOSE_UP',
           movement: 'STATIC',
           focalCharacterId: 'protagonist_lead',
           lookRoom: 'center',

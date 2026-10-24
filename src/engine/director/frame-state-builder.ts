@@ -225,6 +225,8 @@ export class FrameStateBuilder {
           Math.sign(ownerEntity.scale[0] || 1) * Math.abs(entity.scale[0]),
           entity.scale[1]
         ];
+        // Enforce upright prop orientation against gravity unless inheritSocketRotation is set
+        entity.worldRotationZDegrees = 0;
       }
     }
 

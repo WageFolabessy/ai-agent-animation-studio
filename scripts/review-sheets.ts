@@ -780,7 +780,7 @@ async function main(): Promise<void> {
       const t = shotLookup.normalizedProgress;
       leadPos = [
         k0.position[0] + (k1.position[0] - k0.position[0]) * t,
-        k0.position[1] + (k1.position[1] - k0.position[1]) * t,
+        k0.position[1] + (k1.position[1] - k0.position[1]) * t + 38,
         k0.position[2] + (k1.position[2] - k0.position[2]) * t,
       ];
     }
@@ -955,9 +955,32 @@ async function main(): Promise<void> {
       const lbl = path.join(tempDir, `lipsync_lbl_${i}.txt`);
       fs.writeFileSync(lbl, `F: ${fSong} | "${truncate(cData.lyricLine, 28)}"`);
 
+      const shotLookup = sequencer.getShotForFrame(fSong);
+      const cameraAtFrame = sequencer.interpolateCamera(shotLookup.shot, shotLookup.normalizedProgress);
+      const cameraBasis = computeCameraBasis(cameraAtFrame);
+      const leadTrack = choreography.tracks.find(
+        t => t.shotId === shotLookup.shot.id && t.rigId === 'protagonist_lead'
+      );
+      let headPos: [number, number, number] = [0, 0, 0];
+      if (leadTrack && leadTrack.transform.keyframes.length >= 2) {
+        const k0 = leadTrack.transform.keyframes[0];
+        const k1 = leadTrack.transform.keyframes[1];
+        const t = shotLookup.normalizedProgress;
+        headPos = [
+          k0.position[0] + (k1.position[0] - k0.position[0]) * t,
+          k0.position[1] + (k1.position[1] - k0.position[1]) * t + 38,
+          k0.position[2] + (k1.position[2] - k0.position[2]) * t,
+        ];
+      }
+      const projected = projectToScreen(headPos, cameraAtFrame, cameraBasis, meta.width, meta.height);
+      const projX = (projected.visible && Number.isFinite(projected.x)) ? projected.x : meta.width / 2;
+      const projY = (projected.visible && Number.isFinite(projected.y)) ? projected.y : meta.height / 2;
+      const cropX = Math.max(0, Math.min(meta.width - cellW08, Math.round(projX - cellW08 / 2)));
+      const cropY = Math.max(0, Math.min(meta.height - cellH08, Math.round(projY - cellH08 / 2)));
+
       lipsyncInputs.push('-i', rawImg);
       filterParts08.push(
-        `[${i}:v]scale=${cellW08}:${cellH08},drawtext=fontfile=${fontPath}:textfile=${lbl}:fontcolor=white:fontsize=13:box=1:boxcolor=black@0.75:x=8:y=8[v${i}]`
+        `[${i}:v]crop=${cellW08}:${cellH08}:${cropX}:${cropY},drawtext=fontfile=${fontPath}:textfile=${lbl}:fontcolor=white:fontsize=13:box=1:boxcolor=black@0.75:x=8:y=8[v${i}]`
       );
     }
 

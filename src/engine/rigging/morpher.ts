@@ -11,6 +11,47 @@ export interface BlendedMorphResult {
 }
 
 /**
+ * Canonical 4-segment cubic Bezier hand morph topology (open_rest, grasp_fist, point).
+ * Local coordinate convention: [0, 0] at wrist socket joint tip.
+ */
+export const CANONICAL_HAND_BASE_SEGMENTS: readonly NormalizedCubicBezierSegment[] = [
+  { p0: [0, 1.5], p1: [1.8, 1.0], p2: [3.8, -1.5], p3: [3.5, -4.5] },
+  { p0: [3.5, -4.5], p1: [3.2, -5.5], p2: [2.0, -5.8], p3: [1.0, -5.5] },
+  { p0: [1.0, -5.5], p1: [0.0, -5.2], p2: [-1.2, -4.0], p3: [-1.5, -2.5] },
+  { p0: [-1.5, -2.5], p1: [-1.8, -1.0], p2: [-1.2, 0.8], p3: [0, 1.5] }
+];
+
+export const CANONICAL_HAND_MORPH_TARGETS: readonly NormalizedMorphTarget[] = [
+  {
+    name: 'open_rest',
+    segments: [
+      { p0: [0, 1.5], p1: [1.8, 1.0], p2: [3.8, -1.5], p3: [3.5, -4.5] },
+      { p0: [3.5, -4.5], p1: [3.2, -5.5], p2: [2.0, -5.8], p3: [1.0, -5.5] },
+      { p0: [1.0, -5.5], p1: [0.0, -5.2], p2: [-1.2, -4.0], p3: [-1.5, -2.5] },
+      { p0: [-1.5, -2.5], p1: [-1.8, -1.0], p2: [-1.2, 0.8], p3: [0, 1.5] }
+    ]
+  },
+  {
+    name: 'grasp_fist',
+    segments: [
+      { p0: [0, 1.5], p1: [1.5, 1.5], p2: [2.8, 0.5], p3: [2.6, -2.5] },
+      { p0: [2.6, -2.5], p1: [2.4, -3.8], p2: [1.5, -4.0], p3: [0.2, -3.8] },
+      { p0: [0.2, -3.8], p1: [-1.0, -3.6], p2: [-1.8, -2.5], p3: [-1.8, -1.2] },
+      { p0: [-1.8, -1.2], p1: [-1.8, 0.2], p2: [-1.0, 1.2], p3: [0, 1.5] }
+    ]
+  },
+  {
+    name: 'point',
+    segments: [
+      { p0: [0, 1.5], p1: [2.5, 2.2], p2: [6.0, 2.8], p3: [8.5, 2.5] },
+      { p0: [8.5, 2.5], p1: [8.8, 1.2], p2: [5.5, -0.5], p3: [2.8, -1.8] },
+      { p0: [2.8, -1.8], p1: [1.8, -3.0], p2: [0.5, -3.2], p3: [-1.2, -2.2] },
+      { p0: [-1.2, -2.2], p1: [-1.5, -0.8], p2: [-1.0, 0.8], p3: [0, 1.5] }
+    ]
+  }
+];
+
+/**
  * Linearly blends base Bezier segments with morph targets using additive shape keys:
  * P_{s,i}(w) = B_{s,i} + sum_k w_k * (T_{k,s,i} - B_{s,i})
  */
