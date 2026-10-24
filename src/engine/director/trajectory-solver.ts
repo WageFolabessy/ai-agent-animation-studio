@@ -555,6 +555,7 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
     let startX: number;
     let endX: number;
     let effectiveRootSpeed = motionParams.rootSpeed;
+    let effectiveTimeScale = motionParams.timeScale;
 
     if (isTheatrical) {
       if (directive?.waypoints && directive.waypoints.length > 0) {
@@ -589,25 +590,83 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
         startX = Math.max(-95, Math.min(95, normXStart * 80));
         endX = Math.max(-95, Math.min(95, normXEnd * 80));
         effectiveRootSpeed = duration > 0 ? Number(((endX - startX) / duration).toFixed(4)) : 0;
-      } else if (motionParams.rootSpeed === 0) {
+
+        const loopFrames = activeClip?.loopFrames ?? 24;
+        const isLocomotion = !NON_LOCOMOTION_CLIPS.has(clipId) && stride > 0;
+
+        if (isLocomotion) {
+          const natSpeed = stride / loopFrames;
+          const rawSpeed = Math.abs(effectiveRootSpeed);
+          const rawTimeScale = rawSpeed > 0 ? rawSpeed / natSpeed : 0;
+
+          if (rawTimeScale >= 0.6 && rawTimeScale <= 1.6 && effectiveRootSpeed > 0) {
+            effectiveTimeScale = Number(rawTimeScale.toFixed(4));
+          } else {
+            const interactionBehavior = sectionSpec?.interactionBehavior;
+            const isMovement =
+              interactionBehavior === 'PURSUIT_AND_CONFRONTATION' ||
+              interactionBehavior === 'PARALLEL_WALK';
+            if (isMovement) {
+              // Movement behavior: integrate root motion at clip-locked speed within [0.6, 1.6]
+              let targetTs = 0.8;
+              let lockedSpeed = natSpeed * targetTs;
+              if (lockedSpeed * duration > 140) {
+                targetTs = 0.6;
+                lockedSpeed = natSpeed * 0.6;
+              }
+              effectiveTimeScale = targetTs;
+              startX = Math.max(-80, Math.min(80 - lockedSpeed * duration, startX));
+              endX = Number((startX + lockedSpeed * duration).toFixed(2));
+              effectiveRootSpeed = Number(((endX - startX) / duration).toFixed(4));
+              effectiveTimeScale = Number(((effectiveRootSpeed * loopFrames) / stride).toFixed(4));
+            } else {
+              const inPlace =
+                rawPreset && NON_LOCOMOTION_CLIPS.has(rawPreset)
+                  ? rawPreset
+                  : sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal')
+                    ? 'pop_vocal_sway'
+                    : sectionSpec?.theatricalSetId === 'RAINY_STREET'
+                      ? 'rhythmic_step'
+                      : 'bench_contemplation';
+              clipId = inPlace;
+              effectiveTimeScale = 1.0;
+              effectiveRootSpeed = 0;
+              endX = startX;
+            }
+          }
+        } else {
+          effectiveTimeScale = 1.0;
+          effectiveRootSpeed = 0;
+          endX = startX;
+        }
+      } else if (motionParams.rootSpeed === 0 || NON_LOCOMOTION_CLIPS.has(clipId) || stride <= 0) {
         startX = currentX;
         endX = currentX;
         effectiveRootSpeed = 0;
+        effectiveTimeScale = 1.0;
       } else {
         const rawTravel = motionParams.rootSpeed * duration;
         if (rawTravel <= 180) {
           startX = Math.max(-95, Math.min(95 - rawTravel, -rawTravel / 2));
           endX = startX + rawTravel;
+          effectiveRootSpeed = motionParams.rootSpeed;
+          effectiveTimeScale = motionParams.timeScale;
         } else {
           startX = -90;
           endX = 90;
           effectiveRootSpeed = Number(((endX - startX) / duration).toFixed(4));
+          const loopFrames = activeClip?.loopFrames ?? 24;
+          effectiveTimeScale = Number(
+            Math.max(0.6, Math.min(1.6, (effectiveRootSpeed * loopFrames) / stride)).toFixed(4)
+          );
         }
       }
       currentX = endX;
     } else {
       startX = currentX;
       endX = startX + motionParams.rootSpeed * duration;
+      effectiveRootSpeed = motionParams.rootSpeed;
+      effectiveTimeScale = motionParams.timeScale;
       currentX = endX;
     }
 
@@ -617,7 +676,7 @@ export function buildUnifiedMotionPlan(options: UnifiedMotionPlanOptions): ShotM
       endFrame,
       duration,
       clipId,
-      timeScale: motionParams.timeScale,
+      timeScale: effectiveTimeScale,
       rootSpeed: effectiveRootSpeed,
       startX: Number(startX.toFixed(2)),
       endX: Number(endX.toFixed(2))

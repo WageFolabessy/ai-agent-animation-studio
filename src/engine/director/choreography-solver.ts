@@ -8,6 +8,7 @@ import type {
   MorphKeyframeItem
 } from '../../schemas/choreography.contract.js';
 import type { StorySpecContract } from '../../schemas/story-spec.contract.js';
+import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
 import { ArchetypeFactory } from '../library/archetype-factory.js';
 import {
   TrajectorySolver,
@@ -15,9 +16,14 @@ import {
   computeMusicalMotionParameters,
   buildUnifiedMotionPlan,
   globalTrajectorySolver,
-  ARCHETYPE_CANONICAL_BASE_Y
+  ARCHETYPE_CANONICAL_BASE_Y,
+  NON_LOCOMOTION_CLIPS
 } from './trajectory-solver.js';
-import { RelationalBlockingSolver } from './relational-blocking-solver.js';
+import {
+  RelationalBlockingSolver,
+  computeRigHorizontalBounds,
+  MIN_INTERPERSONAL_CLEARANCE
+} from './relational-blocking-solver.js';
 import {
   synthesizeVocalPerformanceKeyframes,
   type VocalLyricSpan
@@ -48,7 +54,8 @@ export function solveChoreography(
   rigs: Map<string, AssetRigContract>,
   framesPerBeat?: number,
   solver?: TrajectorySolver,
-  lyrics?: readonly VocalLyricSpan[]
+  lyrics?: readonly VocalLyricSpan[],
+  getAudioFeatureAtFrame?: (f: number) => AudioFrameFeature
 ): ChoreographyContract {
   const activeSolver = solver ?? new TrajectorySolver();
   const tracks: EntityTrack[] = [];
@@ -111,6 +118,8 @@ export function solveChoreography(
     const leadStartX = leadPlan ? leadPlan.startX : 0;
     const leadSpeed = leadPlan ? leadPlan.rootSpeed : 0;
     const leadEndX = leadStartX + leadSpeed * (lastFrame - startFrame);
+
+    let nonLeadBipedIndex = 0;
 
     for (const rigId of shot.activeRigIds) {
       const rig = rigs.get(rigId);
@@ -202,8 +211,21 @@ export function solveChoreography(
             quadEndPos = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
             quadTimeScale = leadPlan ? leadPlan.timeScale : quadMotion.timeScale;
           } else {
-            // Quadruped pursuer: follows lead at -120 offset, stops when lead stops
-            const quadOffsetX = -120;
+            // Quadruped pursuer: derive minimum separation from actual rig bounds
+            const leadBounds = computeRigHorizontalBounds(
+              leadRig,
+              leadPlan?.clipId ? [leadPlan.clipId] : undefined,
+              spec.cast[0]?.scale ?? 1.0
+            );
+            const quadBounds = computeRigHorizontalBounds(
+              rig,
+              [quadClipId],
+              castItem?.scale ?? 1.0
+            );
+            const minSepLeft = Math.ceil(
+              quadBounds.maxX - leadBounds.minX + MIN_INTERPERSONAL_CLEARANCE
+            );
+            const quadOffsetX = -minSepLeft;
             const quadStartX = leadStartX + quadOffsetX;
             const quadEndX = isLeadMoving ? leadEndX + quadOffsetX : quadStartX;
             quadStartPos = [
@@ -216,7 +238,35 @@ export function solveChoreography(
               ARCHETYPE_CANONICAL_BASE_Y.quadruped_beast,
               0
             ];
-            quadTimeScale = quadMotion.timeScale;
+
+            const frameSpan = Math.max(1, lastFrame - startFrame);
+            const quadSpeed = (quadEndX - quadStartX) / frameSpan;
+            if (quadSpeed > 0 && quadStride > 0) {
+              const rawQuadTs = (quadSpeed * quadLoopFrames) / quadStride;
+              if (rawQuadTs >= 0.6 && rawQuadTs <= 1.6) {
+                quadTimeScale = Number(rawQuadTs.toFixed(4));
+              } else if (rawQuadTs < 0.6) {
+                quadTimeScale = 0.6;
+                const lockedSpeed = (quadStride / quadLoopFrames) * 0.6;
+                const adjustedEndX = quadStartX + lockedSpeed * frameSpan;
+                quadEndPos = [
+                  Number(adjustedEndX.toFixed(2)),
+                  ARCHETYPE_CANONICAL_BASE_Y.quadruped_beast,
+                  0
+                ];
+              } else {
+                quadTimeScale = 1.6;
+                const lockedSpeed = (quadStride / quadLoopFrames) * 1.6;
+                const adjustedEndX = quadStartX + lockedSpeed * frameSpan;
+                quadEndPos = [
+                  Number(adjustedEndX.toFixed(2)),
+                  ARCHETYPE_CANONICAL_BASE_Y.quadruped_beast,
+                  0
+                ];
+              }
+            } else {
+              quadTimeScale = 1.0;
+            }
           }
 
           const beastKeyframes: EntityTrackKeyframe[] = [
@@ -276,32 +326,41 @@ export function solveChoreography(
         // Biped Character (Lead or Companion)
         let clipId: string;
         let timeScale: number;
-        let rootSpeed: number;
         let startPos: [number, number, number];
         let endPos: [number, number, number];
         let trackScale: [number, number] = [1, 1];
+        let loopFrames = 24;
 
         const isTheatrical = Boolean(
           sectionSpec?.stagingMode === 'theatrical' || sectionSpec?.theatricalSetId
         );
-        const interactionBehavior = sectionSpec?.interactionBehavior ?? 'SOLO';
+        const interactionBehavior =
+          sectionSpec?.interactionBehavior ?? (isTheatrical ? 'SOLO' : 'PARALLEL_WALK');
 
         if (isLead && leadPlan) {
           clipId = leadPlan.clipId;
           timeScale = leadPlan.timeScale;
-          rootSpeed = leadPlan.rootSpeed;
           const rawStartPos = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
           const rawEndPos = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
 
           if (
             spec.cast.length >= 2 &&
+            shot.activeRigIds.length >= 2 &&
             (interactionBehavior === 'FACE_TO_FACE' || interactionBehavior === 'DUET_PERFORMANCE')
           ) {
+            const partnerCast = spec.cast.find((c) => c.instanceId !== leadRigId);
+            const partnerRig = partnerCast ? rigs.get(partnerCast.instanceId) : undefined;
             const blocking = RelationalBlockingSolver.solve({
               behavior: interactionBehavior,
               protagonistStartPos: rawStartPos,
               protagonistEndPos: rawEndPos,
+              protagonistScale: spec.cast[0]?.scale ?? 1.0,
+              protagonistRig: leadRig,
+              protagonistClipId: clipId,
               partnerBaseY: 75,
+              partnerScale: partnerCast?.scale ?? 1.0,
+              partnerRole: partnerCast?.role,
+              partnerRig,
               isTheatrical
             });
             startPos = blocking.protagonistStartPos;
@@ -353,6 +412,7 @@ export function solveChoreography(
 
           const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;
           const fallbackClip = { keyframes: [], interpolationMode: 'linear' as const };
+          loopFrames = activeClip?.loopFrames ?? 24;
           const strideLength = computeClipStrideLength(rig, activeClip ?? fallbackClip, clipId);
           const motion = computeMusicalMotionParameters(
             activeClip ?? fallbackClip,
@@ -361,31 +421,78 @@ export function solveChoreography(
             clipId
           );
           timeScale = motion.timeScale;
-          rootSpeed = motion.rootSpeed;
 
-          if (interactionBehavior !== 'SOLO' || isTheatrical) {
-            const leadStartVec = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
-            const leadEndVec = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
-            const blocking = RelationalBlockingSolver.solve({
-              behavior: interactionBehavior,
-              protagonistStartPos: leadStartVec,
-              protagonistEndPos: leadEndVec,
-              partnerBaseY: 75,
-              partnerRole: castItem?.role,
-              isTheatrical
-            });
-            startPos = blocking.partnerStartPos;
-            endPos = blocking.partnerEndPos;
-            trackScale = blocking.partnerScale;
+          const leadStartVec = activeSolver.computeWorldPos(startFrame, sectionSpec, leadRigId);
+          const leadEndVec = activeSolver.computeWorldPos(lastFrame, sectionSpec, leadRigId);
+          const clearance = MIN_INTERPERSONAL_CLEARANCE + nonLeadBipedIndex * 90;
+          nonLeadBipedIndex++;
+          const blocking = RelationalBlockingSolver.solve({
+            behavior: interactionBehavior,
+            protagonistStartPos: leadStartVec,
+            protagonistEndPos: leadEndVec,
+            protagonistScale: spec.cast[0]?.scale ?? 1.0,
+            protagonistRig: leadRig,
+            protagonistClipId: leadPlan?.clipId,
+            partnerBaseY: 75,
+            partnerScale: castItem?.scale ?? 1.0,
+            partnerRole: castItem?.role,
+            partnerRig: rig,
+            partnerClipId: clipId,
+            isTheatrical,
+            clearance
+          });
+          startPos = blocking.partnerStartPos;
+          endPos = blocking.partnerEndPos;
+          trackScale = blocking.partnerScale;
+
+          const frameSpan = Math.max(1, lastFrame - startFrame);
+          const partnerDisplacement = endPos[0] - startPos[0];
+          const partnerSpeed = partnerDisplacement / frameSpan;
+          const isLocomotion = !NON_LOCOMOTION_CLIPS.has(clipId) && strideLength > 0;
+
+          if (isLocomotion) {
+            const natSpeed = strideLength / loopFrames;
+            const rawPartnerTs = partnerSpeed > 0 ? partnerSpeed / natSpeed : 0;
+            if (rawPartnerTs >= 0.6 && rawPartnerTs <= 1.6 && partnerSpeed > 0) {
+              timeScale = Number(rawPartnerTs.toFixed(4));
+            } else {
+              const isMovement =
+                interactionBehavior === 'PURSUIT_AND_CONFRONTATION' ||
+                interactionBehavior === 'PARALLEL_WALK';
+              if (isMovement) {
+                const targetTs = leadPlan?.timeScale ?? 0.8;
+                timeScale = Math.max(0.6, Math.min(1.6, targetTs));
+                const lockedSpeed = natSpeed * timeScale;
+                const partnerMinSep = blocking.minRequiredSeparation ?? 12;
+                let targetEndX = leadEndVec[0] - partnerMinSep;
+                let targetStartX = targetEndX - lockedSpeed * frameSpan;
+                startPos = [Number(targetStartX.toFixed(2)), startPos[1], startPos[2]];
+                endPos = [Number(targetEndX.toFixed(2)), endPos[1], endPos[2]];
+                const adjustedSpeed = (endPos[0] - startPos[0]) / frameSpan;
+                timeScale = Number(
+                  Math.max(0.6, Math.min(1.6, (adjustedSpeed * loopFrames) / strideLength)).toFixed(
+                    4
+                  )
+                );
+              } else {
+                const inPlaceClip =
+                  rawPreset && NON_LOCOMOTION_CLIPS.has(rawPreset)
+                    ? rawPreset
+                    : sectionSpec?.narrativeIntent?.toLowerCase().includes('vocal')
+                      ? 'pop_vocal_sway'
+                      : 'rhythmic_step';
+                clipId = inPlaceClip;
+                timeScale = 1.0;
+                endPos = [startPos[0], startPos[1], startPos[2]];
+              }
+            }
           } else {
-            const companionOffset = -40;
-            startPos = [leadStartX + companionOffset, 75, 0];
-            endPos = [leadStartX + companionOffset + rootSpeed * (lastFrame - startFrame), 75, 0];
+            timeScale = 1.0;
           }
         }
 
         const activeClip = (rig.poseClips && rig.poseClips[clipId]) ?? rig.poseInterpolation;
-        const loopFrames = activeClip?.loopFrames ?? 24;
+        loopFrames = activeClip?.loopFrames ?? 24;
 
         // Independent Per-Character Pose Clock with Continuous Phase Carry-Over
         const lastClock = entityPoseClocks.get(rigId) ?? 0;
@@ -441,16 +548,6 @@ export function solveChoreography(
         if (rig.morphTopology && rig.morphTopology.targets.length > 0) {
           const targetNames = new Set(rig.morphTopology.targets.map((t) => t.name));
 
-          if (targetNames.has('mouthOpen')) {
-            morphBindings.push({
-              target: 'mouthOpen',
-              source: 'audio.bands.presence',
-              gain: 1.4,
-              bias: 0.05,
-              spring: { zeta: 0.7, omega: 28 }
-            });
-          }
-
           if (targetNames.has('browRaise')) {
             morphBindings.push({
               target: 'browRaise',
@@ -466,7 +563,8 @@ export function solveChoreography(
               shotStartFrame: startFrame,
               shotEndFrame: endFrame,
               emotionalTone: sectionSpec?.emotionalTone,
-              availableTargets: targetNames
+              availableTargets: targetNames,
+              getAudioFeatureAtFrame
             });
             for (const [mName, mKeys] of Object.entries(vocalMorphs)) {
               morphKeyframes[mName] = mKeys;

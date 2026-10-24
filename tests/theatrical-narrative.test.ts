@@ -18,7 +18,11 @@ import { StageEnvironmentGenerator } from '../src/engine/library/stage-environme
 import { EnvironmentKit, THEME_PALETTES, computeShotEnvironmentBounds } from '../src/engine/library/environment-kit.js';
 import { ArchetypeFactory, BipedPoseClips } from '../src/engine/library/archetype-factory.js';
 import { PropFactory } from '../src/engine/library/prop-factory.js';
-import { RelationalBlockingSolver } from '../src/engine/director/relational-blocking-solver.js';
+import {
+  RelationalBlockingSolver,
+  computeRigHorizontalBounds,
+  MIN_INTERPERSONAL_CLEARANCE
+} from '../src/engine/director/relational-blocking-solver.js';
 import { synthesizeVocalPerformanceKeyframes } from '../src/engine/rigging/vocal-performance-solver.js';
 import {
   GENRE_DIRECTING_MATRIX,
@@ -282,11 +286,50 @@ describe('Theatrical Narrative 2.5D Procedural Cinema Architecture', () => {
   });
 
   describe('Multi-Character Relational Choreography', () => {
-    it('solves Delta X = X_partner - X_protagonist and mirrors partner facing in FACE_TO_FACE', () => {
+    it('solves Delta X = X_partner - X_protagonist from actual rig geometry extents and mirrors partner facing in FACE_TO_FACE', () => {
+      const leadRig = ArchetypeFactory.build({
+        instanceId: 'lead',
+        spec: {
+          instanceId: 'lead',
+          archetypeId: 'biped_three_quarters',
+          role: 'PROTAGONIST',
+          viewAngle: 'three_quarter',
+          scale: 1.0,
+          accessories: ['electric_guitar']
+        }
+      });
+      const partnerRig = ArchetypeFactory.build({
+        instanceId: 'partner',
+        spec: {
+          instanceId: 'partner',
+          archetypeId: 'biped_three_quarters',
+          role: 'PARTNER',
+          viewAngle: 'three_quarter',
+          scale: 1.0,
+          accessories: ['microphone']
+        }
+      });
+
+      const leadBounds = computeRigHorizontalBounds(leadRig, undefined, 1.0);
+      const partnerBoundsPos = computeRigHorizontalBounds(partnerRig, undefined, 1.0);
+      const partnerBoundsMirrored = computeRigHorizontalBounds(partnerRig, undefined, -1.0);
+
+      const expectedSepRightMirrored = Math.ceil(
+        leadBounds.maxX - partnerBoundsMirrored.minX + MIN_INTERPERSONAL_CLEARANCE
+      );
+      const expectedSepRightPos = Math.ceil(
+        leadBounds.maxX - partnerBoundsPos.minX + MIN_INTERPERSONAL_CLEARANCE
+      );
+      const expectedSepLeft = Math.ceil(
+        partnerBoundsPos.maxX - leadBounds.minX + MIN_INTERPERSONAL_CLEARANCE
+      );
+
       const faceToFace = RelationalBlockingSolver.solve({
         behavior: 'FACE_TO_FACE',
         protagonistStartPos: [0, 75, 0],
         protagonistEndPos: [0, 75, 0],
+        protagonistRig: leadRig,
+        partnerRig,
         partnerBaseY: 75,
         isTheatrical: true
       });
@@ -294,7 +337,8 @@ describe('Theatrical Narrative 2.5D Procedural Cinema Architecture', () => {
         faceToFace.deltaXStart,
         faceToFace.partnerStartPos[0] - faceToFace.protagonistStartPos[0]
       );
-      assert.equal(faceToFace.deltaXStart, 56);
+      assert.equal(faceToFace.deltaXStart, expectedSepRightMirrored);
+      assert.ok(faceToFace.deltaXStart > leadBounds.maxX - partnerBoundsMirrored.minX);
       assert.equal(faceToFace.protagonistScale[0], 1);
       assert.equal(faceToFace.partnerScale[0], -1);
 
@@ -302,10 +346,13 @@ describe('Theatrical Narrative 2.5D Procedural Cinema Architecture', () => {
         behavior: 'DUET_PERFORMANCE',
         protagonistStartPos: [0, 75, 0],
         protagonistEndPos: [0, 75, 0],
+        protagonistRig: leadRig,
+        partnerRig,
         partnerBaseY: 75,
         isTheatrical: true
       });
-      assert.equal(duet.deltaXStart, 48);
+      assert.equal(duet.deltaXStart, expectedSepRightPos);
+      assert.ok(duet.deltaXStart > leadBounds.maxX - partnerBoundsPos.minX);
       assert.equal(duet.protagonistScale[0], 1);
       assert.equal(duet.partnerScale[0], 1);
 
@@ -313,26 +360,173 @@ describe('Theatrical Narrative 2.5D Procedural Cinema Architecture', () => {
         behavior: 'PARALLEL_WALK',
         protagonistStartPos: [-40, 75, 0],
         protagonistEndPos: [40, 75, 0],
+        protagonistRig: leadRig,
+        partnerRig,
         partnerBaseY: 75,
         isTheatrical: true
       });
-      assert.equal(parallel.deltaXStart, -34);
-      assert.equal(parallel.deltaXEnd, -34);
+      assert.equal(parallel.deltaXStart, -expectedSepLeft);
+      assert.equal(parallel.deltaXEnd, -expectedSepLeft);
       assert.ok(parallel.partnerEndPos[0] > parallel.partnerStartPos[0]);
 
       const pursuit = RelationalBlockingSolver.solve({
         behavior: 'PURSUIT_AND_CONFRONTATION',
         protagonistStartPos: [0, 75, 0],
         protagonistEndPos: [20, 75, 0],
+        protagonistRig: leadRig,
+        partnerRig,
         partnerBaseY: 75,
         isTheatrical: true
       });
-      assert.equal(pursuit.deltaXStart, -84);
-      assert.equal(pursuit.deltaXEnd, -42);
+      assert.equal(pursuit.deltaXStart, -(expectedSepLeft + 42));
+      assert.equal(pursuit.deltaXEnd, -expectedSepLeft);
       assert.ok(
         pursuit.partnerEndPos[0] > pursuit.partnerStartPos[0],
         'Pursuer advances forward (+X) closing the gap without moonwalking'
       );
+    });
+
+    it('F1 Regression: SOLO shots contain 1 active character and no pair of active characters overlaps across all frames of every shot across synthetic songs and genres', () => {
+      const testSongs: Array<{
+        name: string;
+        genre?: CanonicalGenreName;
+        tempoBpm: number;
+        durationSeconds: number;
+        theatrical: boolean;
+      }> = [
+        { name: 'rock_theatrical', genre: 'ROCK', tempoBpm: 148, durationSeconds: 20, theatrical: true },
+        { name: 'pop_theatrical', genre: 'POP', tempoBpm: 120, durationSeconds: 20, theatrical: true },
+        { name: 'ballad_theatrical', genre: 'BALLAD', tempoBpm: 72, durationSeconds: 20, theatrical: true },
+        { name: 'electronic_theatrical', genre: 'ELECTRONIC', tempoBpm: 132, durationSeconds: 20, theatrical: true },
+        { name: 'runner_pursuit', tempoBpm: 140, durationSeconds: 16, theatrical: false }
+      ];
+
+      for (const song of testSongs) {
+        const manifest = createSyntheticAudioManifest({
+          durationSeconds: song.durationSeconds,
+          fps: 30,
+          tempoBpm: song.tempoBpm,
+          withLyrics: true
+        });
+        const spec = song.theatrical
+          ? buildTheatricalStorySpec(manifest, `f1_${song.name}`, song.genre)
+          : buildDeterministicStorySpec(manifest, `f1_${song.name}`);
+
+        const solver = new TrajectorySolver();
+        const storyboard = compileStorySpecToStoryboard(spec, manifest, solver);
+        const rigs = new Map(
+          spec.cast.map((c) => {
+            const r = ArchetypeFactory.build({ instanceId: c.instanceId, spec: c, fps: 30 });
+            return [r.id, r] as const;
+          })
+        );
+        const choreography = solveChoreography(
+          spec,
+          storyboard,
+          rigs,
+          manifest.beatGrid?.framesPerBeat,
+          solver,
+          manifest.lyrics
+        );
+        const stateBuilder = new FrameStateBuilder({
+          storyboard,
+          audioManifest: manifest,
+          rigs,
+          choreography,
+          getAudioFeatureAtFrame: (f) => createMockAudioFeature(f, 30)
+        });
+
+        let sawSoloShot = false;
+        let sawMultiCharShot = false;
+
+        for (const shot of storyboard.shots) {
+          const startF = shot.frameRange.startFrameInclusive;
+          const endF = shot.frameRange.endFrameExclusive;
+          const secSpec =
+            spec.sections.find((s) => startF >= s.startFrame && startF < s.endFrame) ??
+            spec.sections[spec.sections.length - 1];
+
+          if (secSpec?.interactionBehavior === 'SOLO') {
+            sawSoloShot = true;
+            assert.equal(
+              shot.activeRigIds.length,
+              1,
+              `[${song.name}] SOLO shot ${shot.id} must have exactly 1 activeRigId, got ${JSON.stringify(shot.activeRigIds)}`
+            );
+          } else if (shot.activeRigIds.length >= 2) {
+            sawMultiCharShot = true;
+          }
+
+          let initialOrderSign: number | undefined;
+
+          for (let f = startF; f < endF; f++) {
+            const state = stateBuilder.buildFrameState(f);
+            if (secSpec?.interactionBehavior === 'SOLO') {
+              assert.equal(
+                state.entities.length,
+                1,
+                `[${song.name}] SOLO shot ${shot.id} frame ${f} must have 1 entity`
+              );
+            }
+
+            // Filter ground characters (exclude aerial drones flying high above)
+            const groundEntities = state.entities.filter((e) => {
+              const castMember = spec.cast.find((c) => c.instanceId === e.rigId);
+              return castMember?.archetypeId !== 'aerial_drone';
+            });
+
+            if (groundEntities.length >= 2) {
+              const e0 = groundEntities[0];
+              const e1 = groundEntities[1];
+              const rig0 = rigs.get(e0.rigId)!;
+              const rig1 = rigs.get(e1.rigId)!;
+              const track0 = choreography.tracks.find(
+                (t) => t.shotId === shot.id && t.rigId === e0.rigId
+              );
+              const track1 = choreography.tracks.find(
+                (t) => t.shotId === shot.id && t.rigId === e1.rigId
+              );
+              const bounds0 = computeRigHorizontalBounds(
+                rig0,
+                track0?.pose?.clipId ? [track0.pose.clipId] : undefined,
+                e0.scale[0]
+              );
+              const bounds1 = computeRigHorizontalBounds(
+                rig1,
+                track1?.pose?.clipId ? [track1.pose.clipId] : undefined,
+                e1.scale[0]
+              );
+
+              const min0 = e0.worldPosition[0] + bounds0.minX;
+              const max0 = e0.worldPosition[0] + bounds0.maxX;
+              const min1 = e1.worldPosition[0] + bounds1.minX;
+              const max1 = e1.worldPosition[0] + bounds1.maxX;
+
+              const overlap = Math.min(max0, max1) - Math.max(min0, min1);
+              assert.ok(
+                overlap <= 0,
+                `[${song.name}] Shot ${shot.id} frame ${f}: characters ${e0.rigId} [${min0.toFixed(1)}, ${max0.toFixed(1)}] and ${e1.rigId} [${min1.toFixed(1)}, ${max1.toFixed(1)}] overlap by ${overlap.toFixed(2)} units`
+              );
+
+              const sign = Math.sign(e1.worldPosition[0] - e0.worldPosition[0]);
+              if (initialOrderSign === undefined) {
+                initialOrderSign = sign;
+              } else {
+                assert.equal(
+                  sign,
+                  initialOrderSign,
+                  `[${song.name}] Shot ${shot.id} frame ${f}: pass-through detected between ${e0.rigId} and ${e1.rigId}`
+                );
+              }
+            }
+          }
+        }
+
+        if (song.theatrical) {
+          assert.ok(sawSoloShot, `[${song.name}] Expected at least one SOLO shot`);
+          assert.ok(sawMultiCharShot, `[${song.name}] Expected at least one multi-character shot`);
+        }
+      }
     });
   });
 

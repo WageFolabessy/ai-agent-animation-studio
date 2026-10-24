@@ -18,7 +18,8 @@
     "demo:phase4": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/demo-phase4-orchestration.ts",
     "produce:video": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts --produce",
     "studio": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts",
-    "studio:theatrical": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts --theatrical"
+    "studio:theatrical": "NODE_OPTIONS=\"--expose-gc\" tsx scripts/studio.ts --theatrical",
+    "review:sheets": "tsx scripts/review-sheets.ts"
   },
   "dependencies": {
     "@resvg/resvg-js": "2.6.2",

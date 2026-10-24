@@ -551,8 +551,10 @@ export function compileStorySpecToStoryboard(
       }
       const framing = angle.framing;
 
-      const activeRigIds =
-        framing === 'CLOSE_UP'
+      const isSoloSection = secSpec.interactionBehavior === 'SOLO';
+      const activeRigIds = isSoloSection
+        ? castRigIds.slice(0, 1)
+        : framing === 'CLOSE_UP'
           ? castRigIds.filter((id) => !id.includes('foreground') && !id.includes('fg_'))
           : castRigIds;
 

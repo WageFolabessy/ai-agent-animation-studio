@@ -125,13 +125,17 @@ To realize this universal theatrical narrative vision, Phase 7 establishes six a
   - `PARTNER`: Duet partner, romantic lead, or companion.
   - `ANTAGONIST`: Rival, monster, pursuer, or conflicting entity.
   - `BACKGROUND_CHORUS`: Silhouetted stage musicians or crowd observers.
+- **Partner Exclusion on SOLO Shots:** When section interaction behavior is `SOLO`, `activeRigIds` excludes partner rigs completely from shot planning, rendering, and lighting passes, ensuring solo framing contains exactly one active character with zero overlapping geometry.
+- **Cast Palette Overrides & Minimum Contrast:** Cast `paletteOverrides` are applied in `ArchetypeFactory` to body parts, accessories, and props while retaining lighting modulation (`lit: true`). Lead and partner primary palettes must maintain a guaranteed perceptual contrast ($\Delta L \ge 0.12$ or $\Delta \text{Hue} \ge 40^\circ$), corrected deterministically if violated.
 - **Relational Coordinate Solver:** Character positions are computed relative to each other:
   $$\Delta X = X_{\text{partner}} - X_{\text{protagonist}}$$
+  Clearances are derived from actual rig geometry bounding extents rather than fixed constants.
 - **Interaction Behaviors:**
-  - `FACE_TO_FACE`: Characters face each other ($\text{flipX}_{\text{partner}} = -\text{flipX}_{\text{protagonist}}$) for dialogue or confrontation.
-  - `PARALLEL_WALK`: Characters walk side-by-side with synchronized or offset strides.
+  - `SOLO`: Exactly one character on stage; partner excluded from track compilation.
+  - `FACE_TO_FACE`: Characters face each other ($\text{flipX}_{\text{partner}} = -\text{flipX}_{\text{protagonist}}$) with minimum interpersonal clearance.
+  - `PARALLEL_WALK`: Characters walk side-by-side at contact-locked locomotion speed with positive forward displacement.
   - `DUET_PERFORMANCE`: Characters stand side-by-side facing the camera, singing alternately or together.
-  - `PURSUIT_AND_CONFRONTATION`: Antagonist advances while Protagonist retreats or clashes.
+  - `PURSUIT_AND_CONFRONTATION`: Antagonist advances while Protagonist retreats at contact-locked speeds; partner never passes through lead.
 
 ### Pillar 3: Multi-Angle Character Rigs (`RigViewAngle`)
 - **View Angles:**
@@ -139,8 +143,11 @@ To realize this universal theatrical narrative vision, Phase 7 establishes six a
   - `PROFILE_LEFT` ($-90^\circ$): Mirrored side view.
   - `FRONTAL` ($0^\circ$): Direct-to-camera view for singing, dramatic monologues, and emotional eye contact.
   - `THREE_QUARTERS` ($45^\circ$): Classic cinematic angle balancing depth perception with facial clarity.
-- **Facial Performance & Lip Sync:**
-  - SVG morph targets for the mouth (`mouth_rest`, `mouth_open_o`, `mouth_wide_a`, `mouth_smile`) bound to `.lrc` syllable onsets and RMS audio amplitude.
+- **Silhouette & Outline Policy:** Unified outline policy guarantees stroke color derived from fill family, stroke width scaled by joint dimensions ($0.8$ to $1.8\text{ px}$), with anatomical boots/paws bound to the lower leg chain (`leg_l_foot`, `leg_r_foot`, `beast_*_paw`) ensuring legs end visibly in wide shots and contact invariants pass.
+- **Facial Performance & Measurable Lip Sync:**
+  - Mouth geometry redesigned to yield $\ge 6\text{ px}$ height delta at 1080p close-ups between closed and open states.
+  - Syllable viseme articulation drives mouth shape during active lyric spans with amplitude scaled in $[0.70, 1.00]$.
+  - Vocal-band activity gating (hysteresis: open $\ge 0.18$, close $< 0.10$) enforces closed mouth during instrumental sections and lyric trailing gaps.
   - Eyebrow articulation (`eyebrow_inner`, `eyebrow_outer`) for anger, sadness, surprise, and intensity.
   - Eye blink and glance tracking directed toward camera or partner.
 
@@ -179,6 +186,16 @@ To realize this universal theatrical narrative vision, Phase 7 establishes six a
   1. **Act I: The Setup (0% – 25% of timeline):** Establishing the primary world set, introducing the protagonist, grounding the narrative tone.
   2. **Act II: The Conflict / Relationship (25% – 75% of timeline):** Introducing the second character/threat, emotional rising action through verses and choruses, set transitions, interpersonal choreography.
   3. **Act III: The Climax & Resolution (75% – 100% of timeline):** Climax at musical peak/solo, decisive confrontation or emotional release, final falling action and lingering thematic resolution.
+- **Language Detection & Emotional Tone Classification:**
+  - Cheap English stopword heuristic distinguishes English lyrics from non-English/unknown.
+  - Non-English lyrics skip English keyword extraction to prevent junk stopword motifs, deriving emotional tone strictly from acoustic physics (energy, tempo, dominant spectral band).
+  - 3-token lookback negation handling inverts positive valence hits to melancholic and negative hits to defiant.
+  - A minimum score margin ($\ge 0.5$) prevents spurious single-word classifications.
+- **Contact-Locked Motion Planning:**
+  - Locomotion clips are restricted to root speeds matching their contact-locked speed: $\text{timeScale} = (v_{\text{root}} \cdot \text{loopFrames}) / \text{stride} \in [0.6, 1.6]$, ensuring interior-contact foot slip $\le 2\%$.
+  - Movement behaviors (`PURSUIT_AND_CONFRONTATION`, `PARALLEL_WALK`) produce positive root displacement across the stage without character pass-through.
+  - Sections with sub-locomotion or stationary root velocities select in-place acting presets, preventing stepping in place.
+  - Quadruped pursuers derive timeScale directly from their own root velocity.
 
 ---
 

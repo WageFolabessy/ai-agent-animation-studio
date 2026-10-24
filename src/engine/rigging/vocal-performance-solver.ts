@@ -1,6 +1,7 @@
 import type { NormalizedCubicBezierSegment, NormalizedMorphTarget } from '../../schemas/rig.contract.js';
 import type { MorphKeyframeItem } from '../../schemas/choreography.contract.js';
 import type { EmotionalTone } from '../../schemas/story-spec.contract.js';
+import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
 
 export interface VocalLyricSpan {
   readonly id?: string;
@@ -18,31 +19,41 @@ export interface VocalPerformanceSolveOptions {
   readonly shotEndFrame: number;
   readonly emotionalTone?: EmotionalTone;
   readonly availableTargets: ReadonlySet<string>;
+  readonly getAudioFeatureAtFrame?: (f: number) => AudioFrameFeature;
+}
+
+export const VOCAL_GATE_OPEN_THRESHOLD = 0.18;
+export const VOCAL_GATE_CLOSE_THRESHOLD = 0.10;
+export const VOCAL_AMPLITUDE_MIN = 0.70;
+export const VOCAL_AMPLITUDE_MAX = 1.00;
+
+export function computeVocalBandActivity(feat: AudioFrameFeature): number {
+  return 0.45 * feat.bands.mid + 0.35 * feat.bands.highMid + 0.20 * feat.bands.presence;
 }
 
 export const BASE_MOUTH_REST_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.2, 0.0], p1: [-1.5, 0.35], p2: [1.5, 0.35], p3: [3.2, 0.0] },
-  { p0: [3.2, 0.0], p1: [1.5, -0.35], p2: [-1.5, -0.35], p3: [-3.2, 0.0] }
+  { p0: [-3.2, 0.0], p1: [-1.5, 0.15], p2: [1.5, 0.15], p3: [3.2, 0.0] },
+  { p0: [3.2, 0.0], p1: [1.5, -0.15], p2: [-1.5, -0.15], p3: [-3.2, 0.0] }
 ];
 
 export const MOUTH_OPEN_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.5, 0.3], p1: [-1.6, 1.45], p2: [1.6, 1.45], p3: [3.5, 0.3] },
-  { p0: [3.5, 0.3], p1: [1.6, -1.75], p2: [-1.6, -1.75], p3: [-3.5, 0.3] }
+  { p0: [-3.5, 0.4], p1: [-1.6, 2.0], p2: [1.6, 2.0], p3: [3.5, 0.4] },
+  { p0: [3.5, 0.4], p1: [1.6, -2.6], p2: [-1.6, -2.6], p3: [-3.5, 0.4] }
 ];
 
 export const MOUTH_OPEN_O_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-2.2, 0.15], p1: [-1.1, 1.55], p2: [1.1, 1.55], p3: [2.2, 0.15] },
-  { p0: [2.2, 0.15], p1: [1.1, -1.65], p2: [-1.1, -1.65], p3: [-2.2, 0.15] }
+  { p0: [-2.2, 0.2], p1: [-1.1, 2.4], p2: [1.1, 2.4], p3: [2.2, 0.2] },
+  { p0: [2.2, 0.2], p1: [1.1, -2.5], p2: [-1.1, -2.5], p3: [-2.2, 0.2] }
 ];
 
 export const MOUTH_WIDE_A_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.6, 0.35], p1: [-1.8, 1.65], p2: [1.8, 1.65], p3: [3.6, 0.35] },
-  { p0: [3.6, 0.35], p1: [1.8, -1.95], p2: [-1.8, -1.95], p3: [-3.6, 0.35] }
+  { p0: [-4.2, 0.4], p1: [-2.0, 2.5], p2: [2.0, 2.5], p3: [4.2, 0.4] },
+  { p0: [4.2, 0.4], p1: [2.0, -3.2], p2: [-2.0, -3.2], p3: [-4.2, 0.4] }
 ];
 
 export const MOUTH_SMILE_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.5, 0.55], p1: [-1.5, 0.15], p2: [1.5, 0.15], p3: [3.5, 0.55] },
-  { p0: [3.5, 0.55], p1: [1.5, -0.55], p2: [-1.5, -0.55], p3: [-3.5, 0.55] }
+  { p0: [-3.8, 1.0], p1: [-1.5, 0.4], p2: [1.5, 0.4], p3: [3.8, 1.0] },
+  { p0: [3.8, 1.0], p1: [1.5, -0.4], p2: [-1.5, -0.4], p3: [-3.8, 1.0] }
 ];
 
 export const BROW_RAISE_SEGMENTS: NormalizedCubicBezierSegment[] = [
@@ -184,57 +195,86 @@ export function synthesizeVocalPerformanceKeyframes(
       l.frameRange.startFrameInclusive < shotEndFrame
   );
 
+  const getAudioFeatureAtFrame = options.getAudioFeatureAtFrame;
+
   for (const line of overlappingLyrics) {
     const lStart = Math.max(shotStartFrame, line.frameRange.startFrameInclusive);
     const lEnd = Math.min(shotEndFrame - 1, line.frameRange.endFrameExclusive - 1);
     const spanFrames = lEnd - lStart;
-    if (spanFrames < 3) continue;
+    if (spanFrames < 2) continue;
 
     const syllables = extractSyllables(line.text);
     if (syllables.length === 0) continue;
 
-    const emphasis = line.emphasis ?? 0.7;
-    const peakWeight = Math.min(0.95, 0.65 + 0.25 * emphasis);
-    const step = Math.max(3, Math.floor(spanFrames / syllables.length));
+    // Natural syllable cadence: each syllable spans 4 to 9 frames at 30 fps (~130ms to 300ms)
+    // The sung phrase does not artificially stretch over trailing instrumental gaps
+    const framesPerSyllable = Math.max(4, Math.min(9, Math.floor(spanFrames / syllables.length)));
+    const sungDuration = Math.min(spanFrames, syllables.length * framesPerSyllable);
+    const sungEndFrame = lStart + sungDuration;
 
-    // Closed mouth right before lyric line begins
+    const emphasis = line.emphasis ?? 0.7;
+    const basePeakWeight = Math.min(0.95, 0.70 + 0.25 * emphasis);
+
+    // Closed mouth before lyric line starts
     appendStrictlyAscendingKeyframes(wideAKeys, lStart, 0, shotStartFrame, shotEndFrame);
     appendStrictlyAscendingKeyframes(openOKeys, lStart, 0, shotStartFrame, shotEndFrame);
 
+    let gateState = false;
+
     for (let s = 0; s < syllables.length; s++) {
       const syl = syllables[s];
-      const sylStart = lStart + s * step;
-      const sylPeak = sylStart + Math.max(1, Math.floor(step * 0.45));
-      const sylClose = sylStart + Math.max(2, step - 1);
+      const sylStart = lStart + s * framesPerSyllable;
+      const sylPeak = sylStart + Math.max(1, Math.floor(framesPerSyllable * 0.45));
+      const sylClose = sylStart + Math.max(2, framesPerSyllable - 1);
 
       if (sylPeak >= lEnd) break;
 
-      if (syl.isRoundedVowel) {
-        appendStrictlyAscendingKeyframes(
-          openOKeys,
-          sylPeak,
-          peakWeight,
-          shotStartFrame,
-          shotEndFrame
-        );
-        appendStrictlyAscendingKeyframes(openOKeys, sylClose, 0.05, shotStartFrame, shotEndFrame);
-        appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, 0.1, shotStartFrame, shotEndFrame);
+      let peakWeight = basePeakWeight;
+      let isGatedOpen = true;
+
+      if (getAudioFeatureAtFrame) {
+        const feat = getAudioFeatureAtFrame(sylPeak);
+        const activity = computeVocalBandActivity(feat);
+        if (!gateState && activity >= VOCAL_GATE_OPEN_THRESHOLD) {
+          gateState = true;
+        } else if (gateState && activity < VOCAL_GATE_CLOSE_THRESHOLD) {
+          gateState = false;
+        }
+        isGatedOpen = gateState;
+        if (isGatedOpen) {
+          const normAct = Math.max(0, Math.min(1, (activity - VOCAL_GATE_CLOSE_THRESHOLD) / 0.35));
+          const ampScale = VOCAL_AMPLITUDE_MIN + (VOCAL_AMPLITUDE_MAX - VOCAL_AMPLITUDE_MIN) * normAct;
+          peakWeight = Number((basePeakWeight * ampScale).toFixed(3));
+        } else {
+          peakWeight = 0;
+        }
+      }
+
+      if (isGatedOpen && peakWeight > 0) {
+        if (syl.isRoundedVowel) {
+          appendStrictlyAscendingKeyframes(openOKeys, sylPeak, peakWeight, shotStartFrame, shotEndFrame);
+          appendStrictlyAscendingKeyframes(openOKeys, sylClose, 0.04, shotStartFrame, shotEndFrame);
+          appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, 0.08, shotStartFrame, shotEndFrame);
+        } else {
+          appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, peakWeight, shotStartFrame, shotEndFrame);
+          appendStrictlyAscendingKeyframes(wideAKeys, sylClose, 0.04, shotStartFrame, shotEndFrame);
+          appendStrictlyAscendingKeyframes(openOKeys, sylPeak, 0.08, shotStartFrame, shotEndFrame);
+        }
       } else {
-        appendStrictlyAscendingKeyframes(
-          wideAKeys,
-          sylPeak,
-          peakWeight,
-          shotStartFrame,
-          shotEndFrame
-        );
-        appendStrictlyAscendingKeyframes(wideAKeys, sylClose, 0.05, shotStartFrame, shotEndFrame);
-        appendStrictlyAscendingKeyframes(openOKeys, sylPeak, 0.1, shotStartFrame, shotEndFrame);
+        appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, 0, shotStartFrame, shotEndFrame);
+        appendStrictlyAscendingKeyframes(openOKeys, sylPeak, 0, shotStartFrame, shotEndFrame);
       }
     }
 
-    // Close mouth at end of lyric line
-    appendStrictlyAscendingKeyframes(wideAKeys, lEnd, 0, shotStartFrame, shotEndFrame);
-    appendStrictlyAscendingKeyframes(openOKeys, lEnd, 0, shotStartFrame, shotEndFrame);
+    // Explicitly close mouth at the end of the sung syllables
+    appendStrictlyAscendingKeyframes(wideAKeys, sungEndFrame, 0, shotStartFrame, shotEndFrame);
+    appendStrictlyAscendingKeyframes(openOKeys, sungEndFrame, 0, shotStartFrame, shotEndFrame);
+
+    // Ensure mouth remains closed through the entire trailing gap up to lEnd
+    if (lEnd > sungEndFrame) {
+      appendStrictlyAscendingKeyframes(wideAKeys, lEnd, 0, shotStartFrame, shotEndFrame);
+      appendStrictlyAscendingKeyframes(openOKeys, lEnd, 0, shotStartFrame, shotEndFrame);
+    }
   }
 
   if (wideAKeys.length > 0 && availableTargets.has('mouth_wide_a')) {

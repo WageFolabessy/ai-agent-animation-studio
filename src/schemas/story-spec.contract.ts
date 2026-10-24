@@ -122,6 +122,7 @@ export const SectionStagingSpecSchema = z
     narrativeIntent: z.string().min(1),
     emotionalTone: EmotionalToneSchema.default('reflective'),
     lyricMotifs: z.array(z.string()).max(5).default([]),
+    detectedLanguage: z.string().optional(),
     stagingMode: StagingModeSchema.optional(),
     theatricalSetId: TheatricalSetIdSchema.optional(),
     transitionIn: SceneTransitionTypeSchema.optional(),
@@ -151,6 +152,7 @@ export const StorySpecContractSchema = z
     overallMood: z.string().min(1),
     themes: z.array(z.string()).min(1).max(8).default(['escape']),
     genreProfile: GenreProfileSchema.default('neutral'),
+    detectedLanguage: z.string().optional(),
     cast: z.array(CastSpecItemSchema).min(1).max(4),
     sections: z.array(SectionStagingSpecSchema).min(3).max(32)
   })

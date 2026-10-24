@@ -14,6 +14,9 @@ import {
   CANONICAL_BIPED_MORPH_TARGETS
 } from '../rigging/vocal-performance-solver.js';
 import { PropFactory, CANONICAL_BIPED_SOCKETS } from './prop-factory.js';
+import { shadeHexColor } from '../math/color.js';
+import { applyOutlinePolicy } from './outline-policy.js';
+import type { CastSpecItem } from '../../schemas/story-spec.contract.js';
 
 const baseMouthSegments: NormalizedCubicBezierSegment[] = BASE_MOUTH_REST_SEGMENTS;
 
@@ -912,6 +915,76 @@ export const QuadrupedPoseClips: Record<string, PoseInterpolationContract> = {
   }
 };
 
+/** Drawable budget for a biped rig including attached prop parts. */
+export const MAX_BIPED_PARTS = 28;
+
+type RigPaintValue = NonNullable<RigPart['style']['fill']>;
+
+function resolveOverridePaint(
+  paint: RigPaintValue,
+  overrides: NonNullable<CastSpecItem['paletteOverrides']>
+): RigPaintValue {
+  if (paint.kind !== 'palette') return paint;
+  const hex =
+    paint.role === 'primary' ? overrides.primary : paint.role === 'accent' ? overrides.accent : undefined;
+  if (!hex) return paint;
+  return { kind: 'solid', color: shadeHexColor(hex, paint.shade) };
+}
+
+/**
+ * Applies a cast member's palette overrides to the primary and accent roles of every
+ * part of the rig (body parts, accessories and attached props). Overridden paints become
+ * solid colors that keep their shade offset; parts stay lit so shot lighting still modulates them.
+ */
+export function applyPaletteOverrides(
+  rig: AssetRigContract,
+  overrides: CastSpecItem['paletteOverrides']
+): AssetRigContract {
+  if (!overrides || (!overrides.primary && !overrides.accent)) return rig;
+  return {
+    ...rig,
+    parts: rig.parts.map((part) => ({
+      ...part,
+      style: {
+        ...part.style,
+        ...(part.style.fill ? { fill: resolveOverridePaint(part.style.fill, overrides) } : {}),
+        ...(part.style.stroke
+          ? {
+              stroke: {
+                ...part.style.stroke,
+                paint: resolveOverridePaint(part.style.stroke.paint, overrides)
+              }
+            }
+          : {})
+      }
+    }))
+  };
+}
+
+const BIPED_BOOT_SHAPE = {
+  kind: 'polygon' as const,
+  points: [
+    [-3.5, 0],
+    [9, 0],
+    [9, 2.5],
+    [5, 4.5],
+    [3.5, 7],
+    [-3.5, 7]
+  ] as Array<[number, number]>
+};
+
+const QUADRUPED_PAW_SHAPE = {
+  kind: 'polygon' as const,
+  points: [
+    [-3, 0],
+    [5, 0],
+    [5, 2.5],
+    [3, 4.5],
+    [-2, 4.5],
+    [-3, 2.5]
+  ] as Array<[number, number]>
+};
+
 export class ArchetypeFactory {
   private static attachNarrativeProps(
     rig: AssetRigContract,
@@ -922,7 +995,7 @@ export class ArchetypeFactory {
       if (PropFactory.isNarrativePropId(acc)) {
         const candidateParts = PropFactory.buildAttachedPropParts(acc);
         for (const p of candidateParts) {
-          if (rig.parts.length + propParts.length < 28) {
+          if (rig.parts.length + propParts.length < MAX_BIPED_PARTS) {
             propParts.push(p);
           }
         }
@@ -937,6 +1010,13 @@ export class ArchetypeFactory {
   }
 
   public static build(options: ArchetypeBuildOptions): AssetRigContract {
+    return applyPaletteOverrides(
+      applyOutlinePolicy(ArchetypeFactory.buildBase(options)),
+      options.spec.paletteOverrides
+    );
+  }
+
+  private static buildBase(options: ArchetypeBuildOptions): AssetRigContract {
     const { archetypeId, viewAngle, accessories } = options.spec;
     if (archetypeId === 'biped_frontal' || (archetypeId === 'biped_runner' && viewAngle === 'front')) {
       return ArchetypeFactory.attachNarrativeProps(
@@ -977,7 +1057,7 @@ export class ArchetypeFactory {
    * - Backward knee flexion constraints [-140, 0].
    * - localOffset2D: [0, 0] on secondary motion parts (coat_wing, hair_ribbon).
    * - Cohesive close-up silhouette: neck_collar and abdomen_connector.
-   * - Total parts <= 28.
+   * - Total parts <= MAX_BIPED_PARTS (includes one boot per leg bound to the lower-leg joint).
    */
   public static buildBipedRunner(options: ArchetypeBuildOptions): AssetRigContract {
     const { instanceId, spec } = options;
@@ -1349,6 +1429,14 @@ export class ArchetypeFactory {
           shape: { kind: 'rect', size: [6, 22], rx: 3, ry: 3 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: 0 }, opacity: 1, lit: true }
         },
+        // Boot: sole sits exactly at the lower-leg joint tip (ankle) used by the contact analysis.
+        {
+          id: 'leg_l_foot',
+          jointId: 'leg_l_lower',
+          localOffset2D: [0, -22],
+          shape: BIPED_BOOT_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.35 }, opacity: 1, lit: true }
+        },
         // 13. Left Knee Greave
         {
           id: 'leg_l_greave',
@@ -1430,6 +1518,14 @@ export class ArchetypeFactory {
           localOffset2D: [0, -11],
           shape: { kind: 'rect', size: [6, 22], rx: 3, ry: 3 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: 0 }, opacity: 1, lit: true }
+        },
+        // Boot: sole sits exactly at the lower-leg joint tip (ankle) used by the contact analysis.
+        {
+          id: 'leg_r_foot',
+          jointId: 'leg_r_lower',
+          localOffset2D: [0, -22],
+          shape: BIPED_BOOT_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.35 }, opacity: 1, lit: true }
         },
         // 19. Right Knee Greave
         {
@@ -1524,7 +1620,12 @@ export class ArchetypeFactory {
   public static buildBipedFrontal(options: ArchetypeBuildOptions): AssetRigContract {
     const base = ArchetypeFactory.buildBipedRunner(options);
     const frontalParts: RigPart[] = base.parts
-      .filter((p) => p.id !== 'eye_optic_core' && p.id !== 'facial_expression_morph')
+      .filter(
+        (p) =>
+          p.id !== 'eye_optic_core' &&
+          p.id !== 'facial_expression_morph' &&
+          p.id !== 'coat_tatter'
+      )
       .map((p) => {
         if (p.id === 'head_cranium') {
           return {
@@ -1618,7 +1719,12 @@ export class ArchetypeFactory {
   public static buildBipedThreeQuarters(options: ArchetypeBuildOptions): AssetRigContract {
     const base = ArchetypeFactory.buildBipedRunner(options);
     const threeQuarterParts: RigPart[] = base.parts
-      .filter((p) => p.id !== 'eye_optic_core' && p.id !== 'facial_expression_morph')
+      .filter(
+        (p) =>
+          p.id !== 'eye_optic_core' &&
+          p.id !== 'facial_expression_morph' &&
+          p.id !== 'coat_tatter'
+      )
       .map((p) => {
         if (p.id === 'head_visor') {
           return {
@@ -1814,6 +1920,14 @@ export class ArchetypeFactory {
           shape: { kind: 'rect', size: [5, 18], rx: 2.5, ry: 2.5 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: 0.1 }, opacity: 1, lit: true }
         },
+        // Cybernetic paw: sole sits at the lower-leg joint tip
+        {
+          id: 'beast_fl_paw',
+          jointId: 'leg_fl_lower',
+          localOffset2D: [0, -18],
+          shape: QUADRUPED_PAW_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.3 }, opacity: 1, lit: true }
+        },
         {
           id: 'beast_fr_thigh',
           jointId: 'leg_fr_upper',
@@ -1827,6 +1941,14 @@ export class ArchetypeFactory {
           localOffset2D: [0, -9],
           shape: { kind: 'rect', size: [5, 18], rx: 2.5, ry: 2.5 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: 0.1 }, opacity: 1, lit: true }
+        },
+        // Cybernetic paw: sole sits at the lower-leg joint tip
+        {
+          id: 'beast_fr_paw',
+          jointId: 'leg_fr_lower',
+          localOffset2D: [0, -18],
+          shape: QUADRUPED_PAW_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.3 }, opacity: 1, lit: true }
         },
         // 10-13. Back Legs
         {
@@ -1843,6 +1965,14 @@ export class ArchetypeFactory {
           shape: { kind: 'rect', size: [6, 20], rx: 3, ry: 3 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: 0 }, opacity: 1, lit: true }
         },
+        // Cybernetic paw: sole sits at the lower-leg joint tip
+        {
+          id: 'beast_bl_paw',
+          jointId: 'leg_bl_lower',
+          localOffset2D: [0, -20],
+          shape: QUADRUPED_PAW_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.3 }, opacity: 1, lit: true }
+        },
         {
           id: 'beast_br_thigh',
           jointId: 'leg_br_upper',
@@ -1856,6 +1986,14 @@ export class ArchetypeFactory {
           localOffset2D: [0, -10],
           shape: { kind: 'rect', size: [6, 20], rx: 3, ry: 3 },
           style: { fill: { kind: 'palette', role: 'secondary', shade: 0 }, opacity: 1, lit: true }
+        },
+        // Cybernetic paw: sole sits at the lower-leg joint tip
+        {
+          id: 'beast_br_paw',
+          jointId: 'leg_br_lower',
+          localOffset2D: [0, -20],
+          shape: QUADRUPED_PAW_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.3 }, opacity: 1, lit: true }
         }
       ],
       poseInterpolation: QuadrupedPoseClips.beast_gallop,

@@ -12,6 +12,7 @@ import type { LlmCallMetadata, LlmProvider } from './types.js';
 import { formatRepairFeedbackPrompt } from './repair-helper.js';
 import type { ValidationErrorItem } from '../schemas/invariants.js';
 import { analyzeSectionLyrics, extractLyricKeywords } from '../engine/audio/lyric-profile.js';
+import { enforceCastPaletteContrast } from '../engine/library/palette-contrast.js';
 import { classifyGenreProfile } from '../engine/audio/genre-classifier.js';
 import {
   getGenreDirectingProfile,
@@ -63,8 +64,12 @@ export function buildDeterministicStorySpec(
 
   // 2. Global Lyric Themes & Tone
   const allLyricText = manifest.lyrics.map((l) => l.text).join(' ');
-  const globalLyricAnalysis = analyzeSectionLyrics(allLyricText);
-  const rawThemes = extractLyricKeywords(allLyricText, 6);
+  const globalAudioCtx = {
+    tempoBpm: manifest.metadata.tempoBpm ?? 120,
+    energy: 0.5
+  };
+  const globalLyricAnalysis = analyzeSectionLyrics(allLyricText, undefined, globalAudioCtx);
+  const rawThemes = globalLyricAnalysis.isEnglish ? extractLyricKeywords(allLyricText, 6) : [];
   const themes =
     rawThemes.length > 0
       ? rawThemes
@@ -242,7 +247,12 @@ export function buildDeterministicStorySpec(
         l.frameRange.startFrameInclusive < sec.endFrame
     );
     const secText = sectionLyrics.map((l) => l.text).join(' ');
-    const secLyricAnalysis = analyzeSectionLyrics(secText, globalLyricAnalysis.emotionalTone);
+    const secAudioCtx = {
+      energy: sec.relativeEnergy,
+      dominantBand: sec.dominantBand,
+      tempoBpm: manifest.metadata.tempoBpm ?? 120
+    };
+    const secLyricAnalysis = analyzeSectionLyrics(secText, globalLyricAnalysis.emotionalTone, secAudioCtx);
     const emotionalTone: EmotionalTone = secLyricAnalysis.emotionalTone;
     const lyricMotifs = secLyricAnalysis.lyricMotifs;
 
@@ -345,6 +355,7 @@ export function buildDeterministicStorySpec(
       narrativeIntent,
       emotionalTone,
       lyricMotifs,
+      detectedLanguage: secLyricAnalysis.detectedLanguage,
       environmentKitId: kitId,
       kitParams,
       colorThemeId: colorTheme,
@@ -367,7 +378,8 @@ export function buildDeterministicStorySpec(
     overallMood: moodMap[genre],
     themes,
     genreProfile: genre,
-    cast,
+    detectedLanguage: globalLyricAnalysis.detectedLanguage,
+    cast: enforceCastPaletteContrast(cast),
     sections: sectionSpecs
   };
 }
@@ -394,8 +406,12 @@ export function buildTheatricalStorySpec(
   const genre: GenreProfile = directingProfile.genreProfile;
 
   const allLyricText = manifest.lyrics.map((l) => l.text).join(' ');
-  const globalLyricAnalysis = analyzeSectionLyrics(allLyricText);
-  const rawThemes = extractLyricKeywords(allLyricText, 6);
+  const globalAudioCtx = {
+    tempoBpm: manifest.metadata.tempoBpm ?? 120,
+    energy: 0.5
+  };
+  const globalLyricAnalysis = analyzeSectionLyrics(allLyricText, undefined, globalAudioCtx);
+  const rawThemes = globalLyricAnalysis.isEnglish ? extractLyricKeywords(allLyricText, 6) : [];
   const themes =
     rawThemes.length > 0
       ? rawThemes
@@ -436,6 +452,7 @@ export function buildTheatricalStorySpec(
     endFrame: number;
     relativeEnergy: number;
     hasVocals: boolean;
+    dominantBand?: string;
   }
 
   const spans: TheatricalSpan[] = [];
@@ -446,7 +463,8 @@ export function buildTheatricalStorySpec(
         startFrame: s.startFrame,
         endFrame: s.endFrame,
         relativeEnergy: s.relativeEnergy,
-        hasVocals: s.hasVocals
+        hasVocals: s.hasVocals,
+        dominantBand: s.dominantBand
       });
     }
   } else {
@@ -458,21 +476,24 @@ export function buildTheatricalStorySpec(
         startFrame: 0,
         endFrame: b1,
         relativeEnergy: genre === 'ballad_acoustic' ? 0.28 : 0.42,
-        hasVocals: lyricCount > 0
+        hasVocals: lyricCount > 0,
+        dominantBand: genre === 'ballad_acoustic' ? 'presence' : 'mid'
       },
       {
         id: 'act2-conflict',
         startFrame: b1,
         endFrame: b2,
         relativeEnergy: genre === 'rock_metal' ? 0.88 : genre === 'pop_dance' ? 0.76 : 0.52,
-        hasVocals: lyricCount > 0
+        hasVocals: lyricCount > 0,
+        dominantBand: genre === 'rock_metal' ? 'subBass' : 'highMid'
       },
       {
         id: 'act3-resolution',
         startFrame: b2,
         endFrame: totalFrames,
         relativeEnergy: genre === 'ballad_acoustic' ? 0.35 : 0.65,
-        hasVocals: lyricCount > 0
+        hasVocals: lyricCount > 0,
+        dominantBand: genre === 'pop_dance' ? 'presence' : 'mid'
       }
     );
   }
@@ -559,13 +580,26 @@ export function buildTheatricalStorySpec(
       }
 
       if (interactionBehavior === 'PURSUIT_AND_CONFRONTATION') {
+        leadMotionPreset = 'sprint_frenzy';
+        partnerMotionPreset = 'sprint_frenzy';
         leadWaypoints = [
-          { frameProgress: 0, stagePosNorm: [-0.2, 0, 0.1] },
-          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.25] }
+          { frameProgress: 0, stagePosNorm: [-0.3, 0, 0.1] },
+          { frameProgress: 1, stagePosNorm: [0.35, 0, 0.25] }
         ];
         partnerWaypoints = [
-          { frameProgress: 0, stagePosNorm: [-0.45, 0, -0.1] },
-          { frameProgress: 1, stagePosNorm: [-0.15, 0, 0.2] }
+          { frameProgress: 0, stagePosNorm: [-0.65, 0, -0.1] },
+          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.2] }
+        ];
+      } else if (interactionBehavior === 'PARALLEL_WALK') {
+        leadMotionPreset = 'rain_umbrella_walk';
+        partnerMotionPreset = 'rain_umbrella_walk';
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.4, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.35, 0, 0.25] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.65, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.25] }
         ];
       } else if (interactionBehavior === 'FACE_TO_FACE') {
         leadWaypoints = [
@@ -599,7 +633,29 @@ export function buildTheatricalStorySpec(
       }
     } else {
       // Act III: Climax and Resolution
-      if (isLast) {
+      if (interactionBehavior === 'PURSUIT_AND_CONFRONTATION') {
+        leadMotionPreset = 'sprint_frenzy';
+        partnerMotionPreset = 'sprint_frenzy';
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.3, 0, 0.1] },
+          { frameProgress: 1, stagePosNorm: [0.35, 0, 0.25] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.65, 0, -0.1] },
+          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.2] }
+        ];
+      } else if (interactionBehavior === 'PARALLEL_WALK') {
+        leadMotionPreset = 'rain_umbrella_walk';
+        partnerMotionPreset = 'rain_umbrella_walk';
+        leadWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.4, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.35, 0, 0.25] }
+        ];
+        partnerWaypoints = [
+          { frameProgress: 0, stagePosNorm: [-0.65, 0, 0.15] },
+          { frameProgress: 1, stagePosNorm: [0.1, 0, 0.25] }
+        ];
+      } else if (isLast) {
         // Outro: Dramatic collapse/freeze at center stage while partner retreats
         leadMotionPreset = directingProfile.actingPresets.act3;
         partnerMotionPreset = directingProfile.actingPresets.act1;
@@ -637,7 +693,12 @@ export function buildTheatricalStorySpec(
         l.frameRange.startFrameInclusive < sp.endFrame
     );
     const secText = sectionLyrics.map((l) => l.text).join(' ');
-    const secLyricAnalysis = analyzeSectionLyrics(secText, globalLyricAnalysis.emotionalTone);
+    const secAudioCtx = {
+      energy: sp.relativeEnergy,
+      dominantBand: sp.dominantBand,
+      tempoBpm: manifest.metadata.tempoBpm ?? 120
+    };
+    const secLyricAnalysis = analyzeSectionLyrics(secText, globalLyricAnalysis.emotionalTone, secAudioCtx);
 
     const transitionIn = i === 0 ? 'CUT' : actIndex !== (i > 0 && (spans[i - 1].startFrame + spans[i - 1].endFrame) / (2 * totalFrames) < 0.25 ? 0 : 1) ? 'CROSS_FADE' : 'CUT';
 
@@ -654,6 +715,7 @@ export function buildTheatricalStorySpec(
       narrativeIntent: `Act ${actIndex + 1} (${directingProfile.genreName} in ${theatricalSetId}, ${interactionBehavior})`,
       emotionalTone: secLyricAnalysis.emotionalTone,
       lyricMotifs: secLyricAnalysis.lyricMotifs,
+      detectedLanguage: secLyricAnalysis.detectedLanguage,
       stagingMode: 'theatrical',
       theatricalSetId,
       transitionIn,
@@ -677,7 +739,8 @@ export function buildTheatricalStorySpec(
     overallMood: `${directingProfile.genreName} Theatrical Narrative`,
     themes,
     genreProfile: genre,
-    cast,
+    detectedLanguage: globalLyricAnalysis.detectedLanguage,
+    cast: enforceCastPaletteContrast(cast),
     sections: sectionSpecs
   };
 }

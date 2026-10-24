@@ -17,6 +17,7 @@ import { compileStorySpecToStoryboard } from '../engine/director/shot-planner.js
 import { solveChoreography } from '../engine/director/choreography-solver.js';
 import { TrajectorySolver } from '../engine/director/trajectory-solver.js';
 import { ArchetypeFactory } from '../engine/library/archetype-factory.js';
+import { enforceCastPaletteContrast } from '../engine/library/palette-contrast.js';
 import { EnvironmentKit, computeShotEnvironmentBounds } from '../engine/library/environment-kit.js';
 import {
   LlmFatalError,
@@ -262,7 +263,7 @@ export class StudioAgentOrchestrator {
               const solver = new TrajectorySolver();
               const sb = compileStorySpecToStoryboard(candidateSpec, options.audioManifest, solver);
               const rMap = new Map<string, AssetRigContract>();
-              for (const castItem of candidateSpec.cast) {
+              for (const castItem of enforceCastPaletteContrast(candidateSpec.cast)) {
                 const rig = ArchetypeFactory.build({
                   instanceId: castItem.instanceId,
                   spec: castItem,
@@ -321,7 +322,7 @@ export class StudioAgentOrchestrator {
       const solver = new TrajectorySolver();
       compiledStoryboard = compileStorySpecToStoryboard(storySpec, options.audioManifest, solver);
       compiledRigs = new Map<string, AssetRigContract>();
-      for (const castItem of storySpec.cast) {
+      for (const castItem of enforceCastPaletteContrast(storySpec.cast)) {
         const rig = ArchetypeFactory.build({
           instanceId: castItem.instanceId,
           spec: castItem,
