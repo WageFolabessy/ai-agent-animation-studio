@@ -1006,6 +1006,56 @@ export function validateChoreography(
           });
         }
       }
+
+      // Validate IK targets
+      for (let i = 0; i < (track.ikTargets?.length ?? 0); i++) {
+        const ik = track.ikTargets![i];
+        if (
+          !Number.isFinite(ik.targetWorld[0]) ||
+          !Number.isFinite(ik.targetWorld[1]) ||
+          !Number.isFinite(ik.targetWorld[2]) ||
+          ik.weight < 0 ||
+          ik.weight > 1
+        ) {
+          errors.push({
+            code: 'TRACK_IK_TARGET_INVALID',
+            path: `choreography.tracks[${t}].ikTargets[${i}]`,
+            severity: 'error',
+            message: `IK target coordinates must be finite and weight in [0, 1].`
+          });
+        }
+        if (rig.skeleton) {
+          const armPrefix = ik.hand === 'hand_r' ? 'arm_r_' : 'arm_l_';
+          const hasArm = rig.skeleton.joints.some((j) => j.id.startsWith(armPrefix));
+          if (!hasArm) {
+            errors.push({
+              code: 'TRACK_IK_RIG_NO_ARM',
+              path: `choreography.tracks[${t}].ikTargets[${i}].hand`,
+              severity: 'error',
+              message: `Rig "${rig.id}" skeleton lacks ${armPrefix} joints for IK hand "${ik.hand}".`
+            });
+          }
+        }
+      }
+
+      // Validate Gaze targets
+      for (let g = 0; g < (track.gazeTargets?.length ?? 0); g++) {
+        const gaze = track.gazeTargets![g];
+        if (
+          !Number.isFinite(gaze.targetWorld[0]) ||
+          !Number.isFinite(gaze.targetWorld[1]) ||
+          !Number.isFinite(gaze.targetWorld[2]) ||
+          gaze.weight < 0 ||
+          gaze.weight > 1
+        ) {
+          errors.push({
+            code: 'TRACK_GAZE_TARGET_INVALID',
+            path: `choreography.tracks[${t}].gazeTargets[${g}]`,
+            severity: 'error',
+            message: `Gaze target coordinates must be finite and weight in [0, 1].`
+          });
+        }
+      }
     }
   }
 

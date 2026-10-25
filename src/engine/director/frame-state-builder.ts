@@ -13,7 +13,113 @@ import { ChoreographySystem, evaluateEntityTrack, type EvaluatedTrackState } fro
 import { samplePoseTrack, evaluateSecondaryMotion } from '../rigging/deformer.js';
 import { computeCameraBasis } from '../camera/camera-3d.js';
 import { computeSkeletonFK, applyAffine2D } from '../rigging/kinematics.js';
+import { solveTwoBoneArmIK, worldToRigLocal } from '../rigging/ik-leg-solver.js';
 import { CANONICAL_BIPED_SOCKETS } from '../library/prop-factory.js';
+import type { IkTarget, GazeTarget } from '../../schemas/choreography.contract.js';
+
+function evaluateHandIkTarget(
+  targetsForHand: readonly IkTarget[],
+  frameIndex: number
+): { targetWorld: [number, number, number]; weight: number } | null {
+  if (!targetsForHand || targetsForHand.length === 0) return null;
+
+  const keyframed = targetsForHand.filter((t) => t.frame !== undefined).sort((a, b) => a.frame! - b.frame!);
+  if (keyframed.length > 0) {
+    if (keyframed.length === 1) {
+      const kf = keyframed[0];
+      return { targetWorld: kf.targetWorld, weight: kf.weight ?? 1.0 };
+    }
+    if (frameIndex <= keyframed[0].frame!) {
+      const kf = keyframed[0];
+      return { targetWorld: kf.targetWorld, weight: kf.weight ?? 1.0 };
+    }
+    const lastKf = keyframed[keyframed.length - 1];
+    if (frameIndex >= lastKf.frame!) {
+      return { targetWorld: lastKf.targetWorld, weight: lastKf.weight ?? 1.0 };
+    }
+    for (let i = 0; i < keyframed.length - 1; i++) {
+      const kf0 = keyframed[i];
+      const kf1 = keyframed[i + 1];
+      if (frameIndex >= kf0.frame! && frameIndex <= kf1.frame!) {
+        const dt = kf1.frame! - kf0.frame!;
+        const tau = dt > 0 ? (frameIndex - kf0.frame!) / dt : 0;
+        const targetWorld: [number, number, number] = [
+          kf0.targetWorld[0] + (kf1.targetWorld[0] - kf0.targetWorld[0]) * tau,
+          kf0.targetWorld[1] + (kf1.targetWorld[1] - kf0.targetWorld[1]) * tau,
+          kf0.targetWorld[2] + (kf1.targetWorld[2] - kf0.targetWorld[2]) * tau
+        ];
+        const weight = (kf0.weight ?? 1.0) + ((kf1.weight ?? 1.0) - (kf0.weight ?? 1.0)) * tau;
+        return { targetWorld, weight };
+      }
+    }
+  }
+
+  const activeSpan = targetsForHand.find(
+    (t) => t.startFrame !== undefined && t.endFrame !== undefined && frameIndex >= t.startFrame && frameIndex < t.endFrame
+  );
+  if (activeSpan) {
+    return { targetWorld: activeSpan.targetWorld, weight: activeSpan.weight ?? 1.0 };
+  }
+
+  const staticTarget = targetsForHand.find((t) => t.frame === undefined && t.startFrame === undefined);
+  if (staticTarget) {
+    return { targetWorld: staticTarget.targetWorld, weight: staticTarget.weight ?? 1.0 };
+  }
+
+  return null;
+}
+
+function evaluateGazeTargetAtFrame(
+  gazeTargets: readonly GazeTarget[],
+  frameIndex: number
+): { targetWorld: [number, number, number]; weight: number } | null {
+  if (!gazeTargets || gazeTargets.length === 0) return null;
+
+  const keyframed = gazeTargets.filter((t) => t.frame !== undefined).sort((a, b) => a.frame! - b.frame!);
+  if (keyframed.length > 0) {
+    if (keyframed.length === 1) {
+      const kf = keyframed[0];
+      return { targetWorld: kf.targetWorld, weight: kf.weight ?? 1.0 };
+    }
+    if (frameIndex <= keyframed[0].frame!) {
+      const kf = keyframed[0];
+      return { targetWorld: kf.targetWorld, weight: kf.weight ?? 1.0 };
+    }
+    const lastKf = keyframed[keyframed.length - 1];
+    if (frameIndex >= lastKf.frame!) {
+      return { targetWorld: lastKf.targetWorld, weight: lastKf.weight ?? 1.0 };
+    }
+    for (let i = 0; i < keyframed.length - 1; i++) {
+      const kf0 = keyframed[i];
+      const kf1 = keyframed[i + 1];
+      if (frameIndex >= kf0.frame! && frameIndex <= kf1.frame!) {
+        const dt = kf1.frame! - kf0.frame!;
+        const tau = dt > 0 ? (frameIndex - kf0.frame!) / dt : 0;
+        const targetWorld: [number, number, number] = [
+          kf0.targetWorld[0] + (kf1.targetWorld[0] - kf0.targetWorld[0]) * tau,
+          kf0.targetWorld[1] + (kf1.targetWorld[1] - kf0.targetWorld[1]) * tau,
+          kf0.targetWorld[2] + (kf1.targetWorld[2] - kf0.targetWorld[2]) * tau
+        ];
+        const weight = (kf0.weight ?? 1.0) + ((kf1.weight ?? 1.0) - (kf0.weight ?? 1.0)) * tau;
+        return { targetWorld, weight };
+      }
+    }
+  }
+
+  const activeSpan = gazeTargets.find(
+    (t) => t.startFrame !== undefined && t.endFrame !== undefined && frameIndex >= t.startFrame && frameIndex < t.endFrame
+  );
+  if (activeSpan) {
+    return { targetWorld: activeSpan.targetWorld, weight: activeSpan.weight ?? 1.0 };
+  }
+
+  const staticTarget = gazeTargets.find((t) => t.frame === undefined && t.startFrame === undefined);
+  if (staticTarget) {
+    return { targetWorld: staticTarget.targetWorld, weight: staticTarget.weight ?? 1.0 };
+  }
+
+  return null;
+}
 
 export interface FrameStateBuilderOptions {
   storyboard: DirectorStoryboardContract;
@@ -146,7 +252,7 @@ export class FrameStateBuilder {
         const poseResult = samplePoseTrack(
           rig,
           frameIndex,
-          shot.frameRange.startFrameInclusive,
+          trackState.shotStartFrame ?? shot.frameRange.startFrameInclusive,
           trackState.timeScale,
           trackState.startPoseFrame,
           trackState.clipId,
@@ -160,6 +266,91 @@ export class FrameStateBuilder {
           this.getAudioFeature,
           poseResult.jointAngles
         );
+
+        if (rig.skeleton) {
+          // 1. Post-clip IK pass (applied after clip sampling and secondary motion)
+          for (const hand of ['hand_r', 'hand_l'] as const) {
+            const targetsForHand = (track.ikTargets ?? []).filter((t) => t.hand === hand);
+            const activeIk = evaluateHandIkTarget(targetsForHand, frameIndex);
+            if (activeIk && activeIk.weight > 1e-4) {
+              const upperId = hand === 'hand_r' ? 'arm_r_upper' : 'arm_l_upper';
+              const lowerId = hand === 'hand_r' ? 'arm_r_lower' : 'arm_l_lower';
+              const upperJoint = rig.skeleton.joints.find((j) => j.id === upperId);
+              const lowerJoint = rig.skeleton.joints.find((j) => j.id === lowerId);
+
+              if (upperJoint && lowerJoint) {
+                const fkPre = computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets);
+                const upperTransform = fkPre.get(upperJoint.id);
+                const parentId = upperJoint.parentId ?? 'torso';
+                const parentTransform = fkPre.get(parentId);
+
+                if (upperTransform) {
+                  const shoulderPos: [number, number] = [upperTransform.tx, upperTransform.ty];
+                  const parentAngleDeg = parentTransform
+                    ? (Math.atan2(parentTransform.b, parentTransform.a) * 180) / Math.PI
+                    : 0;
+                  const l1 = upperJoint.length ?? 18;
+                  const l2 = lowerJoint.length ?? 16;
+                  const localTarget = worldToRigLocal(
+                    [activeIk.targetWorld[0], activeIk.targetWorld[1]],
+                    trackState.worldPosition,
+                    trackState.scale
+                  );
+
+                  const ikResult = solveTwoBoneArmIK(
+                    shoulderPos,
+                    localTarget,
+                    l1,
+                    l2,
+                    parentAngleDeg,
+                    1,
+                    upperJoint.constraintsDeg,
+                    lowerJoint.constraintsDeg
+                  );
+
+                  const clipUpper = jointAngles[upperJoint.id] ?? upperJoint.rotationZDegrees;
+                  const clipLower = jointAngles[lowerJoint.id] ?? lowerJoint.rotationZDegrees;
+                  const w = activeIk.weight;
+                  jointAngles[upperJoint.id] = clipUpper + (ikResult.upperAngleDeg - clipUpper) * w;
+                  jointAngles[lowerJoint.id] = clipLower + (ikResult.lowerAngleDeg - clipLower) * w;
+                }
+              }
+            }
+          }
+
+          // 2. Post-clip Gaze pass
+          const activeGaze = evaluateGazeTargetAtFrame(track.gazeTargets ?? [], frameIndex);
+          if (activeGaze && activeGaze.weight > 1e-4) {
+            const headJoint = rig.skeleton.joints.find((j) => j.id === 'head');
+            if (headJoint) {
+              const fkPre = computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets);
+              const parentId = headJoint.parentId ?? 'torso';
+              const parentTransform = fkPre.get(parentId);
+              const headTransform = fkPre.get('head');
+
+              if (headTransform) {
+                const sx = trackState.scale[0] !== 0 ? trackState.scale[0] : 1;
+                const sy = trackState.scale[1] !== 0 ? trackState.scale[1] : 1;
+                const headWorldX = trackState.worldPosition[0] + headTransform.tx * sx;
+                const headWorldY = trackState.worldPosition[1] + headTransform.ty * sy;
+
+                const dxLocal = (activeGaze.targetWorld[0] - headWorldX) / sx;
+                const dyLocal = (activeGaze.targetWorld[1] - headWorldY) / sy;
+                const desiredPitchDeg = (Math.atan2(dyLocal, dxLocal) * 180) / Math.PI;
+
+                const parentAngleDeg = parentTransform
+                  ? (Math.atan2(parentTransform.b, parentTransform.a) * 180) / Math.PI
+                  : 0;
+                const headRelativeDeg = desiredPitchDeg - parentAngleDeg;
+                const constraints = headJoint.constraintsDeg ?? [-40, 40];
+                const clampedHeadDeg = Math.max(constraints[0], Math.min(constraints[1], headRelativeDeg));
+
+                const clipHead = jointAngles['head'] ?? headJoint.rotationZDegrees;
+                jointAngles['head'] = clipHead + (clampedHeadDeg - clipHead) * activeGaze.weight;
+              }
+            }
+          }
+        }
 
         entities.push({
           rigId,

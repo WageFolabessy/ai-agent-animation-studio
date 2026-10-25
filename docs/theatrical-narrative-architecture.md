@@ -197,6 +197,24 @@ To realize this universal theatrical narrative vision, Phase 7 establishes six a
   - Sections with sub-locomotion or stationary root velocities select in-place acting presets, preventing stepping in place.
   - Quadruped pursuers derive timeScale directly from their own root velocity.
 
+### Pillar 7: Analytical IK Layer, Gaze Direction & Choreography Contract v2
+- **Choreography Contract v2:**
+  - `CHOREOGRAPHY_CONTRACT_VERSION = 2`.
+  - `EntityTrackSchema` includes optional `ikTargets: IkTargetSchema[]` and `gazeTargets: GazeTargetSchema[]`.
+  - Invariants validate monotonic frame ordering, joint constraint bounds, and valid socket slots (`hand_r`, `hand_l`).
+- **Post-Clip Analytical IK Pass:**
+  - Evaluated in `FrameStateBuilder.buildFrameState` after forward kinematics and secondary motion sampling.
+  - Utilizes 2-bone planar analytical inverse kinematics (`solveTwoBoneArmIK`) with forward bend flexion (`bendDirection = +1`) to guarantee zero contact error ($\le 1.0$ unit, down to machine precision) at contact frames (`reach_and_grasp`, `carry_put_down`).
+  - Target positions in world space are converted to rig local space via `worldToRigLocal`, respecting rig scale and world rotation.
+  - Anatomical joint limits (`constraintsDeg`) are enforced strictly at every evaluated frame.
+- **Continuous Prop Handover & Release:**
+  - Hand IK targets reach `weight: 1.0` at both `releaseFrame - 1` (last attached frame) and `releaseFrame` (first resting frame).
+  - Prop displacement across release transitions is strictly $\le 1.0$ unit with zero visual pop or jitter.
+- **Reach Clamping & Diagnostics:**
+  - Beyond-reach targets ($> 34 \cdot |\text{scaleX}|$ units from shoulder) are recorded into `compileReport.reachClamps` for auditability without crashing execution.
+- **Analytical Gaze Pass:**
+  - Computes sight-line vectors toward other characters or props and adjusts head rotation within anatomical constraints ($\pm 35^\circ$).
+
 ---
 
 ## 5. Technical Implementation Roadmap

@@ -22,12 +22,21 @@ export interface EvaluatedTrackState {
   morphWeights: Record<string, number>;
   activeAttachmentSpan?: PropAttachmentSpan;
   vRoot?: number;
+  shotStartFrame?: number;
 }
 
-function evaluateTrackTransform(
+export function evaluateTrackTransform(
   keyframes: readonly EntityTrackKeyframe[],
   frameIndex: number
 ): { position: Vec3; rotationZDegrees: number; scale: Vec2; opacity: number } {
+  if (keyframes.length === 0) {
+    return {
+      position: [0, 0, 0],
+      rotationZDegrees: 0,
+      scale: [1, 1],
+      opacity: 1
+    };
+  }
   if (keyframes.length === 1 || frameIndex <= keyframes[0].frame) {
     const kf = keyframes[0];
     return {
@@ -57,7 +66,7 @@ function evaluateTrackTransform(
   const kf1 = keyframes[idx + 1];
 
   const deltaF = kf1.frame - kf0.frame;
-  const u = (frameIndex - kf0.frame) / deltaF;
+  const u = deltaF > 0 ? (frameIndex - kf0.frame) / deltaF : 0;
   const easedU = interpolateEasing(kf0.easing, u);
 
   return {
@@ -66,6 +75,30 @@ function evaluateTrackTransform(
     scale: lerpVec2(kf0.scale, kf1.scale, easedU),
     opacity: lerp(kf0.opacity, kf1.opacity, easedU)
   };
+}
+
+export function evaluateMorphKeyframes(
+  keyframes: ReadonlyArray<{ frame: number; weight: number }>,
+  frameIndex: number
+): number {
+  if (keyframes.length === 0) return 0;
+  if (keyframes.length === 1 || frameIndex <= keyframes[0].frame) {
+    return keyframes[0].weight;
+  }
+  const last = keyframes[keyframes.length - 1];
+  if (frameIndex >= last.frame) {
+    return last.weight;
+  }
+  let idx = 0;
+  while (idx < keyframes.length - 1 && keyframes[idx + 1].frame <= frameIndex) {
+    idx++;
+  }
+  const k0 = keyframes[idx];
+  const k1 = keyframes[idx + 1];
+  const delta = k1.frame - k0.frame;
+  if (delta <= 0) return k0.weight;
+  const u = (frameIndex - k0.frame) / delta;
+  return lerp(k0.weight, k1.weight, u);
 }
 
 function getAudioSourceValue(source: MorphBinding['source'], feat: AudioFrameFeature): number {
@@ -100,25 +133,7 @@ export function evaluateEntityTrack(
 
   // 1. Keyframed morph weights
   for (const [targetName, keyframes] of Object.entries(track.morphKeyframes ?? {})) {
-    if (keyframes.length === 0) continue;
-    if (keyframes.length === 1 || frameIndex <= keyframes[0].frame) {
-      morphWeights[targetName] = keyframes[0].weight;
-      continue;
-    }
-    const last = keyframes[keyframes.length - 1];
-    if (frameIndex >= last.frame) {
-      morphWeights[targetName] = last.weight;
-      continue;
-    }
-
-    let idx = 0;
-    while (idx < keyframes.length - 1 && keyframes[idx + 1].frame <= frameIndex) {
-      idx++;
-    }
-    const k0 = keyframes[idx];
-    const k1 = keyframes[idx + 1];
-    const u = (frameIndex - k0.frame) / (k1.frame - k0.frame);
-    morphWeights[targetName] = lerp(k0.weight, k1.weight, u);
+    morphWeights[targetName] = evaluateMorphKeyframes(keyframes, frameIndex);
   }
 
   // 2. Audio-reactive and constant morph bindings
@@ -153,8 +168,32 @@ export function evaluateEntityTrack(
     (s) => frameIndex >= s.startFrame && frameIndex < s.endFrame
   );
 
-  const pNext = evaluateTrackTransform(track.transform.keyframes, frameIndex + 1).position;
-  const vRoot = Math.hypot(pNext[0] - transform.position[0], pNext[1] - transform.position[1]);
+  let vRoot = 0;
+  const lastKfFrame = track.transform.keyframes[track.transform.keyframes.length - 1]?.frame ?? frameIndex;
+  if (frameIndex < lastKfFrame) {
+    const pNext = evaluateTrackTransform(track.transform.keyframes, frameIndex + 1).position;
+    vRoot = Math.hypot(pNext[0] - transform.position[0], pNext[1] - transform.position[1]);
+  } else if (frameIndex > (track.transform.keyframes[0]?.frame ?? frameIndex)) {
+    const pPrev = evaluateTrackTransform(track.transform.keyframes, frameIndex - 1).position;
+    vRoot = Math.hypot(transform.position[0] - pPrev[0], transform.position[1] - pPrev[1]);
+  }
+
+  let timeScale = track.pose?.timeScale ?? 1.0;
+  let startPoseFrame = track.pose?.startPoseFrame ?? 0;
+  let clipId = track.pose?.clipId;
+  let shotStartFrame: number | undefined;
+
+  if (track.pose?.segments && track.pose.segments.length > 0) {
+    const seg = track.pose.segments.find(
+      (s) => frameIndex >= s.startFrame && frameIndex < s.endFrame
+    ) ?? track.pose.segments[track.pose.segments.length - 1];
+    if (seg) {
+      timeScale = seg.timeScale;
+      startPoseFrame = seg.startPoseFrame;
+      clipId = seg.clipId;
+      shotStartFrame = seg.startFrame;
+    }
+  }
 
   return {
     rigId: track.rigId,
@@ -162,12 +201,13 @@ export function evaluateEntityTrack(
     worldRotationZDegrees: transform.rotationZDegrees,
     scale: transform.scale,
     opacity: transform.opacity,
-    timeScale: track.pose?.timeScale ?? 1.0,
-    startPoseFrame: track.pose?.startPoseFrame ?? 0,
-    clipId: track.pose?.clipId,
+    timeScale,
+    startPoseFrame,
+    clipId,
     morphWeights,
     ...(activeAttachmentSpan ? { activeAttachmentSpan } : {}),
-    vRoot
+    vRoot,
+    ...(shotStartFrame !== undefined ? { shotStartFrame } : {})
   };
 }
 

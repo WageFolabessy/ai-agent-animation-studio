@@ -602,6 +602,63 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     coatDeg0: -14,
     coatAmp: -2
   }),
+  idle: {
+    interpolationMode: 'linear',
+    loopFrames: 30,
+    keyframes: [
+      {
+        frame: 0,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -2 },
+          { jointId: 'head', rotationZDegrees: 2 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 15,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 1] },
+          { jointId: 'torso', rotationZDegrees: -3 },
+          { jointId: 'head', rotationZDegrees: 3 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 16 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 26 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      },
+      {
+        frame: 30,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: -2 },
+          { jointId: 'head', rotationZDegrees: 2 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
+          { jointId: 'coat_tail', rotationZDegrees: -20 }
+        ]
+      }
+    ]
+  },
   pop_vocal_sway: {
     interpolationMode: 'linear',
     loopFrames: 24,
