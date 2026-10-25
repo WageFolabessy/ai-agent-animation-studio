@@ -527,7 +527,7 @@ export class VerbCompiler {
             nextSimX[a.instanceId] = propPos[0] + (cur <= propPos[0] ? -22 : 22);
           } else if (otherCur !== undefined) {
             if (cur < -60 && otherCur < -60) nextSimX[a.instanceId] = cur <= otherCur ? 35 : 65;
-            else nextSimX[a.instanceId] = cur <= otherCur ? -26 : 26;
+            else nextSimX[a.instanceId] = cur <= otherCur ? -34 : 34;
           } else {
             const firstProp = Array.from(rigs.values()).find((r) => r.type === 'prop');
             if (firstProp) {
@@ -553,7 +553,7 @@ export class VerbCompiler {
         } else if (a.verb === 'embrace_push_away') {
           if (otherCur !== undefined) {
             const isLeft = cur <= otherCur;
-            nextSimX[a.instanceId] = isLeft ? -38 : 38;
+            nextSimX[a.instanceId] = isLeft ? -48 : 48;
           }
         }
       }
@@ -638,7 +638,7 @@ export class VerbCompiler {
             continue;
           }
           if (
-            beats[j].set.landmarkProps.includes(propId) ||
+            beats[j].set.landmarkProps?.includes(propId) ||
             beats[j].actions.some(
               (a) => a.associatedPropId === propId || (a.target?.kind === 'prop' && a.target.propId === propId)
             )
@@ -1302,7 +1302,7 @@ export class VerbCompiler {
             targetPos = [currentPos[0] <= otherCharPos[0] ? 35 : 65, baseY, 0];
           } else {
             const isLeft = currentPos[0] <= otherCharPos[0];
-            targetPos = [isLeft ? -26 : 26, baseY, 0];
+            targetPos = [isLeft ? -34 : 34, baseY, 0];
           }
         } else {
           const firstProp = activeRigs ? Array.from(activeRigs.values()).find((r) => r.type === 'prop') : undefined;
@@ -1369,6 +1369,27 @@ export class VerbCompiler {
             opacity: 1,
             easing: 'linear'
           });
+        }
+
+        if (action.associatedPropId) {
+          const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+          const headWorldY = baseY + (18 + 15 + 16) * scaleYBase;
+          const overheadDx = (sX >= 0 ? 1 : -1) * 4;
+          const overheadDy = 8;
+          ikTargets.push(
+            {
+              hand,
+              targetWorld: [currentPos[0] + overheadDx, headWorldY + overheadDy, currentPos[2]],
+              weight: 1.0,
+              frame: startF
+            },
+            {
+              hand,
+              targetWorld: [targetPos[0] + overheadDx, headWorldY + overheadDy, targetPos[2]],
+              weight: 1.0,
+              frame: lastF
+            }
+          );
         }
 
         morphKeyframes.open_rest = [
@@ -1458,17 +1479,40 @@ export class VerbCompiler {
       }
 
       case 'look_at': {
+        const targetPosDirective = action.target?.kind === 'position' ? action.target.pos : undefined;
+        const targetX = targetPosDirective ? targetPosDirective[0] : currentX;
         const otherCharX = otherCharPos ? otherCharPos[0] : undefined;
-        nextX = currentX;
-        nextPos = [currentX, baseY, currentPos[2]];
-        const faceRight = otherCharX !== undefined ? otherCharX >= currentX : true;
+        nextX = targetX;
+        nextPos = [targetX, baseY, currentPos[2]];
+        const faceRight = otherCharX !== undefined ? otherCharX >= targetX : true;
         const sX = faceRight ? scaleXBase : -scaleXBase;
         clipId = 'pop_vocal_sway';
+
+        if (action.associatedPropId) {
+          const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+          const headWorldY = baseY + (18 + 15 + 16) * scaleYBase;
+          const overheadDx = (sX >= 0 ? 1 : -1) * 4;
+          const overheadDy = 8;
+          ikTargets.push(
+            {
+              hand,
+              targetWorld: [targetX + overheadDx, headWorldY + overheadDy, currentPos[2]],
+              weight: 1.0,
+              frame: startF
+            },
+            {
+              hand,
+              targetWorld: [targetX + overheadDx, headWorldY + overheadDy, currentPos[2]],
+              weight: 1.0,
+              frame: lastF
+            }
+          );
+        }
 
         keyframes.push(
           {
             frame: startF,
-            position: [currentX, baseY, currentPos[2]],
+            position: [targetX, baseY, currentPos[2]],
             rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
@@ -1476,7 +1520,7 @@ export class VerbCompiler {
           },
           {
             frame: lastF,
-            position: [currentX, baseY, currentPos[2]],
+            position: [targetX, baseY, currentPos[2]],
             rotationZDegrees: faceRight ? 4 : -4,
             scale: [sX, scaleYBase],
             opacity: 1,
@@ -1684,17 +1728,61 @@ export class VerbCompiler {
         const releaseEndF = Math.min(lastF, releaseF + 2);
 
         const walkDist = Math.abs(charDestX - currentPos[0]);
-        const walkSpeed = walkDist / walkDeltaFrames;
-        const nominalWalkSpeed = (15.0 * Math.abs(scaleXBase)) / 36;
-        calculatedTimeScale = walkDist > 1e-3
-          ? Math.max(0.6, Math.min(1.6, walkSpeed / nominalWalkSpeed))
-          : 1.0;
+        const sX = charDestX >= currentPos[0] ? scaleXBase : -scaleXBase;
+        const facingSign = sX >= 0 ? 1 : -1;
+
+        if (walkDist > 2.0) {
+          const walkPlan = VerbCompiler.planLocomotionGait(
+            walkDist,
+            walkDeltaFrames,
+            action.speedNorm ?? 1.0,
+            scaleXBase,
+            false
+          );
+
+          const prevClock = charPoseClockState?.clock ?? 0;
+          const prevClip = charPoseClockState?.lastClip;
+          let startPose0 = 0;
+          if (prevClip && prevClip.loopFrames > 0) {
+            const normPhase = (((prevClock % prevClip.loopFrames) + prevClip.loopFrames) % prevClip.loopFrames) / prevClip.loopFrames;
+            startPose0 = Number((normPhase * walkPlan.loopFrames).toFixed(4));
+          }
+
+          segments.push({
+            startFrame: startF,
+            endFrame: walkEndF,
+            clipId: 'walk_to',
+            timeScale: walkPlan.timeScale,
+            startPoseFrame: startPose0
+          });
+
+          const crouchDuration = endF - walkEndF;
+          const crouchTimeScale = crouchDuration > 0 ? (210 - 105) / crouchDuration : 1.0;
+          segments.push({
+            startFrame: walkEndF,
+            endFrame: endF,
+            clipId: 'carry_put_down',
+            timeScale: crouchTimeScale,
+            startPoseFrame: 105
+          });
+
+          nextClockState = {
+            clock: 105 + crouchDuration * crouchTimeScale,
+            lastClip: { clipId: 'carry_put_down', loopFrames: 210 }
+          };
+        } else {
+          const walkSpeed = walkDist / walkDeltaFrames;
+          const nominalWalkSpeed = (15.0 * Math.abs(scaleXBase)) / 36;
+          calculatedTimeScale = walkDist > 1e-3
+            ? Math.max(0.6, Math.min(1.6, walkSpeed / nominalWalkSpeed))
+            : 1.0;
+        }
 
         const socketId = action.propSocket ?? 'hand_r';
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
 
         // Reach distance check at put-down destination
-        const shoulderWorldX = charDestX + (hand === 'hand_r' ? 6 : -6) * (-scaleXBase);
+        const shoulderWorldX = charDestX + (hand === 'hand_r' ? 6 : -6) * sX;
         const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
         const distToDest = Math.hypot(destPos[0] - shoulderWorldX, destPos[1] - shoulderWorldY);
         const maxReach = 34 * Math.abs(scaleXBase);
@@ -1708,11 +1796,20 @@ export class VerbCompiler {
           });
         }
 
+        const carryDx = 14 * Math.abs(scaleXBase);
+        const carryDy = 10 * scaleYBase;
+
         ikTargets.push(
           {
             hand,
-            targetWorld: destPos,
-            weight: 0.0,
+            targetWorld: [currentPos[0] + facingSign * carryDx, shoulderWorldY - carryDy, currentPos[2]],
+            weight: 1.0,
+            frame: startF
+          },
+          {
+            hand,
+            targetWorld: [charDestX + facingSign * carryDx, shoulderWorldY - carryDy, currentPos[2]],
+            weight: 1.0,
             frame: walkEndF
           },
           {
@@ -1746,7 +1843,7 @@ export class VerbCompiler {
             frame: startF,
             position: [currentPos[0], baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [-scaleXBase, scaleYBase],
+            scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
@@ -1754,7 +1851,7 @@ export class VerbCompiler {
             frame: walkEndF,
             position: [charDestX, baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [-scaleXBase, scaleYBase],
+            scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
@@ -1762,7 +1859,7 @@ export class VerbCompiler {
             frame: lastF,
             position: [charDestX, baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [-scaleXBase, scaleYBase],
+            scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
@@ -1843,18 +1940,23 @@ export class VerbCompiler {
         const pointF = startF + pointOffset;
 
         const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+        const maxArmReachWorld = 34 * Math.abs(scaleXBase);
+        const shoulderWorldX = targetX + (hand === 'hand_r' ? 6 : -6) * scaleXBase;
+        const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
+        const facingSign = scaleXBase >= 0 ? 1 : -1;
+
         let pointTarget: [number, number, number];
-        if (action.target?.kind === 'position') {
-          pointTarget = action.target.pos;
-        } else if (action.target?.kind === 'direction') {
+        if (action.target?.kind === 'direction') {
           const rad = (action.target.facingDeg * Math.PI) / 180;
           pointTarget = [targetX + 60 * Math.cos(rad), baseY + 60 * Math.sin(rad), currentPos[2]];
         } else {
-          pointTarget = [targetX + (scaleXBase >= 0 ? 60 : -60), baseY + 15, currentPos[2]];
+          pointTarget = [
+            targetX + facingSign * (0.82 * maxArmReachWorld),
+            shoulderWorldY + (0.42 * maxArmReachWorld),
+            currentPos[2]
+          ];
         }
 
-        const shoulderWorldX = targetX + (hand === 'hand_r' ? 6 : -6) * scaleXBase;
-        const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
         const distToPoint = Math.hypot(pointTarget[0] - shoulderWorldX, pointTarget[1] - shoulderWorldY);
         const maxReach = 34 * Math.abs(scaleXBase);
         if (distToPoint > maxReach && reachClamps) {
@@ -1919,11 +2021,9 @@ export class VerbCompiler {
         clipId = 'embrace_push_away';
         const otherCharX = otherCharPos ? otherCharPos[0] : undefined;
         const isLeft = otherCharX !== undefined ? currentX <= otherCharX : true;
-        const heroX0 = -24;
-        const partnerX0 = 24;
-        const startX = isLeft ? heroX0 : partnerX0;
-        const contactX = isLeft ? -14 : 14;
-        const pushedX = isLeft ? -38 : 38;
+        const startX = currentX;
+        const contactX = isLeft ? -22 : 22;
+        const pushedX = isLeft ? -48 : 48;
         nextX = pushedX;
         nextPos = [pushedX, baseY, currentPos[2]];
 
@@ -1932,9 +2032,62 @@ export class VerbCompiler {
         const fThrust = startF + Math.max(fEmbrace - startF + 1, Math.min(Math.floor(duration * (3.5 / 7.0)), duration - 2));
         const sX = isLeft ? scaleXBase : -scaleXBase;
 
-        // Clearance-enforcing IK target on partner's torso
+        // Step-in locomotion sub-span
+        const stepDist = Math.abs(contactX - startX);
+        const stepFrames = fEmbrace - startF;
+        if (stepDist > 1.0 && stepFrames > 0) {
+          const stepPlan = VerbCompiler.planLocomotionGait(
+            stepDist,
+            stepFrames,
+            action.speedNorm ?? 1.0,
+            sX,
+            false
+          );
+          segments.push({
+            startFrame: startF,
+            endFrame: fEmbrace,
+            clipId: 'walk_to',
+            timeScale: stepPlan.timeScale,
+            startPoseFrame: 0
+          });
+        }
+
+        // Contact embrace/thrust sub-span
+        segments.push({
+          startFrame: fEmbrace,
+          endFrame: fThrust,
+          clipId: 'embrace_push_away',
+          timeScale: 1.0,
+          startPoseFrame: 0
+        });
+
+        // Recoil push-away sub-span
+        const recoilDist = Math.abs(pushedX - contactX);
+        const recoilFrames = endF - fThrust;
+        if (recoilDist > 1.0 && recoilFrames > 0) {
+          const recoilPlan = VerbCompiler.planLocomotionGait(
+            recoilDist,
+            recoilFrames,
+            action.speedNorm ?? 1.1,
+            -sX,
+            false
+          );
+          segments.push({
+            startFrame: fThrust,
+            endFrame: endF,
+            clipId: 'walk_to',
+            timeScale: recoilPlan.timeScale,
+            startPoseFrame: 0
+          });
+        }
+
+        nextClockState = {
+          clock: recoilFrames * 1.0,
+          lastClip: { clipId: 'walk_to', loopFrames: 36 }
+        };
+
         const hand: 'hand_l' | 'hand_r' = isLeft ? 'hand_r' : 'hand_l';
-        const partnerContactX = isLeft ? 10 : -10; // Clearance: 4 units from partner's center at +/-14
+        const partnerContactX = isLeft ? -8 : 8;
         const contactTarget: [number, number, number] = [partnerContactX, baseY + 10, currentPos[2]];
 
         ikTargets.push(
@@ -2185,6 +2338,15 @@ export class VerbCompiler {
         const facingSign = scaleXBase >= 0 ? 1 : -1;
         gazeWorldPos = [currentX + 100 * facingSign, baseY + 15, currentPos[2]];
       }
+    } else if (action.verb === 'gesture_point') {
+      const facingSign = scaleXBase >= 0 ? 1 : -1;
+      const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
+      const maxArmReachWorld = 34 * Math.abs(scaleXBase);
+      gazeWorldPos = [
+        nextX + facingSign * (0.82 * maxArmReachWorld),
+        shoulderWorldY + (0.42 * maxArmReachWorld),
+        currentPos[2]
+      ];
     }
 
     if (gazeWorldPos) {
@@ -2226,6 +2388,9 @@ export class VerbCompiler {
   ): RigSocketSlot {
     if (action.propSocket) {
       return action.propSocket;
+    }
+    if (action.associatedPropId) {
+      return 'hand_r';
     }
     return propPos[0] < ownerPos[0] ? 'hand_l' : 'hand_r';
   }
@@ -2373,7 +2538,11 @@ export class VerbCompiler {
         ownerRigId: actorId,
         socketId
       });
-    } else if (propState.held) {
+    } else if (propState.held || action.associatedPropId === propRigId) {
+      nextHeld = true;
+      nextHeldBy = propState.heldBy ?? actorId;
+      nextReleased = false;
+
       keyframes.push(
         {
           frame: startF,

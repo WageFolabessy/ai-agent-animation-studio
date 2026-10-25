@@ -50,6 +50,17 @@ export function createRotationTranslationAffine2D(angleDeg: number, tx: number, 
   };
 }
 
+const SKELETON_JOINT_CACHE = new WeakMap<object, Map<string, PlanarJoint>>();
+
+export function getSkeletonJointMap(skeleton: { rootJointId?: string; joints: readonly PlanarJoint[] }): Map<string, PlanarJoint> {
+  let map = SKELETON_JOINT_CACHE.get(skeleton);
+  if (!map) {
+    map = new Map(skeleton.joints.map((j) => [j.id, j]));
+    SKELETON_JOINT_CACHE.set(skeleton, map);
+  }
+  return map;
+}
+
 /**
  * Computes world-space 2D affine transforms for all joints in a skeleton.
  * Evaluates in topological order (parents first) with angle clamping.
@@ -59,7 +70,7 @@ export function computeSkeletonFK(
   jointAngles: Record<string, number>,
   jointOffsets: Record<string, Vec2>
 ): Map<string, Affine2D> {
-  const jointMap = new Map(skeleton.joints.map((j) => [j.id, j]));
+  const jointMap = getSkeletonJointMap(skeleton);
   const result = new Map<string, Affine2D>();
 
   function evaluateJoint(jointId: string): Affine2D {

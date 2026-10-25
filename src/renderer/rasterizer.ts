@@ -54,13 +54,22 @@ export class SvgRasterizer {
   public rasterize(svgMarkup: string): Buffer {
     assertValidSvgPolicy(svgMarkup);
 
+    const hasText = svgMarkup.includes('<text');
     const resvg = new Resvg(svgMarkup, {
       fitTo: { mode: 'width', value: this.width },
-      font: {
-        fontFiles: [this.fontPath],
-        loadSystemFonts: this.loadSystemFonts,
-        defaultFontFamily: this.defaultFontFamily
-      }
+      shapeRendering: 0,
+      textRendering: 0,
+      imageRendering: 1,
+      font: hasText
+        ? {
+            fontFiles: [this.fontPath],
+            loadSystemFonts: this.loadSystemFonts,
+            defaultFontFamily: this.defaultFontFamily
+          }
+        : {
+            loadSystemFonts: false
+          },
+      logLevel: 'off'
     });
 
     const rawBuffer = resvg.render().pixels;

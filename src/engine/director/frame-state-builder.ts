@@ -12,7 +12,7 @@ import { CameraShakeSystem } from './camera-shake.js';
 import { ChoreographySystem, evaluateEntityTrack, type EvaluatedTrackState } from './choreography.js';
 import { samplePoseTrack, evaluateSecondaryMotion } from '../rigging/deformer.js';
 import { computeCameraBasis } from '../camera/camera-3d.js';
-import { computeSkeletonFK, applyAffine2D } from '../rigging/kinematics.js';
+import { computeSkeletonFK, applyAffine2D, getSkeletonJointMap } from '../rigging/kinematics.js';
 import { solveTwoBoneArmIK, worldToRigLocal } from '../rigging/ik-leg-solver.js';
 import { CANONICAL_BIPED_SOCKETS } from '../library/prop-factory.js';
 import type { IkTarget, GazeTarget } from '../../schemas/choreography.contract.js';
@@ -23,7 +23,11 @@ function evaluateHandIkTarget(
 ): { targetWorld: [number, number, number]; weight: number } | null {
   if (!targetsForHand || targetsForHand.length === 0) return null;
 
-  const keyframed = targetsForHand.filter((t) => t.frame !== undefined).sort((a, b) => a.frame! - b.frame!);
+  let keyframed: IkTarget[] | undefined = (targetsForHand as unknown as { _keyframed?: IkTarget[] })._keyframed;
+  if (!keyframed) {
+    keyframed = targetsForHand.filter((t) => t.frame !== undefined).sort((a, b) => a.frame! - b.frame!);
+    (targetsForHand as unknown as { _keyframed?: IkTarget[] })._keyframed = keyframed;
+  }
   if (keyframed.length > 0) {
     if (keyframed.length === 1) {
       const kf = keyframed[0];
@@ -75,7 +79,11 @@ function evaluateGazeTargetAtFrame(
 ): { targetWorld: [number, number, number]; weight: number } | null {
   if (!gazeTargets || gazeTargets.length === 0) return null;
 
-  const keyframed = gazeTargets.filter((t) => t.frame !== undefined).sort((a, b) => a.frame! - b.frame!);
+  let keyframed: GazeTarget[] | undefined = (gazeTargets as unknown as { _keyframed?: GazeTarget[] })._keyframed;
+  if (!keyframed) {
+    keyframed = gazeTargets.filter((t) => t.frame !== undefined).sort((a, b) => a.frame! - b.frame!);
+    (gazeTargets as unknown as { _keyframed?: GazeTarget[] })._keyframed = keyframed;
+  }
   if (keyframed.length > 0) {
     if (keyframed.length === 1) {
       const kf = keyframed[0];
@@ -121,6 +129,30 @@ function evaluateGazeTargetAtFrame(
   return null;
 }
 
+const CANONICAL_BIPED_SOCKETS_MAP = new Map(
+  CANONICAL_BIPED_SOCKETS.map((s) => [s.id, s])
+);
+
+interface PreIndexedRig {
+  jointMap: Map<string, import('../../schemas/rig.contract.js').PlanarJoint>;
+  armRUpper: import('../../schemas/rig.contract.js').PlanarJoint | undefined;
+  armRLower: import('../../schemas/rig.contract.js').PlanarJoint | undefined;
+  armLUpper: import('../../schemas/rig.contract.js').PlanarJoint | undefined;
+  armLLower: import('../../schemas/rig.contract.js').PlanarJoint | undefined;
+  headJoint: import('../../schemas/rig.contract.js').PlanarJoint | undefined;
+  l1R: number;
+  l2R: number;
+  l1L: number;
+  l2L: number;
+  sockets: Map<string, { jointId: string; localOffset2D: readonly [number, number] }>;
+}
+
+interface PreIndexedTrack {
+  targetsHandR: readonly IkTarget[];
+  targetsHandL: readonly IkTarget[];
+  gazeTargets: readonly GazeTarget[];
+}
+
 export interface FrameStateBuilderOptions {
   storyboard: DirectorStoryboardContract;
   audioManifest: AudioAnalysisManifest;
@@ -142,6 +174,8 @@ export class FrameStateBuilder {
   private readonly shakeSystem: CameraShakeSystem;
   private readonly choreoSystem: ChoreographySystem;
   private readonly getAudioFeature: (f: number) => AudioFrameFeature;
+  private readonly preIndexedRigs = new Map<string, PreIndexedRig>();
+  private readonly preIndexedTracks = new Map<string, PreIndexedTrack>();
 
   constructor(options: FrameStateBuilderOptions) {
     this.storyboard = options.storyboard;
@@ -154,6 +188,50 @@ export class FrameStateBuilder {
     });
     this.choreoSystem = new ChoreographySystem(options.choreography);
     this.getAudioFeature = options.getAudioFeatureAtFrame;
+
+    for (const [rigId, rig] of this.rigs) {
+      if (rig.skeleton) {
+        const jointMap = getSkeletonJointMap(rig.skeleton);
+        const armRUpper = jointMap.get('arm_r_upper');
+        const armRLower = jointMap.get('arm_r_lower');
+        const armLUpper = jointMap.get('arm_l_upper');
+        const armLLower = jointMap.get('arm_l_lower');
+        const headJoint = jointMap.get('head');
+        const sockets = new Map<string, { jointId: string; localOffset2D: readonly [number, number] }>();
+        if (rig.sockets) {
+          for (const s of rig.sockets) {
+            sockets.set(s.id, s);
+          }
+        }
+        this.preIndexedRigs.set(rigId, {
+          jointMap,
+          armRUpper,
+          armRLower,
+          armLUpper,
+          armLLower,
+          headJoint,
+          l1R: armRUpper?.length ?? 18,
+          l2R: armRLower?.length ?? 16,
+          l1L: armLUpper?.length ?? 18,
+          l2L: armLLower?.length ?? 16,
+          sockets
+        });
+      }
+    }
+
+    if (options.choreography.tracks) {
+      for (const track of options.choreography.tracks) {
+        const ikTargets = track.ikTargets ?? [];
+        const targetsHandR = ikTargets.filter((t) => t.hand === 'hand_r');
+        const targetsHandL = ikTargets.filter((t) => t.hand === 'hand_l');
+        const gazeTargets = track.gazeTargets ?? [];
+        this.preIndexedTracks.set(`${track.shotId}:${track.rigId}`, {
+          targetsHandR,
+          targetsHandL,
+          gazeTargets
+        });
+      }
+    }
   }
 
   private findActiveLyric(frameIndex: number): ActiveLyricState | null {
@@ -238,6 +316,7 @@ export class FrameStateBuilder {
     // 6. Active entities for the shot
     const entities: ActiveEntityState[] = [];
     const evaluatedTrackMap = new Map<string, EvaluatedTrackState>();
+    const entityFkMap = new Map<string, Map<string, import('../rigging/kinematics.js').Affine2D>>();
 
     for (const rigId of shot.activeRigIds) {
       const rig = this.rigs.get(rigId);
@@ -268,62 +347,109 @@ export class FrameStateBuilder {
         );
 
         if (rig.skeleton) {
+          const preRig = this.preIndexedRigs.get(rigId);
+          const jointMap = preRig?.jointMap ?? getSkeletonJointMap(rig.skeleton);
+          const preTrack = this.preIndexedTracks.get(`${shot.id}:${rigId}`);
+
+          const targetsR = preTrack?.targetsHandR ?? [];
+          const targetsL = preTrack?.targetsHandL ?? [];
+          const gazeTargets = preTrack?.gazeTargets ?? (track.gazeTargets ?? []);
+
+          const activeIkR = targetsR.length > 0 ? evaluateHandIkTarget(targetsR, frameIndex) : null;
+          const activeIkL = targetsL.length > 0 ? evaluateHandIkTarget(targetsL, frameIndex) : null;
+          const activeGaze = gazeTargets.length > 0 ? evaluateGazeTargetAtFrame(gazeTargets, frameIndex) : null;
+
+          const hasIkOrGaze = Boolean(
+            (activeIkR && activeIkR.weight > 1e-4) ||
+            (activeIkL && activeIkL.weight > 1e-4) ||
+            (activeGaze && activeGaze.weight > 1e-4)
+          );
+
+          const fkPre = hasIkOrGaze
+            ? computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets)
+            : null;
+
           // 1. Post-clip IK pass (applied after clip sampling and secondary motion)
-          for (const hand of ['hand_r', 'hand_l'] as const) {
-            const targetsForHand = (track.ikTargets ?? []).filter((t) => t.hand === hand);
-            const activeIk = evaluateHandIkTarget(targetsForHand, frameIndex);
-            if (activeIk && activeIk.weight > 1e-4) {
-              const upperId = hand === 'hand_r' ? 'arm_r_upper' : 'arm_l_upper';
-              const lowerId = hand === 'hand_r' ? 'arm_r_lower' : 'arm_l_lower';
-              const upperJoint = rig.skeleton.joints.find((j) => j.id === upperId);
-              const lowerJoint = rig.skeleton.joints.find((j) => j.id === lowerId);
+          if (activeIkR && activeIkR.weight > 1e-4 && fkPre) {
+            const upperJoint = preRig?.armRUpper ?? jointMap.get('arm_r_upper');
+            const lowerJoint = preRig?.armRLower ?? jointMap.get('arm_r_lower');
+            if (upperJoint && lowerJoint) {
+              const upperTransform = fkPre.get(upperJoint.id);
+              const parentId = upperJoint.parentId ?? 'torso';
+              const parentTransform = fkPre.get(parentId);
+              if (upperTransform) {
+                const shoulderPos: [number, number] = [upperTransform.tx, upperTransform.ty];
+                const parentAngleDeg = parentTransform
+                  ? (Math.atan2(parentTransform.b, parentTransform.a) * 180) / Math.PI
+                  : 0;
+                const l1 = preRig?.l1R ?? (upperJoint.length ?? 18);
+                const l2 = preRig?.l2R ?? (lowerJoint.length ?? 16);
+                const localTarget = worldToRigLocal(
+                  [activeIkR.targetWorld[0], activeIkR.targetWorld[1]],
+                  trackState.worldPosition,
+                  trackState.scale
+                );
+                const ikResult = solveTwoBoneArmIK(
+                  shoulderPos,
+                  localTarget,
+                  l1,
+                  l2,
+                  parentAngleDeg,
+                  1,
+                  upperJoint.constraintsDeg,
+                  lowerJoint.constraintsDeg
+                );
+                const clipUpper = jointAngles[upperJoint.id] ?? upperJoint.rotationZDegrees;
+                const clipLower = jointAngles[lowerJoint.id] ?? lowerJoint.rotationZDegrees;
+                const w = activeIkR.weight;
+                jointAngles[upperJoint.id] = clipUpper + (ikResult.upperAngleDeg - clipUpper) * w;
+                jointAngles[lowerJoint.id] = clipLower + (ikResult.lowerAngleDeg - clipLower) * w;
+              }
+            }
+          }
 
-              if (upperJoint && lowerJoint) {
-                const fkPre = computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets);
-                const upperTransform = fkPre.get(upperJoint.id);
-                const parentId = upperJoint.parentId ?? 'torso';
-                const parentTransform = fkPre.get(parentId);
-
-                if (upperTransform) {
-                  const shoulderPos: [number, number] = [upperTransform.tx, upperTransform.ty];
-                  const parentAngleDeg = parentTransform
-                    ? (Math.atan2(parentTransform.b, parentTransform.a) * 180) / Math.PI
-                    : 0;
-                  const l1 = upperJoint.length ?? 18;
-                  const l2 = lowerJoint.length ?? 16;
-                  const localTarget = worldToRigLocal(
-                    [activeIk.targetWorld[0], activeIk.targetWorld[1]],
-                    trackState.worldPosition,
-                    trackState.scale
-                  );
-
-                  const ikResult = solveTwoBoneArmIK(
-                    shoulderPos,
-                    localTarget,
-                    l1,
-                    l2,
-                    parentAngleDeg,
-                    1,
-                    upperJoint.constraintsDeg,
-                    lowerJoint.constraintsDeg
-                  );
-
-                  const clipUpper = jointAngles[upperJoint.id] ?? upperJoint.rotationZDegrees;
-                  const clipLower = jointAngles[lowerJoint.id] ?? lowerJoint.rotationZDegrees;
-                  const w = activeIk.weight;
-                  jointAngles[upperJoint.id] = clipUpper + (ikResult.upperAngleDeg - clipUpper) * w;
-                  jointAngles[lowerJoint.id] = clipLower + (ikResult.lowerAngleDeg - clipLower) * w;
-                }
+          if (activeIkL && activeIkL.weight > 1e-4 && fkPre) {
+            const upperJoint = preRig?.armLUpper ?? jointMap.get('arm_l_upper');
+            const lowerJoint = preRig?.armLLower ?? jointMap.get('arm_l_lower');
+            if (upperJoint && lowerJoint) {
+              const upperTransform = fkPre.get(upperJoint.id);
+              const parentId = upperJoint.parentId ?? 'torso';
+              const parentTransform = fkPre.get(parentId);
+              if (upperTransform) {
+                const shoulderPos: [number, number] = [upperTransform.tx, upperTransform.ty];
+                const parentAngleDeg = parentTransform
+                  ? (Math.atan2(parentTransform.b, parentTransform.a) * 180) / Math.PI
+                  : 0;
+                const l1 = preRig?.l1L ?? (upperJoint.length ?? 18);
+                const l2 = preRig?.l2L ?? (lowerJoint.length ?? 16);
+                const localTarget = worldToRigLocal(
+                  [activeIkL.targetWorld[0], activeIkL.targetWorld[1]],
+                  trackState.worldPosition,
+                  trackState.scale
+                );
+                const ikResult = solveTwoBoneArmIK(
+                  shoulderPos,
+                  localTarget,
+                  l1,
+                  l2,
+                  parentAngleDeg,
+                  1,
+                  upperJoint.constraintsDeg,
+                  lowerJoint.constraintsDeg
+                );
+                const clipUpper = jointAngles[upperJoint.id] ?? upperJoint.rotationZDegrees;
+                const clipLower = jointAngles[lowerJoint.id] ?? lowerJoint.rotationZDegrees;
+                const w = activeIkL.weight;
+                jointAngles[upperJoint.id] = clipUpper + (ikResult.upperAngleDeg - clipUpper) * w;
+                jointAngles[lowerJoint.id] = clipLower + (ikResult.lowerAngleDeg - clipLower) * w;
               }
             }
           }
 
           // 2. Post-clip Gaze pass
-          const activeGaze = evaluateGazeTargetAtFrame(track.gazeTargets ?? [], frameIndex);
-          if (activeGaze && activeGaze.weight > 1e-4) {
-            const headJoint = rig.skeleton.joints.find((j) => j.id === 'head');
+          if (activeGaze && activeGaze.weight > 1e-4 && fkPre) {
+            const headJoint = preRig?.headJoint ?? jointMap.get('head');
             if (headJoint) {
-              const fkPre = computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets);
               const parentId = headJoint.parentId ?? 'torso';
               const parentTransform = fkPre.get(parentId);
               const headTransform = fkPre.get('head');
@@ -350,6 +476,8 @@ export class FrameStateBuilder {
               }
             }
           }
+
+          entityFkMap.set(rigId, computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets));
         }
 
         entities.push({
@@ -378,18 +506,25 @@ export class FrameStateBuilder {
     }
 
     // Dynamic prop attachment pass: project attached props from owner's FK socket in camera plane
+    const entityMap = new Map<string, ActiveEntityState>();
+    for (const entity of entities) {
+      entityMap.set(entity.rigId, entity);
+    }
+
     for (const entity of entities) {
       const trackState = evaluatedTrackMap.get(entity.rigId);
       const span = trackState?.activeAttachmentSpan;
       if (!span) continue;
 
-      const ownerEntity = entities.find((e) => e.rigId === span.ownerRigId);
+      const ownerEntity = entityMap.get(span.ownerRigId);
       const ownerRig = this.rigs.get(span.ownerRigId);
       if (!ownerEntity || !ownerRig?.skeleton) continue;
 
-      const fkMap = computeSkeletonFK(ownerRig.skeleton, ownerEntity.jointAngles, ownerEntity.jointOffsets);
-      const socket = ownerRig.sockets?.find((s) => s.id === span.socketId) ??
-        CANONICAL_BIPED_SOCKETS.find((s) => s.id === span.socketId);
+      const fkMap = entityFkMap.get(span.ownerRigId) ??
+        computeSkeletonFK(ownerRig.skeleton, ownerEntity.jointAngles, ownerEntity.jointOffsets);
+      const preOwnerRig = this.preIndexedRigs.get(span.ownerRigId);
+      const socket = preOwnerRig?.sockets.get(span.socketId) ??
+        CANONICAL_BIPED_SOCKETS_MAP.get(span.socketId);
 
       const jointId = socket ? socket.jointId : span.socketId;
       const localOffset = socket ? socket.localOffset2D : [0, 0];

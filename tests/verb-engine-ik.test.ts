@@ -946,7 +946,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
           },
           actions: [
             { instanceId: 'protagonist_lead', verb: 'run_to', speedNorm: 1.3, intensityNorm: 0.9, target: { kind: 'position', pos: [65, 0, 0] } },
-            { instanceId: 'narrative_partner', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, target: { kind: 'position', pos: [35, 0, 0] } }
+            { instanceId: 'narrative_partner', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, associatedPropId: 'umbrella', target: { kind: 'position', pos: [-15, 0, 0] } }
           ],
           camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'protagonist_lead', lookRoom: 'right', dutchAngleDeg: -2 }
         },
@@ -966,7 +966,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
           },
           actions: [
             { instanceId: 'protagonist_lead', verb: 'gesture_point', speedNorm: 1.0, intensityNorm: 0.85, target: { kind: 'position', pos: [65, 0, 0] } },
-            { instanceId: 'narrative_partner', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.75, target: { kind: 'position', pos: [35, 0, 0] } }
+            { instanceId: 'narrative_partner', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.75, associatedPropId: 'umbrella', target: { kind: 'position', pos: [-15, 0, 0] } }
           ],
           camera: { framing: 'CLOSE_UP', movement: 'STATIC', focalCharacterId: 'protagonist_lead', lookRoom: 'right', dutchAngleDeg: 0 }
         }
@@ -1089,5 +1089,81 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
         `Frame ${f} (shot "${state.shotId}"): Horizontal separation must be >= 26.0 world units, got ${separation.toFixed(2)} (hero X=${hero.worldPosition[0].toFixed(1)}, partner X=${partner.worldPosition[0].toFixed(1)})`
       );
     }
+
+    // 5. Carry walk leg swing: during carry walk sub-span (frames 640..720), leg swings actively
+    const carryAngles: number[] = [];
+    for (let f = 640; f < 720; f++) {
+      const state = s1Builder.buildFrameState(f);
+      const hero = state.entities.find(e => e.rigId === 'protagonist_lead')!;
+      carryAngles.push(hero.jointAngles['leg_l_upper']);
+    }
+    const minSwing = Math.min(...carryAngles);
+    const maxSwing = Math.max(...carryAngles);
+    const p2pSwing = maxSwing - minSwing;
+    assert.ok(p2pSwing >= 25.0, `Carry walk peak-to-peak leg swing must be >= 25 deg, got ${p2pSwing.toFixed(2)}`);
+    const meanSwing = (minSwing + maxSwing) / 2;
+    let swingCrossings = 0;
+    for (let i = 1; i < carryAngles.length; i++) {
+      if ((carryAngles[i - 1] - meanSwing) * (carryAngles[i] - meanSwing) < 0) swingCrossings++;
+    }
+    assert.ok(swingCrossings >= 2, `Carry walk must exhibit >= 2 stride zero-crossings, got ${swingCrossings}`);
+
+    // 6. Upward horizon point: wrist world Y >= shoulder world Y + 10.0
+    const pointState = s1Builder.buildFrameState(900);
+    const heroPoint = pointState.entities.find(e => e.rigId === 'protagonist_lead')!;
+    const heroRigDef = stage1Production.rigs.get('protagonist_lead')!;
+    const fkPoint = computeSkeletonFK(heroRigDef.skeleton!, heroPoint.jointAngles, heroPoint.jointOffsets);
+    const shoulderUpper = fkPoint.get('arm_r_upper')!;
+    const wristTip = applyAffine2D(fkPoint.get('arm_r_lower')!, [0, -16]);
+    const shoulderWorldY = heroPoint.worldPosition[1] + shoulderUpper.ty * heroPoint.scale[1];
+    const wristWorldY = heroPoint.worldPosition[1] + wristTip[1] * heroPoint.scale[1];
+    assert.ok(
+      wristWorldY >= shoulderWorldY + 10.0,
+      `Upward gesture point wrist Y (${wristWorldY.toFixed(1)}) must be >= shoulder Y (${shoulderWorldY.toFixed(1)}) + 10.0`
+    );
+
+    // 7. Umbrella lockstep: partner carries umbrella overhead outdoors across frames 630..1049
+    for (let f = 635; f < 1050; f += 20) {
+      const state = s2Builder.buildFrameState(f);
+      const partner = state.entities.find(e => e.rigId === 'narrative_partner')!;
+      const umbrella = state.entities.find(e => e.rigId === 'umbrella')!;
+      assert.ok(umbrella, `Frame ${f}: Umbrella must exist as an active entity`);
+      const dxUmbrella = Math.abs(umbrella.worldPosition[0] - partner.worldPosition[0]);
+      assert.ok(
+        dxUmbrella <= 25.0,
+        `Frame ${f}: Umbrella X (${umbrella.worldPosition[0].toFixed(1)}) must stay lockstep with partner X (${partner.worldPosition[0].toFixed(1)}), delta was ${dxUmbrella.toFixed(1)}`
+      );
+      assert.equal(umbrella.worldRotationZDegrees, 0, `Frame ${f}: Umbrella must remain upright (rotation = 0)`);
+    }
+
+    // 8. Staging separation progression: approach >= 64, recoil >= 90, run/outlook >= 52
+    const s2ApproachState = s2Builder.buildFrameState(200);
+    const heroApp = s2ApproachState.entities.find(e => e.rigId === 'protagonist_lead')!;
+    const partnerApp = s2ApproachState.entities.find(e => e.rigId === 'narrative_partner')!;
+    const sepApp = Math.abs(heroApp.worldPosition[0] - partnerApp.worldPosition[0]);
+    assert.ok(sepApp >= 64.0, `Approach separation at frame 200 must be >= 64.0, got ${sepApp.toFixed(2)}`);
+
+    const s2RecoilState = s2Builder.buildFrameState(620);
+    const heroRec = s2RecoilState.entities.find(e => e.rigId === 'protagonist_lead')!;
+    const partnerRec = s2RecoilState.entities.find(e => e.rigId === 'narrative_partner')!;
+    const sepRec = Math.abs(heroRec.worldPosition[0] - partnerRec.worldPosition[0]);
+    assert.ok(sepRec >= 90.0, `Recoil separation at frame 620 must be >= 90.0, got ${sepRec.toFixed(2)}`);
+
+    for (let f = 750; f < 1050; f += 30) {
+      const state = s2Builder.buildFrameState(f);
+      const hero = state.entities.find(e => e.rigId === 'protagonist_lead')!;
+      const partner = state.entities.find(e => e.rigId === 'narrative_partner')!;
+      const sep = Math.abs(hero.worldPosition[0] - partner.worldPosition[0]);
+      assert.ok(sep >= 52.0, `Frame ${f}: Exterior separation must be >= 52.0, got ${sep.toFixed(2)}`);
+    }
+
+    // 9. Mid-stance knee flexion: knee flexion at mid-stance (frame 23) within [-14, -6] deg
+    const stanceState = s1Builder.buildFrameState(23);
+    const heroStance = stanceState.entities.find(e => e.rigId === 'protagonist_lead')!;
+    const kneeAngle = heroStance.jointAngles['leg_l_lower'];
+    assert.ok(
+      kneeAngle >= -14 && kneeAngle <= -6,
+      `Mid-stance knee flexion must be within [-14, -6] deg, got ${kneeAngle.toFixed(2)}`
+    );
   });
 });

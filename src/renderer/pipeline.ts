@@ -4,7 +4,7 @@ import { FfmpegStreamer } from './ffmpeg-streamer.js';
 import type { RenderConfig } from '../config/render-config.js';
 
 /** Frames between explicit GC calls. Only active when Node runs with `--expose-gc`. */
-const GC_INTERVAL_FRAMES = 3;
+const GC_INTERVAL_FRAMES = 25;
 
 export interface FrameTimings {
   genMs: number;

@@ -100,13 +100,15 @@ async function main() {
             instanceId: 'protagonist_lead',
             verb: 'walk_to',
             speedNorm: 1.0,
-            intensityNorm: 0.7
+            intensityNorm: 0.7,
+            target: { kind: 'position', pos: [-34, 0, 0] }
           },
           {
             instanceId: 'narrative_partner',
             verb: 'walk_to',
             speedNorm: 1.0,
-            intensityNorm: 0.7
+            intensityNorm: 0.7,
+            target: { kind: 'position', pos: [34, 0, 0] }
           }
         ],
         camera: {
@@ -217,7 +219,8 @@ async function main() {
             verb: 'walk_to',
             speedNorm: 1.0,
             intensityNorm: 0.7,
-            target: { kind: 'position', pos: [35, 0, 0] }
+            associatedPropId: 'umbrella',
+            target: { kind: 'position', pos: [-15, 0, 0] }
           }
         ],
         camera: {
@@ -255,7 +258,8 @@ async function main() {
             verb: 'look_at',
             speedNorm: 1.0,
             intensityNorm: 0.75,
-            target: { kind: 'position', pos: [35, 0, 0] }
+            associatedPropId: 'umbrella',
+            target: { kind: 'position', pos: [-15, 0, 0] }
           }
         ],
         camera: {
@@ -363,7 +367,8 @@ async function main() {
     width: 1920,
     height: 1080,
     crf: 18,
-    threads: 2,
+    preset: 'superfast',
+    threads: 5,
     chunkFrames: 350,
     resume: false
   });

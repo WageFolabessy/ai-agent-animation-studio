@@ -228,19 +228,27 @@ function truncate(str: string, maxLen: number): string {
   return str.slice(0, maxLen - 1) + '…';
 }
 
-function getPropsSummary(storySpec: StorySpecContract, sectionId: string): string {
-  const cast = storySpec.cast || [];
-  const propsSet = new Set<string>();
-  for (const c of cast) {
-    if (c.accessories) {
-      for (const a of c.accessories) propsSet.add(a);
+function getPropsSummary(
+  storyboard: DirectorStoryboardContract,
+  storySpec: StorySpecContract,
+  sectionId: string
+): string {
+  const shot = storyboard.shots.find(
+    s => s.id === sectionId || s.id.startsWith(sectionId)
+  );
+  if (shot && shot.activeRigIds) {
+    const castIds = new Set((storySpec.cast || []).map(c => c.instanceId));
+    const activeProps = shot.activeRigIds.filter(id => !castIds.has(id));
+    if (activeProps.length > 0) {
+      return activeProps.join(', ');
     }
   }
+
   const sec = storySpec.sections.find(s => s.sectionId === sectionId);
+  const propsSet = new Set<string>();
   if (sec?.castDirectives) {
     for (const d of sec.castDirectives) {
       const anyD = d as any;
-      if (anyD.accessories) for (const a of anyD.accessories) propsSet.add(a);
       if (anyD.props) for (const p of anyD.props) propsSet.add(p);
       if (anyD.propId) propsSet.add(anyD.propId);
     }
@@ -303,7 +311,7 @@ function buildCellData(
     }
   }
 
-  const props = getPropsSummary(storySpec, sectionId);
+  const props = getPropsSummary(storyboard, storySpec, sectionId);
 
   let lyricLine = '—';
   if (audioManifest.lyrics) {
@@ -1192,7 +1200,7 @@ async function main(): Promise<void> {
         const pPreset = s.castDirectives.find(c => c.instanceId === 'narrative_partner')?.motionPreset;
         if (pPreset) partnerClip = pPreset;
       }
-      const propsStr = getPropsSummary(storySpec, s.sectionId);
+      const propsStr = getPropsSummary(storyboard, storySpec, s.sectionId);
       md += `| \`${s.sectionId}\` | ${timeRange} | ${durSec}s | \`${s.theatricalSetId}\` | \`${s.interactionBehavior}\` | \`${leadClip}\` | \`${partnerClip}\` | ${propsStr} | \`${s.emotionalTone}\` |\n`;
     }
     md += '\n';

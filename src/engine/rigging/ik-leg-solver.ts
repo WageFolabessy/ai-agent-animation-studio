@@ -51,6 +51,8 @@ export function solveTwoBoneIK(
 
   const worldUpperDeg = ((phi + beta) * 180) / Math.PI;
   let upperAngleDeg = worldUpperDeg - parentWorldAngleDeg;
+  while (upperAngleDeg > 180) upperAngleDeg -= 360;
+  while (upperAngleDeg < -180) upperAngleDeg += 360;
   let lowerAngleDeg = (lowerRad * 180) / Math.PI;
 
   if (constraintsUpperDeg) {
@@ -166,9 +168,9 @@ export const BIPED_SKELETON_JOINTS: readonly PlanarJoint[] = [
   { id: 'pelvis', parentId: null, localOffset2D: [0, 0], rotationZDegrees: 0, length: 12, constraintsDeg: [-30, 30] },
   { id: 'torso', parentId: 'pelvis', localOffset2D: [0, 18], rotationZDegrees: -9, length: 28, constraintsDeg: [-45, 45] },
   { id: 'head', parentId: 'torso', localOffset2D: [3, 20], rotationZDegrees: 5, length: 16, constraintsDeg: [-40, 40] },
-  { id: 'arm_l_upper', parentId: 'torso', localOffset2D: [-6, 15], rotationZDegrees: -25, length: 18, constraintsDeg: [-120, 120] },
+  { id: 'arm_l_upper', parentId: 'torso', localOffset2D: [-6, 15], rotationZDegrees: -25, length: 18, constraintsDeg: [-150, 150] },
   { id: 'arm_l_lower', parentId: 'arm_l_upper', localOffset2D: [0, -18], rotationZDegrees: 35, length: 16, constraintsDeg: [0, 135] },
-  { id: 'arm_r_upper', parentId: 'torso', localOffset2D: [6, 15], rotationZDegrees: 25, length: 18, constraintsDeg: [-120, 120] },
+  { id: 'arm_r_upper', parentId: 'torso', localOffset2D: [6, 15], rotationZDegrees: 25, length: 18, constraintsDeg: [-150, 150] },
   { id: 'arm_r_lower', parentId: 'arm_r_upper', localOffset2D: [0, -18], rotationZDegrees: 40, length: 16, constraintsDeg: [0, 135] },
   { id: 'leg_l_upper', parentId: 'pelvis', localOffset2D: [-4, -4], rotationZDegrees: 32, length: 22, constraintsDeg: [-90, 90] },
   { id: 'leg_l_lower', parentId: 'leg_l_upper', localOffset2D: [0, -22], rotationZDegrees: -22, length: 22, constraintsDeg: [-140, 0] },

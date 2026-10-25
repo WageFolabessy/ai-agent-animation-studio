@@ -27,7 +27,7 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     strideLengthUnits: 15.0,
     groundY: -46.0,
     swingLift: 5.5,
-    pelvisY0: -2,
+    pelvisY0: 1.8,
     pelvisBobAmp: 1.0,
     torsoDeg0: -6,
     torsoAmp: 1.0,
@@ -1507,7 +1507,7 @@ export class ArchetypeFactory {
             localOffset2D: [-6, 15],
             rotationZDegrees: -25,
             length: 18,
-            constraintsDeg: [-120, 120]
+            constraintsDeg: [-150, 150]
           },
           {
             id: 'arm_l_lower',
@@ -1523,7 +1523,7 @@ export class ArchetypeFactory {
             localOffset2D: [6, 15],
             rotationZDegrees: 25,
             length: 18,
-            constraintsDeg: [-120, 120]
+            constraintsDeg: [-150, 150]
           },
           {
             id: 'arm_r_lower',
