@@ -6,6 +6,7 @@ import {
   worldToRigLocal
 } from '../src/engine/rigging/ik-leg-solver.js';
 import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
+import { projectToScreen } from '../src/engine/camera/projection.js';
 import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinematics.js';
 import { BipedPoseClips } from '../src/engine/library/archetype-factory.js';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
@@ -1121,8 +1122,13 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       wristWorldY >= shoulderWorldY + 10.0,
       `Upward gesture point wrist Y (${wristWorldY.toFixed(1)}) must be >= shoulder Y (${shoulderWorldY.toFixed(1)}) + 10.0`
     );
+    const elbowFlexion = Math.abs(heroPoint.jointAngles['arm_r_lower'] ?? 0);
+    assert.ok(
+      elbowFlexion <= 35.0,
+      `Gesture point elbow flexion (${elbowFlexion.toFixed(1)} deg) must be <= 35.0 deg for extended point`
+    );
 
-    // 7. Umbrella lockstep: partner carries umbrella overhead outdoors across frames 630..1049
+    // 7. Umbrella lockstep and safe headroom: partner carries umbrella overhead outdoors across frames 630..1049
     for (let f = 635; f < 1050; f += 20) {
       const state = s2Builder.buildFrameState(f);
       const partner = state.entities.find(e => e.rigId === 'narrative_partner')!;
@@ -1134,6 +1140,18 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
         `Frame ${f}: Umbrella X (${umbrella.worldPosition[0].toFixed(1)}) must stay lockstep with partner X (${partner.worldPosition[0].toFixed(1)}), delta was ${dxUmbrella.toFixed(1)}`
       );
       assert.equal(umbrella.worldRotationZDegrees, 0, `Frame ${f}: Umbrella must remain upright (rotation = 0)`);
+
+      // Safe headroom on CLOSE_UP shots (frames 840..1049): canopy top screen Y >= 40 px
+      if (f >= 840) {
+        const basis = computeCameraBasis(state.camera);
+        const canopyWorldY = umbrella.worldPosition[1] + 42 + 12.5;
+        const canopyWorldPos = [umbrella.worldPosition[0], canopyWorldY, umbrella.worldPosition[2]] as [number, number, number];
+        const proj = projectToScreen(canopyWorldPos, state.camera, basis);
+        assert.ok(
+          proj.y >= 40.0,
+          `Frame ${f}: Canopy top screen Y (${proj.y.toFixed(1)} px) must be >= 40.0 px for safe headroom`
+        );
+      }
     }
 
     // 8. Staging separation progression: approach >= 64, recoil >= 90, run/outlook >= 52
@@ -1148,6 +1166,24 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const partnerRec = s2RecoilState.entities.find(e => e.rigId === 'narrative_partner')!;
     const sepRec = Math.abs(heroRec.worldPosition[0] - partnerRec.worldPosition[0]);
     assert.ok(sepRec >= 90.0, `Recoil separation at frame 620 must be >= 90.0, got ${sepRec.toFixed(2)}`);
+
+    // True root translation on recoil: outward displacement between thrust (525) and recoil arrival (629) in 25..30 u
+    const s2ThrustState = s2Builder.buildFrameState(525);
+    const s2EndRecoilState = s2Builder.buildFrameState(629);
+    const heroThrustX = s2ThrustState.entities.find(e => e.rigId === 'protagonist_lead')!.worldPosition[0];
+    const heroEndRecoilX = s2EndRecoilState.entities.find(e => e.rigId === 'protagonist_lead')!.worldPosition[0];
+    const partnerThrustX = s2ThrustState.entities.find(e => e.rigId === 'narrative_partner')!.worldPosition[0];
+    const partnerEndRecoilX = s2EndRecoilState.entities.find(e => e.rigId === 'narrative_partner')!.worldPosition[0];
+    const heroRecoilDist = Math.abs(heroEndRecoilX - heroThrustX);
+    const partnerRecoilDist = Math.abs(partnerEndRecoilX - partnerThrustX);
+    assert.ok(
+      heroRecoilDist >= 25.0 && heroRecoilDist <= 30.0,
+      `Hero outward recoil displacement (${heroRecoilDist.toFixed(1)} u) must be in [25.0, 30.0] u`
+    );
+    assert.ok(
+      partnerRecoilDist >= 25.0 && partnerRecoilDist <= 30.0,
+      `Partner outward recoil displacement (${partnerRecoilDist.toFixed(1)} u) must be in [25.0, 30.0] u`
+    );
 
     for (let f = 750; f < 1050; f += 30) {
       const state = s2Builder.buildFrameState(f);

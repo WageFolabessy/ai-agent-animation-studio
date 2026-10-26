@@ -553,7 +553,7 @@ export class VerbCompiler {
         } else if (a.verb === 'embrace_push_away') {
           if (otherCur !== undefined) {
             const isLeft = cur <= otherCur;
-            nextSimX[a.instanceId] = isLeft ? -48 : 48;
+            nextSimX[a.instanceId] = isLeft ? -50 : 50;
           }
         }
       }
@@ -572,6 +572,9 @@ export class VerbCompiler {
 
       const isReachGrasp = beat.actions.some((a) => a.verb === 'reach_and_grasp');
       const isGesturePoint = beat.actions.some((a) => a.verb === 'gesture_point');
+      const hasOverheadProp =
+        beat.set.landmarkProps?.includes('umbrella') ||
+        beat.actions.some((a) => a.associatedPropId === 'umbrella');
 
       // Camera focal point, target, and headroom math
       let focalX: number;
@@ -597,10 +600,10 @@ export class VerbCompiler {
         camY = 98;
       } else if (isGesturePoint) {
         effectiveFraming = 'CLOSE_UP';
-        effectiveDistZ = FRAMING_DISTANCE_MAP.CLOSE_UP;
+        effectiveDistZ = hasOverheadProp ? 142 : FRAMING_DISTANCE_MAP.CLOSE_UP;
         focalX = focalPos;
-        targetY = 117;
-        camY = 127;
+        targetY = hasOverheadProp ? 127 : 117;
+        camY = hasOverheadProp ? 135 : 127;
       } else if (isTwoShot && otherPresentId) {
         const otherPos = charPositions[otherPresentId] ?? 0;
         const midX = (focalPos + otherPos) / 2;
@@ -619,10 +622,13 @@ export class VerbCompiler {
               : 88
             : effectiveFraming === 'CLOSE_UP'
               ? isPartnerFocal
-                ? 103
-                : 117
+                ? (hasOverheadProp ? 115 : 103)
+                : (hasOverheadProp ? 127 : 117)
               : 95;
         camY = targetY + 10;
+        if (hasOverheadProp && effectiveFraming === 'CLOSE_UP') {
+          effectiveDistZ = Math.max(effectiveDistZ, 142);
+        }
       }
 
       const deltaPan = movement === 'PAN' ? 30 : 0;
@@ -772,17 +778,58 @@ export class VerbCompiler {
       const nextPositions: Record<string, [number, number, number]> = {};
       const beatTracks: EntityTrack[] = [];
 
+      // Overhead personal prop holder resolution:
+      // Attach overhead personal props to trailing/shielded character in parallel movement
+      const umbrellaActive =
+        baseBeatShots[i].activeRigIds.includes('umbrella') && propStates.has('umbrella');
+      const explicitUmbrellaAction = beat.actions.find((a) => a.associatedPropId === 'umbrella');
+      let resolvedUmbrellaHolderId = explicitUmbrellaAction?.instanceId;
+
+      if (umbrellaActive && !resolvedUmbrellaHolderId) {
+        const pState = propStates.get('umbrella')!;
+        if (pState.held && pState.heldBy && beat.presentCharacters.includes(pState.heldBy)) {
+          resolvedUmbrellaHolderId = pState.heldBy;
+        } else if (presentList.length > 1) {
+          const sortedByTrailing = [...presentList].sort((a, b) => {
+            const posXA = shotStartPositions[a.instanceId]?.[0] ?? 0;
+            const posXB = shotStartPositions[b.instanceId]?.[0] ?? 0;
+            const actA = beat.actions.find((act) => act.instanceId === a.instanceId);
+            const actB = beat.actions.find((act) => act.instanceId === b.instanceId);
+            const tA = actA?.target?.kind === 'position' ? actA.target.pos[0] : posXA;
+            const tB = actB?.target?.kind === 'position' ? actB.target.pos[0] : posXB;
+            const netDir = (tA - posXA) + (tB - posXB);
+            return netDir >= 0 ? posXA - posXB : posXB - posXA;
+          });
+          resolvedUmbrellaHolderId = sortedByTrailing[0]?.instanceId;
+        } else {
+          resolvedUmbrellaHolderId = presentList[0]?.instanceId;
+        }
+      }
+
       for (let cIdx = 0; cIdx < presentList.length; cIdx++) {
         const char = presentList[cIdx];
         const otherChar = presentList.find((other) => other.instanceId !== char.instanceId);
         const otherPos = otherChar ? shotStartPositions[otherChar.instanceId] : undefined;
 
-        const action = beat.actions.find((a) => a.instanceId === char.instanceId) ?? {
-          instanceId: char.instanceId,
-          verb: 'walk_to' as const,
-          speedNorm: 1.0,
-          intensityNorm: 0.7
-        };
+        let action = beat.actions.find((a) => a.instanceId === char.instanceId);
+        if (action) {
+          if (umbrellaActive) {
+            if (char.instanceId === resolvedUmbrellaHolderId && !action.associatedPropId) {
+              action = { ...action, associatedPropId: 'umbrella' };
+            } else if (char.instanceId !== resolvedUmbrellaHolderId && action.associatedPropId === 'umbrella') {
+              const { associatedPropId: _, ...rest } = action;
+              action = rest as CharacterActionDirective;
+            }
+          }
+        } else {
+          action = {
+            instanceId: char.instanceId,
+            verb: 'walk_to' as const,
+            speedNorm: 1.0,
+            intensityNorm: 0.7,
+            ...(umbrellaActive && char.instanceId === resolvedUmbrellaHolderId ? { associatedPropId: 'umbrella' } : {})
+          };
+        }
 
         const charTrack = VerbCompiler.compileCharacterAction(
           char.instanceId,
@@ -818,23 +865,34 @@ export class VerbCompiler {
         let actorId = leadId;
         let actorAction = beat.actions.find((a) => a.instanceId === leadId);
 
-        const specificAction = beat.actions.find(
-          (a) =>
-            a.associatedPropId === propId ||
-            (a.target?.kind === 'prop' && a.target.propId === propId)
-        );
-        if (specificAction) {
-          actorId = specificAction.instanceId;
-          actorAction = specificAction;
-        } else if (pState.held && pState.heldBy && beat.presentCharacters.includes(pState.heldBy)) {
-          actorId = pState.heldBy;
-          actorAction = beat.actions.find((a) => a.instanceId === actorId);
-        } else if (pState.held && !pState.released) {
-          actorId = presentList[presentList.length - 1]?.instanceId ?? leadId;
-          actorAction = beat.actions.find((a) => a.instanceId === actorId);
-        } else if (beat.set.landmarkProps.includes(propId) && !pState.released) {
-          actorId = presentList[presentList.length - 1]?.instanceId ?? leadId;
-          actorAction = beat.actions.find((a) => a.instanceId === actorId);
+        if (propId === 'umbrella' && resolvedUmbrellaHolderId) {
+          actorId = resolvedUmbrellaHolderId;
+          actorAction = beat.actions.find((a) => a.instanceId === actorId) ?? {
+            instanceId: actorId,
+            verb: 'walk_to' as const,
+            speedNorm: 1.0,
+            intensityNorm: 0.7,
+            associatedPropId: 'umbrella'
+          };
+        } else {
+          const specificAction = beat.actions.find(
+            (a) =>
+              a.associatedPropId === propId ||
+              (a.target?.kind === 'prop' && a.target.propId === propId)
+          );
+          if (specificAction) {
+            actorId = specificAction.instanceId;
+            actorAction = specificAction;
+          } else if (pState.held && pState.heldBy && beat.presentCharacters.includes(pState.heldBy)) {
+            actorId = pState.heldBy;
+            actorAction = beat.actions.find((a) => a.instanceId === actorId);
+          } else if (pState.held && !pState.released) {
+            actorId = presentList[presentList.length - 1]?.instanceId ?? leadId;
+            actorAction = beat.actions.find((a) => a.instanceId === actorId);
+          } else if (beat.set.landmarkProps.includes(propId) && !pState.released) {
+            actorId = presentList[presentList.length - 1]?.instanceId ?? leadId;
+            actorAction = beat.actions.find((a) => a.instanceId === actorId);
+          }
         }
 
         const effectiveAction: CharacterActionDirective = actorAction ?? {
@@ -1951,8 +2009,8 @@ export class VerbCompiler {
           pointTarget = [targetX + 60 * Math.cos(rad), baseY + 60 * Math.sin(rad), currentPos[2]];
         } else {
           pointTarget = [
-            targetX + facingSign * (0.82 * maxArmReachWorld),
-            shoulderWorldY + (0.42 * maxArmReachWorld),
+            shoulderWorldX + facingSign * (0.90 * maxArmReachWorld),
+            shoulderWorldY + (0.32 * maxArmReachWorld),
             currentPos[2]
           ];
         }
@@ -2023,7 +2081,8 @@ export class VerbCompiler {
         const isLeft = otherCharX !== undefined ? currentX <= otherCharX : true;
         const startX = currentX;
         const contactX = isLeft ? -22 : 22;
-        const pushedX = isLeft ? -48 : 48;
+        const recoilDelta = 28;
+        const pushedX = isLeft ? contactX - recoilDelta : contactX + recoilDelta;
         nextX = pushedX;
         nextPos = [pushedX, baseY, currentPos[2]];
 
@@ -2064,6 +2123,7 @@ export class VerbCompiler {
         // Recoil push-away sub-span
         const recoilDist = Math.abs(pushedX - contactX);
         const recoilFrames = endF - fThrust;
+        let recoilArriveF = lastF;
         if (recoilDist > 1.0 && recoilFrames > 0) {
           const recoilPlan = VerbCompiler.planLocomotionGait(
             recoilDist,
@@ -2072,13 +2132,23 @@ export class VerbCompiler {
             -sX,
             false
           );
+          recoilArriveF = Math.min(lastF, fThrust + recoilPlan.tMove);
           segments.push({
             startFrame: fThrust,
-            endFrame: endF,
+            endFrame: recoilArriveF,
             clipId: 'walk_to',
             timeScale: recoilPlan.timeScale,
             startPoseFrame: 0
           });
+          if (recoilArriveF < endF) {
+            segments.push({
+              startFrame: recoilArriveF,
+              endFrame: endF,
+              clipId: 'idle',
+              timeScale: 1.0,
+              startPoseFrame: 0
+            });
+          }
         }
 
         nextClockState = {
@@ -2143,14 +2213,25 @@ export class VerbCompiler {
             easing: 'linear'
           },
           {
-            frame: lastF,
+            frame: recoilArriveF,
             position: [pushedX, baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? -10 : 10,
+            rotationZDegrees: isLeft ? -8 : 8,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           }
         );
+
+        if (recoilArriveF < lastF) {
+          keyframes.push({
+            frame: lastF,
+            position: [pushedX, baseY, currentPos[2]],
+            rotationZDegrees: 0,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          });
+        }
 
         morphKeyframes.open_rest = [
           { frame: startF, weight: 1.0 },
@@ -2340,11 +2421,13 @@ export class VerbCompiler {
       }
     } else if (action.verb === 'gesture_point') {
       const facingSign = scaleXBase >= 0 ? 1 : -1;
+      const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+      const shoulderWorldX = nextX + (hand === 'hand_r' ? 6 : -6) * scaleXBase;
       const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
       const maxArmReachWorld = 34 * Math.abs(scaleXBase);
       gazeWorldPos = [
-        nextX + facingSign * (0.82 * maxArmReachWorld),
-        shoulderWorldY + (0.42 * maxArmReachWorld),
+        shoulderWorldX + facingSign * (0.90 * maxArmReachWorld),
+        shoulderWorldY + (0.32 * maxArmReachWorld),
         currentPos[2]
       ];
     }
