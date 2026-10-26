@@ -159,6 +159,151 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
     }
   });
 
+  await t.test('54-case matrix of walk_to and run_to across distances, durations, and speedNorm', () => {
+    const verbs = ['walk_to', 'run_to'] as const;
+    const distances = [40, 120, 300];
+    const durations = [90, 210, 360];
+    const speedNorms = [0.7, 1.0, 1.6];
+
+    let totalCases = 0;
+    let unreachableCasesCount = 0;
+
+    for (const verb of verbs) {
+      for (const dist of distances) {
+        for (const duration of durations) {
+          for (const speedNorm of speedNorms) {
+            totalCases++;
+            const isRun = verb === 'run_to';
+            const startX = -95;
+            const targetX = startX + dist;
+
+            const contract: StoryBeatContract = {
+              projectId: `matrix_${verb}_${dist}_${duration}_${speedNorm}`,
+              songDurationSec: duration / 30,
+              fps: 30,
+              sliceFrameRange: { startFrame: 0, endFrame: duration },
+              cast: [
+                {
+                  instanceId: 'hero',
+                  role: 'PROTAGONIST',
+                  archetypeId: 'hero_silhouette',
+                  palette: { primary: '#0a1128', accent: '#00f0ff' }
+                }
+              ],
+              beats: [
+                {
+                  beatId: 'beat_01',
+                  startFrame: 0,
+                  endFrame: duration,
+                  lyricSnippet: '',
+                  emotionalTone: 'reflective',
+                  narrativeSubtext: 'locomotion matrix test',
+                  presentCharacters: ['hero'],
+                  set: {
+                    kitId: 'ARCHITECTURAL_INTERIOR',
+                    variantId: 'moody_night',
+                    landmarkProps: [],
+                    atmosphericDensity: 0.5
+                  },
+                  actions: [
+                    {
+                      instanceId: 'hero',
+                      verb,
+                      target: { kind: 'position', pos: [targetX, 0, 0] },
+                      speedNorm,
+                      intensityNorm: 0.7
+                    }
+                  ],
+                  camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 }
+                }
+              ],
+              unfulfilledRequests: []
+            };
+
+            const manifest = createSyntheticManifest(duration);
+            const production = VerbCompiler.compile(contract, manifest);
+            const heroTracks = production.choreography.tracks.filter((tr) => tr.rigId === 'hero');
+            const allKfs = heroTracks.flatMap((tr) => tr.transform.keyframes);
+            const isUnreachable = production.compileReport.unreachableTargets.length > 0;
+
+            if (isUnreachable) {
+              unreachableCasesCount++;
+              const entry = production.compileReport.unreachableTargets[0];
+              assert.equal(entry.verb, verb);
+              assert.equal(entry.requestedDistance, dist);
+              assert.equal(entry.durationFrames, duration);
+              assert.ok(entry.achievableDistance < dist);
+              assert.ok(entry.minimumFramesNeeded > duration);
+
+              // Stopped at achievableDistance within 1 unit
+              const expectedX = startX + entry.achievableDistance;
+              const arriveKf = allKfs[allKfs.length - 1];
+              assert.ok(
+                Math.abs(arriveKf.position[0] - expectedX) <= 1.0,
+                `Unreachable ${verb} ${dist}u/${duration}f stopped at ${arriveKf.position[0]} expected ${expectedX}`
+              );
+            } else {
+              // Feasible arrival within 1 unit of target
+              const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0) ?? allKfs[allKfs.length - 1];
+              assert.ok(
+                Math.abs(arriveKf.position[0] - targetX) <= 1.0,
+                `Feasible ${verb} ${dist}u/${duration}f arrived at ${arriveKf.position[0]} expected ${targetX}`
+              );
+              assert.ok(arriveKf.frame <= duration);
+            }
+
+            // Interior-contact slip <= 2% on ALL 54 cases
+            const builder = new FrameStateBuilder({
+              storyboard: production.storyboard,
+              choreography: production.choreography,
+              rigs: production.rigs,
+              audioManifest: manifest,
+              getAudioFeatureAtFrame: dummyAudio
+            });
+
+            const rig = production.rigs.get('hero')!;
+            const clipUsed = heroTracks[0].pose?.clipId ?? (isRun ? 'sprint_frenzy' : 'walk_to');
+            const isRunClip = clipUsed === 'sprint_frenzy';
+
+            const lastMoveF = isUnreachable ? duration - 1 : (allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0)?.frame ?? duration - 1);
+            for (let f = 5; f < lastMoveF - 5; f++) {
+              const s0 = builder.buildFrameState(f);
+              const s1 = builder.buildFrameState(f + 1);
+              const e0 = s0.entities.find((e) => e.rigId === 'hero')!;
+              const e1 = s1.entities.find((e) => e.rigId === 'hero')!;
+              const vRoot = Math.abs(e1.worldPosition[0] - e0.worldPosition[0]);
+              if (vRoot < 1e-4) continue;
+
+              const fk0 = computeSkeletonFK(rig.skeleton!, e0.jointAngles, e0.jointOffsets);
+              const fk1 = computeSkeletonFK(rig.skeleton!, e1.jointAngles, e1.jointOffsets);
+
+              for (const limb of ['leg_l_lower', 'leg_r_lower']) {
+                const tip0 = applyAffine2D(fk0.get(limb)!, [0, -22]);
+                const tip1 = applyAffine2D(fk1.get(limb)!, [0, -22]);
+                const isContact =
+                  ((tip0[1] < -45.99 && tip1[1] < -45.99) || (tip0[1] < -40.99 && tip1[1] < -40.99 && isRunClip)) &&
+                  tip1[0] < tip0[0] - 1e-3;
+                if (isContact) {
+                  const wFoot0 = e0.worldPosition[0] + e0.scale[0] * tip0[0];
+                  const wFoot1 = e1.worldPosition[0] + e1.scale[0] * tip1[0];
+                  const drift = Math.abs(wFoot1 - wFoot0);
+                  const slipRatio = drift / vRoot;
+                  assert.ok(
+                    slipRatio <= 0.02,
+                    `Matrix case ${verb} ${dist}u/${duration}f speedNorm=${speedNorm} frame ${f} ${limb} slip ${slipRatio.toFixed(4)} must be <= 0.02`
+                  );
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    assert.equal(totalCases, 54, 'Must execute exactly 54 matrix cases');
+    assert.equal(unreachableCasesCount, 6, 'Exactly 6 cases (300u in 90f) must be unreachable');
+  });
+
   await t.test('Grid of distances, durations, speedNorm, and both directions satisfies invariants', () => {
     const testCases: Array<{ dist: number; duration: number; speedNorm: number; dir: 1 | -1; isRun: boolean }> = [
       // Short distance with short duration
@@ -181,7 +326,12 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
       // Large distance with long duration
       { dist: 350, duration: 250, speedNorm: 1.0, dir: 1, isRun: true },
       { dist: 400, duration: 300, speedNorm: 1.0, dir: 1, isRun: true },
-      { dist: 400, duration: 300, speedNorm: 1.2, dir: -1, isRun: true }
+      { dist: 400, duration: 300, speedNorm: 1.2, dir: -1, isRun: true },
+      // Unreachable cases (high distance in low duration)
+      { dist: 400, duration: 90, speedNorm: 1.0, dir: 1, isRun: true },
+      { dist: 350, duration: 60, speedNorm: 1.5, dir: -1, isRun: false },
+      { dist: 300, duration: 60, speedNorm: 0.5, dir: 1, isRun: false },
+      { dist: 250, duration: 45, speedNorm: 2.0, dir: -1, isRun: true }
     ];
 
     for (const tc of testCases) {
@@ -236,27 +386,39 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
       const production = VerbCompiler.compile(contract, manifest);
       const heroTracks = production.choreography.tracks.filter((tr) => tr.rigId === 'hero');
       const allKfs = heroTracks.flatMap((tr) => tr.transform.keyframes);
-      const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0) ?? allKfs[allKfs.length - 1];
-      const arriveF = arriveKf.frame;
+      const isUnreachable = production.compileReport.unreachableTargets.length > 0;
+      let arriveF: number;
+
+      if (isUnreachable) {
+        const entry = production.compileReport.unreachableTargets[0];
+        const expectedX = startX + tc.dir * entry.achievableDistance;
+        const arriveKf = allKfs[allKfs.length - 1];
+        arriveF = arriveKf.frame;
+        assert.ok(
+          Math.abs(arriveKf.position[0] - expectedX) <= 1.0,
+          `Unreachable case dist=${tc.dist} dur=${tc.duration}: stopped at ${arriveKf.position[0]} expected ${expectedX}`
+        );
+      } else {
+        const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0) ?? allKfs[allKfs.length - 1];
+        arriveF = arriveKf.frame;
+        // 2. Arrival never after beat end
+        assert.ok(
+          arriveF <= tc.duration,
+          `Arrival frame ${arriveF} must be <= duration ${tc.duration}`
+        );
+        // 3. Arrival position within 1 unit of target
+        const arrivePos = arriveKf.position[0];
+        assert.ok(
+          Math.abs(arrivePos - targetX) <= 1.0,
+          `Arrival position ${arrivePos} must be within 1 unit of target ${targetX}`
+        );
+      }
 
       // 1. timeScale within [0.6, 1.6]
       const ts = heroTracks[0].pose?.timeScale ?? 1.0;
       assert.ok(
         ts >= 0.6 && ts <= 1.6,
         `Grid case dist=${tc.dist} dur=${tc.duration} speedNorm=${tc.speedNorm} dir=${tc.dir}: timeScale ${ts} must be within [0.6, 1.6]`
-      );
-
-      // 2. Arrival never after beat end
-      assert.ok(
-        arriveF <= tc.duration,
-        `Arrival frame ${arriveF} must be <= duration ${tc.duration}`
-      );
-
-      // 3. Arrival position within 1 unit of target
-      const arrivePos = arriveKf.position[0];
-      assert.ok(
-        Math.abs(arrivePos - targetX) <= 1.0,
-        `Arrival position ${arrivePos} must be within 1 unit of target ${targetX}`
       );
 
       // 4. If early arrival, hold segments use non-locomotion clips with root speed exactly 0
@@ -319,9 +481,10 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
         for (const limb of ['leg_l_lower', 'leg_r_lower']) {
           const tip0 = applyAffine2D(fk0.get(limb)!, [0, -22]);
           const tip1 = applyAffine2D(fk1.get(limb)!, [0, -22]);
+          const isRunClip = heroTracks[0].pose?.clipId === 'sprint_frenzy' || tc.isRun;
           // Interior contact condition: foot planted at ground (min ground Y) and moving backward in local rig space
           const isContact =
-            ((tip0[1] < -45.99 && tip1[1] < -45.99) || (tip0[1] < -40.99 && tip1[1] < -40.99 && tc.isRun)) &&
+            ((tip0[1] < -45.99 && tip1[1] < -45.99) || (tip0[1] < -40.99 && tip1[1] < -40.99 && isRunClip)) &&
             tip1[0] < tip0[0] - 1e-3;
           if (isContact) {
             const wFoot0 = e0.worldPosition[0] + e0.scale[0] * tip0[0];
@@ -426,5 +589,87 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
     assert.ok(e99.scale[0] > 0, 'Moving forward must have scaleX > 0');
     assert.ok(e199.scale[0] < 0, 'Moving in reverse must have scaleX < 0');
     assert.ok(e200.scale[0] > 0, 'Moving forward again must have scaleX > 0');
+  });
+
+  await t.test('Multi-beat continuity when beat 1 has unreachable target', () => {
+    // Hero starts at -95. Beat 1 requests moving 300u forward in 90f (unreachable).
+    // Achievable distance is ~245.64u.
+    // Beat 2 starts at f=90 and requests gesture_point or idle.
+    // Beat 2 MUST start from the actual stopped position (~150.64u), NOT the unreachable target (+205u).
+    const contract: StoryBeatContract = {
+      projectId: 'unreachable_multi_beat',
+      songDurationSec: 6,
+      fps: 30,
+      sliceFrameRange: { startFrame: 0, endFrame: 180 },
+      cast: [
+        {
+          instanceId: 'hero',
+          role: 'PROTAGONIST',
+          archetypeId: 'hero_silhouette',
+          palette: { primary: '#0a1128', accent: '#00f0ff' }
+        }
+      ],
+      beats: [
+        {
+          beatId: 'beat_01',
+          startFrame: 0,
+          endFrame: 90,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'unreachable sprint',
+          presentCharacters: ['hero'],
+          set: { kitId: 'ARCHITECTURAL_INTERIOR', variantId: 'moody_night', landmarkProps: [], atmosphericDensity: 0.5 },
+          actions: [{ instanceId: 'hero', verb: 'run_to', target: { kind: 'position', pos: [205, 0, 0] }, speedNorm: 1.0, intensityNorm: 0.7 }],
+          camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 }
+        },
+        {
+          beatId: 'beat_02',
+          startFrame: 90,
+          endFrame: 180,
+          lyricSnippet: '',
+          emotionalTone: 'defiant',
+          narrativeSubtext: 'look around from stopped position',
+          presentCharacters: ['hero'],
+          set: { kitId: 'ARCHITECTURAL_INTERIOR', variantId: 'moody_night', landmarkProps: [], atmosphericDensity: 0.5 },
+          actions: [{ instanceId: 'hero', verb: 'gesture_point', speedNorm: 1.0, intensityNorm: 0.7 }],
+          camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 }
+        }
+      ],
+      unfulfilledRequests: []
+    };
+
+    const manifest = createSyntheticManifest(180);
+    const production = VerbCompiler.compile(contract, manifest);
+    assert.equal(production.compileReport.unreachableTargets.length, 1);
+    const unreach = production.compileReport.unreachableTargets[0];
+    assert.equal(unreach.requestedDistance, 300);
+
+    const builder = new FrameStateBuilder({
+      storyboard: production.storyboard,
+      choreography: production.choreography,
+      rigs: production.rigs,
+      audioManifest: manifest,
+      getAudioFeatureAtFrame: dummyAudio
+    });
+
+    const s89 = builder.buildFrameState(89);
+    const s90 = builder.buildFrameState(90);
+    const e89 = s89.entities.find((e) => e.rigId === 'hero')!;
+    const e90 = s90.entities.find((e) => e.rigId === 'hero')!;
+
+    // Position must match achievable distance exactly
+    const expectedX = -95 + unreach.achievableDistance;
+    assert.ok(Math.abs(e89.worldPosition[0] - expectedX) <= 1.0, `Frame 89 X ${e89.worldPosition[0]} should be ~${expectedX}`);
+    assert.ok(Math.abs(e90.worldPosition[0] - expectedX) <= 1.0, `Frame 90 X ${e90.worldPosition[0]} should be ~${expectedX}`);
+    assert.ok(Math.abs(e90.worldPosition[0] - e89.worldPosition[0]) <= 0.1, `Beat boundary 89->90 must be continuous: diff=${Math.abs(e90.worldPosition[0] - e89.worldPosition[0])}`);
+
+    // Hold / gesture in beat 2 must have root speed = 0
+    for (let f = 90; f < 179; f++) {
+      const sf0 = builder.buildFrameState(f);
+      const sf1 = builder.buildFrameState(f + 1);
+      const ef0 = sf0.entities.find((e) => e.rigId === 'hero')!;
+      const ef1 = sf1.entities.find((e) => e.rigId === 'hero')!;
+      assert.equal(Math.abs(ef1.worldPosition[0] - ef0.worldPosition[0]), 0, `Beat 2 frame ${f} must have root speed 0`);
+    }
   });
 });

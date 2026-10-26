@@ -63,11 +63,20 @@ export interface SceneEnvironment {
   lines?: EnvironmentLine[];
 }
 
+export interface SceneBudgetCategoryStats {
+  environment: number;
+  characters: number;
+  props: number;
+  lighting: number;
+  overlays: number;
+}
+
 export interface SceneBudgetStats {
   drawablesCount: number;
   gradientShapesCount: number;
   particlesCount: number;
   filtersCount: number;
+  categories?: SceneBudgetCategoryStats;
 }
 
 export interface CompositorOutput {
@@ -80,7 +89,8 @@ function resolveRigPaint(
   palette: FrameStateContract['palette'],
   lit: boolean,
   builder: SvgBuilder,
-  gradientCache: Map<string, string>
+  gradientCache: Map<string, string>,
+  preferSolid = false
 ): { fillAttr: string; isGradient: boolean } {
   if (!paint) {
     return { fillAttr: 'none', isGradient: false };
@@ -94,7 +104,7 @@ function resolveRigPaint(
     baseHex = shadeHexColor(roleColor, paint.shade);
   }
 
-  if (lit) {
+  if (lit && !preferSolid) {
     let gradId = gradientCache.get(baseHex);
     if (!gradId) {
       gradId = `lit_grad_${gradientCache.size}`;
@@ -185,11 +195,20 @@ export class SceneCompositor {
       height: this.height
     });
 
+    const categories: SceneBudgetCategoryStats = {
+      environment: 0,
+      characters: 0,
+      props: 0,
+      lighting: 0,
+      overlays: 0
+    };
+
     const stats: SceneBudgetStats = {
       drawablesCount: 0,
       gradientShapesCount: 0,
       particlesCount: 0,
-      filtersCount: 0
+      filtersCount: 0,
+      categories
     };
 
     const gradientCache = new Map<string, string>();
@@ -231,6 +250,8 @@ export class SceneCompositor {
 
     builder.addRect(0, 0, this.width, this.height, 'url(#backdrop_linear)');
     stats.gradientShapesCount++;
+    stats.drawablesCount++;
+    categories.lighting++;
 
     // Optional audio glow halo behind characters
     if (pulseResult.haloOpacity > 0.02) {
@@ -271,6 +292,8 @@ export class SceneCompositor {
         'url(#audio_halo)'
       );
       stats.gradientShapesCount++;
+      stats.drawablesCount++;
+      categories.lighting++;
     }
 
     // 2. Collect sortable primitives
@@ -537,6 +560,7 @@ export class SceneCompositor {
         if (camVerts.every((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
           sortables.push({
             kind: 'env_polygon',
+            category: 'lighting',
             vertices: camVerts,
             depthKey: entity.worldPosition[2] - 2,
             tier: 1,
@@ -577,6 +601,7 @@ export class SceneCompositor {
         if (camVerts.some((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
           sortables.push({
             kind: 'env_polygon',
+            category: 'lighting',
             vertices: camVerts,
             depthKey: targetZ - 15,
             tier: 2,
@@ -602,6 +627,7 @@ export class SceneCompositor {
       if (camHaze.some((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
         sortables.push({
           kind: 'env_polygon',
+          category: 'lighting',
           vertices: camHaze,
           depthKey: -90,
           tier: 1,
@@ -626,12 +652,20 @@ export class SceneCompositor {
           const clipped = clipAndProjectCameraPolygon(camVerts, camera, this.width, this.height);
           if (clipped && clipped.vertices.length >= 3) {
             stats.drawablesCount++;
+            if (item.category === 'lighting') {
+              categories.lighting++;
+            } else {
+              categories.environment++;
+            }
             const pts = clipped.vertices.map((v) => [v.x, v.y] as [number, number]);
-            // Add a 1px same-color seam stroke on split or opaque 3D faces to eliminate subpixel anti-aliasing seams without shared-stroke clashing
-            const useSeamStroke = Boolean(item.wasSplit) || (item.opacity as number) >= 1;
+            // Add a 1px same-color seam stroke on split 3D faces to eliminate subpixel anti-aliasing seams without shared-stroke clashing
+            const useSeamStroke = Boolean(item.wasSplit);
             const stroke = useSeamStroke ? (item.fill as string) : undefined;
             const strokeWidth = useSeamStroke ? 1 : 0;
-            builder.addPolygon(pts, item.fill as string, stroke, strokeWidth, item.opacity as number);
+            const rawOpacity = item.opacity as number;
+            // For static opaque architecture / ground (category !== 'lighting'), clamp near-opaque (>= 0.94) to 1.0 to eliminate offscreen transparency group allocations
+            const polyOpacity = item.category === 'lighting' ? rawOpacity : (rawOpacity >= 0.94 ? 1.0 : rawOpacity);
+            builder.addPolygon(pts, item.fill as string, stroke, strokeWidth, polyOpacity);
           }
           break;
         }
@@ -642,6 +676,7 @@ export class SceneCompositor {
           const clipped = clipAndProjectCameraLine(p0, p1, camera, this.width, this.height);
           if (clipped) {
             stats.drawablesCount++;
+            categories.environment++;
             builder.addLine(
               clipped.p0.x,
               clipped.p0.y,
@@ -670,6 +705,7 @@ export class SceneCompositor {
           }
           stats.drawablesCount++;
           stats.particlesCount++;
+          categories.environment++;
           builder.addCircle(
             screenCenter.x,
             screenCenter.y,
@@ -732,6 +768,7 @@ export class SceneCompositor {
       frameState.transitionOverlayOpacity > 0.01
     ) {
       stats.drawablesCount++;
+      categories.overlays++;
       builder.addRect(
         0,
         0,
@@ -745,6 +782,7 @@ export class SceneCompositor {
     // Theatrical Audio Strobe / Impact Flash on heavy drum onsets
     if (pulseResult.strobeFlash > 0.05) {
       stats.drawablesCount++;
+      categories.lighting++;
       builder.addRect(
         0,
         0,
@@ -787,6 +825,7 @@ export class SceneCompositor {
           // Semi-transparent dark backing plate for high-contrast lyric legibility
           b.addRect(boxX, boxY, boxW, boxH, '#060814', 0.78);
           stats.drawablesCount++;
+          categories.overlays++;
           // Single crisp foreground lyric text without dark ghost shadow duplicate
           b.addText(
             lyric.text,
@@ -797,6 +836,8 @@ export class SceneCompositor {
             BUNDLED_FONT_FAMILY,
             'middle'
           );
+          stats.drawablesCount++;
+          categories.overlays++;
         });
       }
     }
@@ -818,13 +859,19 @@ export class SceneCompositor {
   ): void {
     const opacity = part.style.opacity * entity.opacity;
     if (opacity <= 0.01) return;
+    const rigCat = rig.type === 'character' ? 'characters' : rig.type === 'prop' ? 'props' : 'environment';
+
+    // Projected character screen height in pixels for level-of-detail (LOD) decisions
+    const charScreenHeight = 100 * ctx.scaleFactor * Math.abs(ctx.entityScale[1]);
+    const isDistantCharacter = charScreenHeight < 280;
 
     const fillInfo = resolveRigPaint(
       part.style.fill,
       palette,
       part.style.lit,
       builder,
-      gradientCache
+      gradientCache,
+      isDistantCharacter
     );
     if (fillInfo.isGradient) stats.gradientShapesCount++;
 
@@ -872,10 +919,15 @@ export class SceneCompositor {
     switch (part.shape.kind) {
       case 'rect': {
         const [w, h] = part.shape.size;
+        const wScreen = w * ctx.scaleFactor * Math.abs(ctx.entityScale[0]);
+        const hScreen = h * ctx.scaleFactor * Math.abs(ctx.entityScale[1]);
+        if (isDistantCharacter && wScreen < 0.75 && hScreen < 0.75) return;
+
         const localPts = buildRoundedRectPoints(w, h, part.shape.rx, part.shape.ry);
         const pts: [number, number][] = localPts.map((pt) => transformPoint(pt));
         if (isOffScreen(pts, strokeMargin)) return;
         stats.drawablesCount++;
+        if (stats.categories) stats.categories[rigCat]++;
         builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         break;
       }
@@ -886,6 +938,9 @@ export class SceneCompositor {
           ? Math.max(0, Math.min(1, entity.morphWeights.blink ?? 0))
           : 0;
         const ryLocal = ryRaw * (1 - 0.85 * blinkWeight);
+        const rScreenMax = Math.max(rxLocal, ryLocal) * ctx.scaleFactor * Math.abs(ctx.entityScale[0]);
+        if (isDistantCharacter && rScreenMax < 0.75) return;
+
         if (
           Math.abs(rxLocal - ryLocal) < 1e-4 &&
           Math.abs(Math.abs(ctx.entityScale[0]) - Math.abs(ctx.entityScale[1])) < 1e-4 &&
@@ -902,9 +957,11 @@ export class SceneCompositor {
             return;
           }
           stats.drawablesCount++;
+          if (stats.categories) stats.categories[rigCat]++;
           builder.addCircle(center[0], center[1], rScreen, fillInfo.fillAttr, opacity);
         } else {
-          const steps = 12;
+          // Adaptive step count: 8 steps for small/distant ellipses (sagitta error < 0.3px), 12 for near/large
+          const steps = isDistantCharacter || rScreenMax < 16 ? 8 : 12;
           const pts: [number, number][] = [];
           for (let i = 0; i < steps; i++) {
             const angle = (i * Math.PI * 2) / steps;
@@ -912,6 +969,7 @@ export class SceneCompositor {
           }
           if (isOffScreen(pts, strokeMargin)) return;
           stats.drawablesCount++;
+          if (stats.categories) stats.categories[rigCat]++;
           builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         }
         break;
@@ -921,6 +979,7 @@ export class SceneCompositor {
         const pts = part.shape.points.map((p) => transformPoint(p));
         if (isOffScreen(pts, strokeMargin)) return;
         stats.drawablesCount++;
+        if (stats.categories) stats.categories[rigCat]++;
         builder.addPolygon(pts, fillInfo.fillAttr, optionalStroke, strokeWidth, opacity);
         break;
       }
@@ -945,6 +1004,7 @@ export class SceneCompositor {
           transformedCommands.push({ cmd: 'Z' });
         }
         stats.drawablesCount++;
+        if (stats.categories) stats.categories[rigCat]++;
         builder.addPath(transformedCommands, {
           fill: fillInfo.fillAttr !== 'none' ? fillInfo.fillAttr : undefined,
           stroke:
@@ -987,6 +1047,7 @@ export class SceneCompositor {
         transformedCommands.push({ cmd: 'Z' });
 
         stats.drawablesCount++;
+        if (stats.categories) stats.categories[rigCat]++;
         builder.addPath(transformedCommands, {
           fill: fillInfo.fillAttr !== 'none' ? fillInfo.fillAttr : undefined,
           stroke:
@@ -1014,13 +1075,15 @@ export class SceneCompositor {
   ): void {
     const opacity = part.style.opacity * entity.opacity;
     if (opacity <= 0.01) return;
+    const rigCat = rig.type === 'character' ? 'characters' : rig.type === 'prop' ? 'props' : 'environment';
 
     const fillInfo = resolveRigPaint(
       part.style.fill,
       palette,
       part.style.lit,
       builder,
-      gradientCache
+      gradientCache,
+      false
     );
     if (fillInfo.isGradient) stats.gradientShapesCount++;
 
@@ -1101,6 +1164,7 @@ export class SceneCompositor {
       );
       if (clipped && clipped.vertices.length >= 3) {
         stats.drawablesCount++;
+        if (stats.categories) stats.categories[rigCat]++;
         const pts = clipped.vertices.map((v) => [v.x, v.y] as [number, number]);
         builder.addPolygon(pts, fillInfo.fillAttr, undefined, 0, opacity);
       }

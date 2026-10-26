@@ -83,6 +83,9 @@ test('F4 Analytical IK, Gaze & Runtime Verification Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
@@ -384,6 +387,9 @@ test('F4 Analytical IK, Gaze & Runtime Verification Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
@@ -409,6 +415,9 @@ test('F4 Analytical IK, Gaze & Runtime Verification Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
@@ -494,6 +503,9 @@ test('F4 Analytical IK, Gaze & Runtime Verification Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
@@ -547,6 +559,9 @@ test('F4 Analytical IK, Gaze & Runtime Verification Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },

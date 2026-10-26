@@ -143,6 +143,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['desk', 'coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           actions: [{ instanceId: 'protagonist_lead', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7 }],
@@ -160,6 +163,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['desk', 'coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           actions: [{ instanceId: 'protagonist_lead', verb: 'reach_and_grasp', speedNorm: 1.0, intensityNorm: 0.8, associatedPropId: 'coffee_cup' }],
@@ -390,6 +396,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             kitId: 'EXTERIOR_URBAN_VISTA',
             variantId: 'clean_minimal',
             landmarkProps: ['umbrella'],
+            landmarkPlacements: {
+              umbrella: [-30, 24, 0]
+            },
             atmosphericDensity: 0.4
           },
           actions: [
@@ -513,6 +522,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['desk', 'coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           actions: [
@@ -543,6 +555,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             kitId: 'ARCHITECTURAL_INTERIOR',
             variantId: 'moody_night',
             landmarkProps: ['desk', 'coffee_cup'],
+            landmarkPlacements: {
+              coffee_cup: [0, 68, 0]
+            },
             atmosphericDensity: 0.5
           },
           actions: [
@@ -963,6 +978,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             kitId: 'EXTERIOR_URBAN_VISTA',
             variantId: 'clean_minimal',
             landmarkProps: ['umbrella'],
+            landmarkPlacements: {
+              umbrella: [-30, 24, 0]
+            },
             atmosphericDensity: 0.4
           },
           actions: [

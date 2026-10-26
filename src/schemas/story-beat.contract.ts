@@ -48,6 +48,7 @@ export const ParametricSetSelectionSchema = z.object({
   kitId: z.enum(['ARCHITECTURAL_INTERIOR', 'EXTERIOR_URBAN_VISTA']),
   variantId: z.enum(['moody_night', 'dramatic_twilight', 'storm_overcast', 'clean_minimal']),
   landmarkProps: z.array(z.string()).max(4).default([]),
+  landmarkPlacements: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).optional(),
   atmosphericDensity: z.number().finite().min(0).max(1).default(0.5)
 }).strict();
 export type ParametricSetSelection = z.infer<typeof ParametricSetSelectionSchema>;
@@ -62,7 +63,9 @@ export const StoryBeatSchema = z.object({
   presentCharacters: z.array(z.string()).min(1),
   set: ParametricSetSelectionSchema,
   actions: z.array(CharacterActionDirectiveSchema).min(1),
-  camera: CameraIntentSchema
+  camera: CameraIntentSchema,
+  transition: z.enum(['cut', 'dissolve', 'dip_to_black']).optional(),
+  transitionDurationFrames: z.number().int().min(0).max(60).optional()
 }).strict().refine(b => b.endFrame > b.startFrame, {
   message: 'endFrame must be strictly greater than startFrame'
 });
@@ -134,6 +137,7 @@ export const RawParametricSetSelectionSchema = z.object({
   kitId: z.string().optional(),
   variantId: z.string().optional(),
   landmarkProps: z.array(z.string()).optional(),
+  landmarkPlacements: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).optional(),
   atmosphericDensity: z.number().optional()
 });
 
@@ -147,7 +151,9 @@ export const RawStoryBeatSchema = z.object({
   presentCharacters: z.array(z.string()).optional(),
   set: RawParametricSetSelectionSchema.optional(),
   actions: z.array(RawCharacterActionDirectiveSchema).optional(),
-  camera: RawCameraIntentSchema.optional()
+  camera: RawCameraIntentSchema.optional(),
+  transition: z.string().optional(),
+  transitionDurationFrames: z.number().int().optional()
 });
 
 export const RawStoryBeatOutputSchema = z.object({
@@ -412,6 +418,7 @@ export function normalizeStoryBeatVocabulary(raw: unknown): StoryBeatContract {
         kitId,
         variantId,
         landmarkProps: rb.set?.landmarkProps ?? (kitId === 'ARCHITECTURAL_INTERIOR' ? ['desk', 'chair', 'coffee_cup'] : ['lamppost', 'curb']),
+        ...(rb.set?.landmarkPlacements ? { landmarkPlacements: rb.set.landmarkPlacements } : {}),
         atmosphericDensity: typeof rb.set?.atmosphericDensity === 'number' ? Math.max(0, Math.min(1, rb.set.atmosphericDensity)) : 0.5
       },
       actions,
@@ -421,7 +428,13 @@ export function normalizeStoryBeatVocabulary(raw: unknown): StoryBeatContract {
         focalCharacterId: rb.camera?.focalCharacterId ?? cast[0].instanceId,
         lookRoom,
         dutchAngleDeg: typeof rb.camera?.dutchAngleDeg === 'number' ? Math.max(-15, Math.min(15, rb.camera.dutchAngleDeg)) : 0
-      }
+      },
+      ...(rb.transition === 'cut' || rb.transition === 'dissolve' || rb.transition === 'dip_to_black'
+        ? { transition: rb.transition }
+        : {}),
+      ...(typeof rb.transitionDurationFrames === 'number'
+        ? { transitionDurationFrames: Math.max(0, Math.min(60, rb.transitionDurationFrames)) }
+        : {})
     });
   }
 

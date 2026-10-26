@@ -9,7 +9,15 @@ import {
 } from '../src/engine/audio/index.js';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
 import { runProductionPipeline } from '../src/engine/director/production-pipeline.js';
-import type { StoryBeatContract } from '../src/schemas/story-beat.contract.js';
+import {
+  STAGE2_DURATION_SEC,
+  STAGE2_FPS,
+  STAGE2_TOTAL_FRAMES,
+  STAGE2_RAW_LRC,
+  STAGE2_STORY_BEAT_CONTRACT,
+  STAGE2_SYNTHETIC_STORY_SPEC,
+  STAGE2_RENDER_OPTIONS
+} from '../src/demo/stage2-scene.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -18,9 +26,9 @@ async function main() {
   console.log('STAGE 2: TWO CHARACTERS INTERACTING IN CONTRASTING SETS');
   console.log('================================================================');
 
-  const durationSec = 35;
-  const fps = 30;
-  const totalFrames = durationSec * fps; // 1050 frames
+  const durationSec = STAGE2_DURATION_SEC;
+  const fps = STAGE2_FPS;
+  const totalFrames = STAGE2_TOTAL_FRAMES;
   const artifactsDir = path.resolve(process.cwd(), 'output', 'artifacts', 'stage2_two_characters');
   const outputMp4 = path.resolve(process.cwd(), 'output', 'stage2_two_characters_final.mp4');
   const reviewDir = path.resolve(process.cwd(), 'output', 'review_stage2');
@@ -29,7 +37,7 @@ async function main() {
   fs.mkdirSync(reviewDir, { recursive: true });
 
   // 1. Synthesize Audio & Lyrics
-  console.log('\n[1/5] Synthesizing 35s Musical Audio & Multilingual Lyrics...');
+  console.log(`\n[1/5] Synthesizing 35s Musical Audio & Multilingual Lyrics (${totalFrames} frames)...`);
   const wavPath = path.join(artifactsDir, 'audio.wav');
   const binPath = path.join(artifactsDir, 'features.bin');
   const manifestPath = path.join(artifactsDir, 'audio-manifest.json');
@@ -41,238 +49,19 @@ async function main() {
   });
   fs.writeFileSync(wavPath, wavBuffer);
 
-  const rawLrc = `
-[00:00.00] Di dalam aula temaram melangkah bertaut
-[00:07.00] Bertemu tatap bayang di balik tiang megah
-[00:14.00] Pelukan sesaat lalu terhempas berjarak
-[00:21.00] Berlari keluar menembus dingin lampu kota
-[00:28.00] Menatap menara langit menjulang menanti fajar
-`.trim();
-
   await analyzeWavFileToArtifacts({
     wavFilePath: wavPath,
     outManifestPath: manifestPath,
     outBinaryPath: binPath,
-    rawLrcContent: rawLrc,
+    rawLrcContent: STAGE2_RAW_LRC,
     fps
   });
 
   const { manifest: audioManifest } = loadAudioAnalysis(manifestPath);
 
-  // 2. Define Stage 2 StoryBeatContract (2 characters, 2 sets, bilateral interaction)
-  console.log('\n[2/5] Synthesizing Stage 2 Story Beat Contract...');
-  const storyBeatContract: StoryBeatContract = {
-    projectId: 'stage2_two_characters',
-    songDurationSec: durationSec,
-    fps,
-    sliceFrameRange: { startFrame: 0, endFrame: totalFrames },
-    cast: [
-      {
-        instanceId: 'protagonist_lead',
-        role: 'PROTAGONIST',
-        archetypeId: 'hero_silhouette',
-        palette: { primary: '#0a1128', accent: '#00f0ff' } // Cool cyber-noir
-      },
-      {
-        instanceId: 'narrative_partner',
-        role: 'PARTNER',
-        archetypeId: 'companion_silhouette',
-        palette: { primary: '#3d1c06', accent: '#ff9100' } // Warm industrial copper
-      }
-    ],
-    beats: [
-      {
-        beatId: 'beat_01_interior_approach',
-        startFrame: 0,
-        endFrame: 210,
-        lyricSnippet: 'Di dalam aula temaram melangkah bertaut',
-        emotionalTone: 'reflective',
-        narrativeSubtext: 'Lead and companion approach inside the vaulted interior hall',
-        presentCharacters: ['protagonist_lead', 'narrative_partner'],
-        set: {
-          kitId: 'ARCHITECTURAL_INTERIOR',
-          variantId: 'moody_night',
-          landmarkProps: ['desk', 'coffee_cup'],
-          atmosphericDensity: 0.5
-        },
-        actions: [
-          {
-            instanceId: 'protagonist_lead',
-            verb: 'walk_to',
-            speedNorm: 1.0,
-            intensityNorm: 0.7,
-            target: { kind: 'position', pos: [-34, 0, 0] }
-          },
-          {
-            instanceId: 'narrative_partner',
-            verb: 'walk_to',
-            speedNorm: 1.0,
-            intensityNorm: 0.7,
-            target: { kind: 'position', pos: [34, 0, 0] }
-          }
-        ],
-        camera: {
-          framing: 'WIDE',
-          movement: 'DOLLY',
-          focalCharacterId: 'protagonist_lead',
-          lookRoom: 'center',
-          dutchAngleDeg: 0
-        }
-      },
-      {
-        beatId: 'beat_02_interior_confront',
-        startFrame: 210,
-        endFrame: 420,
-        lyricSnippet: 'Bertemu tatap bayang di balik tiang megah',
-        emotionalTone: 'melancholic',
-        narrativeSubtext: 'Tense confrontation across the desk surface',
-        presentCharacters: ['protagonist_lead', 'narrative_partner'],
-        set: {
-          kitId: 'ARCHITECTURAL_INTERIOR',
-          variantId: 'dramatic_twilight',
-          landmarkProps: ['desk', 'coffee_cup'],
-          atmosphericDensity: 0.6
-        },
-        actions: [
-          {
-            instanceId: 'protagonist_lead',
-            verb: 'reach_and_grasp',
-            speedNorm: 1.0,
-            intensityNorm: 0.8,
-            associatedPropId: 'coffee_cup'
-          },
-          {
-            instanceId: 'narrative_partner',
-            verb: 'look_at',
-            speedNorm: 1.0,
-            intensityNorm: 0.8
-          }
-        ],
-        camera: {
-          framing: 'INSERT',
-          movement: 'STATIC',
-          focalCharacterId: 'protagonist_lead',
-          lookRoom: 'center',
-          dutchAngleDeg: 0
-        }
-      },
-      {
-        beatId: 'beat_03_embrace_push',
-        startFrame: 420,
-        endFrame: 630,
-        lyricSnippet: 'Pelukan sesaat lalu terhempas berjarak',
-        emotionalTone: 'defiant',
-        narrativeSubtext: 'Bilateral embrace and dramatic push-away recoil with guaranteed clearance',
-        presentCharacters: ['protagonist_lead', 'narrative_partner'],
-        set: {
-          kitId: 'ARCHITECTURAL_INTERIOR',
-          variantId: 'dramatic_twilight',
-          landmarkProps: [],
-          atmosphericDensity: 0.6
-        },
-        actions: [
-          {
-            instanceId: 'protagonist_lead',
-            verb: 'embrace_push_away',
-            speedNorm: 1.1,
-            intensityNorm: 0.95
-          },
-          {
-            instanceId: 'narrative_partner',
-            verb: 'embrace_push_away',
-            speedNorm: 1.1,
-            intensityNorm: 0.95
-          }
-        ],
-        camera: {
-          framing: 'MEDIUM',
-          movement: 'PAN',
-          focalCharacterId: 'protagonist_lead',
-          lookRoom: 'center',
-          dutchAngleDeg: 3
-        }
-      },
-      {
-        beatId: 'beat_04_exterior_run',
-        startFrame: 630,
-        endFrame: 840,
-        lyricSnippet: 'Berlari keluar menembus dingin lampu kota',
-        emotionalTone: 'chaotic',
-        narrativeSubtext: 'Characters transition outdoors onto the rainy urban street overlook',
-        presentCharacters: ['protagonist_lead', 'narrative_partner'],
-        set: {
-          kitId: 'EXTERIOR_URBAN_VISTA',
-          variantId: 'storm_overcast',
-          landmarkProps: ['umbrella'],
-          atmosphericDensity: 0.7
-        },
-        actions: [
-          {
-            instanceId: 'protagonist_lead',
-            verb: 'run_to',
-            speedNorm: 1.3,
-            intensityNorm: 0.9,
-            target: { kind: 'position', pos: [65, 0, 0] }
-          },
-          {
-            instanceId: 'narrative_partner',
-            verb: 'walk_to',
-            speedNorm: 1.0,
-            intensityNorm: 0.7,
-            associatedPropId: 'umbrella',
-            target: { kind: 'position', pos: [-15, 0, 0] }
-          }
-        ],
-        camera: {
-          framing: 'WIDE',
-          movement: 'STATIC',
-          focalCharacterId: 'protagonist_lead',
-          lookRoom: 'right',
-          dutchAngleDeg: -2
-        }
-      },
-      {
-        beatId: 'beat_05_exterior_outlook',
-        startFrame: 840,
-        endFrame: 1050,
-        lyricSnippet: 'Menatap menara langit menjulang menanti fajar',
-        emotionalTone: 'euphoric',
-        narrativeSubtext: 'Pointing together towards the towering skyline towers as dawn approaches',
-        presentCharacters: ['protagonist_lead', 'narrative_partner'],
-        set: {
-          kitId: 'EXTERIOR_URBAN_VISTA',
-          variantId: 'clean_minimal',
-          landmarkProps: ['umbrella'],
-          atmosphericDensity: 0.4
-        },
-        actions: [
-          {
-            instanceId: 'protagonist_lead',
-            verb: 'gesture_point',
-            speedNorm: 1.0,
-            intensityNorm: 0.85,
-            target: { kind: 'position', pos: [65, 0, 0] }
-          },
-          {
-            instanceId: 'narrative_partner',
-            verb: 'look_at',
-            speedNorm: 1.0,
-            intensityNorm: 0.75,
-            associatedPropId: 'umbrella',
-            target: { kind: 'position', pos: [-15, 0, 0] }
-          }
-        ],
-        camera: {
-          framing: 'CLOSE_UP',
-          movement: 'STATIC',
-          focalCharacterId: 'protagonist_lead',
-          lookRoom: 'right',
-          dutchAngleDeg: 0
-        }
-      }
-    ],
-    unfulfilledRequests: []
-  };
+  // 2. Story Beat Contract (Imported from src/demo/stage2-scene.js)
+  console.log('\n[2/5] Loading Stage 2 Story Beat Contract from src/demo/stage2-scene.js...');
+  const storyBeatContract = STAGE2_STORY_BEAT_CONTRACT;
 
   // 3. Compile Story Beats
   console.log('\n[3/5] Compiling Story Beats into Production Contracts...');
@@ -295,86 +84,21 @@ async function main() {
     path.join(artifactsDir, 'story-beat.json'),
     JSON.stringify(storyBeatContract, null, 2)
   );
-
-  // Story spec conforming strictly to StorySpecContractSchema for review-sheets helper
-  const syntheticStorySpec = {
-    projectId: 'stage2_two_characters',
-    title: 'Stage 2: Bilateral Interaction & Contrasting Sets',
-    overallMood: 'cyber_noir_theatrical',
-    themes: ['conflict', 'connection', 'urban_journey'],
-    genreProfile: 'neutral' as const,
-    cast: [
-      {
-        instanceId: 'protagonist_lead',
-        role: 'PROTAGONIST' as const,
-        archetypeId: 'hero_silhouette' as const,
-        paletteOverrides: { primary: '#0a1128', accent: '#00f0ff' },
-        accessories: ['coffee_cup']
-      },
-      {
-        instanceId: 'narrative_partner',
-        role: 'PARTNER' as const,
-        archetypeId: 'companion_silhouette' as const,
-        paletteOverrides: { primary: '#3d1c06', accent: '#ff9100' },
-        accessories: ['umbrella']
-      }
-    ],
-    sections: storyBeatContract.beats.map((b) => ({
-      sectionId: b.beatId,
-      startFrame: b.startFrame,
-      endFrame: b.endFrame,
-      narrativeIntent: b.narrativeSubtext,
-      emotionalTone: b.emotionalTone,
-      stagingMode: 'theatrical' as const,
-      theatricalSetId: b.set.kitId,
-      interactionBehavior:
-        b.beatId === 'beat_03_embrace_push'
-          ? ('FACE_TO_FACE' as const)
-          : b.beatId === 'beat_04_exterior_run'
-            ? ('PARALLEL_WALK' as const)
-            : ('DUET_PERFORMANCE' as const),
-      environmentKitId: 'industrial_city' as const,
-      kitParams: {},
-      colorThemeId: 'CYBERPUNK_CYAN' as const,
-      cameraIntensity: 0.6,
-      castDirectives: [
-        {
-          instanceId: 'protagonist_lead',
-          motionPreset: 'pop_vocal_sway' as const,
-          waypoints: [{ frameProgress: 0, stagePosNorm: [0, 0, 0] as [number, number, number] }]
-        },
-        {
-          instanceId: 'narrative_partner',
-          motionPreset: 'pop_vocal_sway' as const,
-          waypoints: [{ frameProgress: 0, stagePosNorm: [0, 0, 0] as [number, number, number] }]
-        }
-      ]
-    }))
-  };
   fs.writeFileSync(
     path.join(artifactsDir, 'story-spec.json'),
-    JSON.stringify(syntheticStorySpec, null, 2)
+    JSON.stringify(STAGE2_SYNTHETIC_STORY_SPEC, null, 2)
   );
 
   // 4. Render Video via Production Pipeline
   console.log('\n[4/5] Rendering Video via Zero-Disk Streaming Production Pipeline...');
   const renderResult = await runProductionPipeline({
+    ...STAGE2_RENDER_OPTIONS,
     audioPath: wavPath,
     fromArtifactsDir: artifactsDir,
-    outputPath: outputMp4,
-    stagingMode: 'theatrical',
-    fps,
-    width: 1920,
-    height: 1080,
-    crf: 18,
-    preset: 'superfast',
-    threads: 5,
-    chunkFrames: 350,
-    resume: false
+    outputPath: outputMp4
   });
 
   console.log(`✓ Video rendered: ${renderResult.finalOutputPath} (${(renderResult.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB)`);
-  console.log(`  Effective FPS: ${renderResult.effectiveFps.toFixed(2)} | Peak Aggregate Memory: ${renderResult.peakAggregateRssMb.toFixed(2)} MB`);
 
   const bilateralAliasMp4 = path.resolve(process.cwd(), 'output', 'stage2_bilateral_final.mp4');
   fs.copyFileSync(outputMp4, bilateralAliasMp4);
@@ -404,11 +128,55 @@ async function main() {
       .map((f) => path.join(reviewDir, f))
   ]);
 
+  const zipStats = fs.statSync(zipPath);
   console.log(`✓ Review sheets generated in: ${reviewDir}`);
-  console.log(`✓ Review ZIP archive created: ${zipPath}`);
+  console.log(`✓ Review ZIP archive created: ${zipPath} (${(zipStats.size / (1024 * 1024)).toFixed(2)} MB)`);
+
+  // 6. Print Comprehensive Gates & Timing Report
+  const medianFps = renderResult.medianFps;
+  const peakAggMb = renderResult.peakAggregateRssMb;
+  const peakNodeMb = renderResult.peakNodeRssMb;
+  const peakChildMb = renderResult.peakChildRssMb;
+  const maxDrawables = renderResult.drawableStats?.total.max ?? 0;
+
+  const fpsPass = medianFps >= 15.0;
+  const memPass = peakAggMb <= 600.0;
+  const memWarn = peakAggMb > 400.0 && peakAggMb <= 600.0;
+  const drawablesPass = maxDrawables <= 220;
+
   console.log('\n================================================================');
-  console.log('STAGE 2 COMPLETE: Ready for Review Gate 2 Evaluation');
+  console.log('                 STAGE 2 METRICS & BUDGET REPORT                ');
   console.log('================================================================');
+  console.log('Per-Stage Frame Timing (avg / p95):');
+  console.log(`  Generate:   ${renderResult.timingStats?.generate.avgMs.toFixed(2)} ms / ${renderResult.timingStats?.generate.p95Ms.toFixed(2)} ms`);
+  console.log(`  Rasterize:  ${renderResult.timingStats?.rasterize.avgMs.toFixed(2)} ms / ${renderResult.timingStats?.rasterize.p95Ms.toFixed(2)} ms`);
+  console.log(`  Wait/Pipe:  ${renderResult.timingStats?.wait.avgMs.toFixed(2)} ms / ${renderResult.timingStats?.wait.p95Ms.toFixed(2)} ms`);
+  console.log('\nDrawable Counts by Category (max / mean / p95):');
+  if (renderResult.drawableStats) {
+    const cats = renderResult.drawableStats.categories;
+    console.log(`  Environment: ${cats.environment.max} / ${cats.environment.mean.toFixed(1)} / ${cats.environment.p95}`);
+    console.log(`  Characters:  ${cats.characters.max} / ${cats.characters.mean.toFixed(1)} / ${cats.characters.p95}`);
+    console.log(`  Props:       ${cats.props.max} / ${cats.props.mean.toFixed(1)} / ${cats.props.p95}`);
+    console.log(`  Lighting:    ${cats.lighting.max} / ${cats.lighting.mean.toFixed(1)} / ${cats.lighting.p95}`);
+    console.log(`  Overlays:    ${cats.overlays.max} / ${cats.overlays.mean.toFixed(1)} / ${cats.overlays.p95}`);
+    console.log(`  Total:       ${renderResult.drawableStats.total.max} / ${renderResult.drawableStats.total.mean.toFixed(1)} / ${renderResult.drawableStats.total.p95} (Budget <= 220)`);
+  }
+  console.log('\nSystem & Memory Performance:');
+  console.log(`  Peak Node RSS:      ${peakNodeMb.toFixed(2)} MB`);
+  console.log(`  Peak FFmpeg RSS:    ${peakChildMb.toFixed(2)} MB`);
+  console.log(`  Peak Aggregate RSS: ${peakAggMb.toFixed(2)} MB  [${memPass ? (memWarn ? 'WARN' : 'PASS') : 'FAIL'}] (Target < 400 MB, Hard fail > 600 MB)`);
+  console.log(`  Median FPS:         ${medianFps.toFixed(2)} FPS  [${fpsPass ? 'PASS' : 'FAIL'}] (Gate >= 15.0 FPS)`);
+  console.log(`  Effective FPS:      ${renderResult.effectiveFps.toFixed(2)} FPS`);
+  console.log(`  Drawables Peak:     ${maxDrawables}  [${drawablesPass ? 'PASS' : 'FAIL'}] (Budget <= 220)`);
+  console.log('================================================================');
+
+  if (!fpsPass || !memPass || !drawablesPass) {
+    console.error('FATAL: Stage 2 failed one or more performance gates!');
+    process.exit(1);
+  }
+
+  console.log('STAGE 2 COMPLETE: Ready for Review Gate 2 Evaluation');
+  console.log('================================================================\n');
 }
 
 main().catch((err) => {

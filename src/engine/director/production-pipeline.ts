@@ -9,7 +9,8 @@ import { MEMORY_TARGET_MB, MEMORY_HARD_FAIL_MB } from '../../diagnostics/benchma
 import { probeVideo, assertBt709Tv } from '../../diagnostics/ffprobe.js';
 import { findTemporaryImageFiles } from '../../diagnostics/artifact-hygiene.js';
 import { FrameStateBuilder } from './frame-state-builder.js';
-import { SceneCompositor } from '../compositor/scene-compositor.js';
+import { SceneCompositor, type SceneBudgetStats } from '../compositor/scene-compositor.js';
+import type { FrameTimings } from '../../renderer/pipeline.js';
 import {
   loadAudioAnalysis,
   resolveCrossPlatformPath,
@@ -86,6 +87,34 @@ export interface ProductionPipelineOptions {
   readonly onProgress?: (progress: ProductionProgress) => void;
 }
 
+export interface TimingMetric {
+  avgMs: number;
+  p95Ms: number;
+}
+
+export interface CategoryMetric {
+  max: number;
+  mean: number;
+  p95: number;
+}
+
+export interface ProductionDrawableStats {
+  total: CategoryMetric;
+  categories: {
+    environment: CategoryMetric;
+    characters: CategoryMetric;
+    props: CategoryMetric;
+    lighting: CategoryMetric;
+    overlays: CategoryMetric;
+  };
+}
+
+export interface ProductionTimingStats {
+  generate: TimingMetric;
+  rasterize: TimingMetric;
+  wait: TimingMetric;
+}
+
 export interface ProductionPipelineResult {
   readonly finalOutputPath: string;
   readonly fileSizeBytes: number;
@@ -99,7 +128,10 @@ export interface ProductionPipelineResult {
   readonly memoryGateStatus: 'pass' | 'warning';
   readonly wallTimeSeconds: number;
   readonly effectiveFps: number;
+  readonly medianFps: number;
   readonly artifactsDir: string;
+  readonly timingStats?: ProductionTimingStats;
+  readonly drawableStats?: ProductionDrawableStats;
 }
 
 export interface ProductionMemoryGateEvaluation {
@@ -563,6 +595,9 @@ export async function runProductionPipeline(
   });
   const compositor = new SceneCompositor({ width, height, fps });
 
+  const recordedDrawables: SceneBudgetStats[] = [];
+  const recordedTimings: FrameTimings[] = [];
+
   const globalFrameGenerator = (globalIndex: number): string => {
     const clampedIndex = Math.max(0, Math.min(totalFrames - 1, globalIndex));
     const frameState = stateBuilder.buildFrameState(clampedIndex);
@@ -574,6 +609,7 @@ export async function runProductionPipeline(
       onsetFrames,
       (f) => audioReader.getFrameFeature(Math.max(0, Math.min(totalFrames - 1, f)))
     );
+    recordedDrawables.push(result.stats);
     return result.svg;
   };
 
@@ -636,8 +672,11 @@ export async function runProductionPipeline(
         fingerprint,
         abortSignal: memoryAbortController.signal,
         onChildPidChange: (pid) => sampler.setChildPid(pid),
-        onChunkFrameRendered: (localIndex, globalIndex) => {
+        onChunkFrameRendered: (localIndex, globalIndex, timings) => {
           renderedFramesInSession++;
+          if (timings) {
+            recordedTimings.push(timings);
+          }
           if (localIndex === Math.floor(chunk.frameCount / 2) || localIndex === chunk.frameCount - 1) {
             sampler.sample();
           }
@@ -773,6 +812,49 @@ export async function runProductionPipeline(
     console.log('================================================================\n');
   }
 
+  // Compute medianFps, timingStats, and drawableStats
+  const frameDurationsMs = recordedTimings.map((t) => t.genMs + t.rasterMs + t.writeMs);
+  const sortedFps = frameDurationsMs
+    .map((ms) => (ms > 0 ? 1000 / ms : effectiveFps))
+    .sort((a, b) => a - b);
+  const medianFps = sortedFps.length > 0
+    ? Number(sortedFps[Math.floor(sortedFps.length / 2)].toFixed(2))
+    : Number(effectiveFps.toFixed(2));
+
+  const computeTimingMetric = (vals: number[]): TimingMetric => {
+    if (vals.length === 0) return { avgMs: 0, p95Ms: 0 };
+    const sorted = [...vals].sort((a, b) => a - b);
+    const avg = Number((sorted.reduce((acc, v) => acc + v, 0) / sorted.length).toFixed(2));
+    const p95 = Number(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))].toFixed(2));
+    return { avgMs: avg, p95Ms: p95 };
+  };
+
+  const timingStats: ProductionTimingStats = {
+    generate: computeTimingMetric(recordedTimings.map((t) => t.genMs)),
+    rasterize: computeTimingMetric(recordedTimings.map((t) => t.rasterMs)),
+    wait: computeTimingMetric(recordedTimings.map((t) => t.writeMs))
+  };
+
+  const computeCategoryMetric = (vals: number[]): CategoryMetric => {
+    if (vals.length === 0) return { max: 0, mean: 0, p95: 0 };
+    const sorted = [...vals].sort((a, b) => a - b);
+    const max = sorted[sorted.length - 1];
+    const mean = Number((sorted.reduce((acc, v) => acc + v, 0) / sorted.length).toFixed(1));
+    const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
+    return { max, mean, p95 };
+  };
+
+  const drawableStats: ProductionDrawableStats = {
+    total: computeCategoryMetric(recordedDrawables.map((s) => s.drawablesCount)),
+    categories: {
+      environment: computeCategoryMetric(recordedDrawables.map((s) => s.categories?.environment ?? 0)),
+      characters: computeCategoryMetric(recordedDrawables.map((s) => s.categories?.characters ?? 0)),
+      props: computeCategoryMetric(recordedDrawables.map((s) => s.categories?.props ?? 0)),
+      lighting: computeCategoryMetric(recordedDrawables.map((s) => s.categories?.lighting ?? 0)),
+      overlays: computeCategoryMetric(recordedDrawables.map((s) => s.categories?.overlays ?? 0))
+    }
+  };
+
   return {
     finalOutputPath: stitchResult.finalOutputPath,
     fileSizeBytes: stitchResult.fileSizeBytes,
@@ -786,6 +868,9 @@ export async function runProductionPipeline(
     memoryGateStatus: gateEval.status,
     wallTimeSeconds: totalElapsedSec,
     effectiveFps,
-    artifactsDir
+    medianFps,
+    artifactsDir,
+    timingStats,
+    drawableStats
   };
 }

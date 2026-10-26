@@ -39,7 +39,10 @@ test('F2 Verb Compiler Multi-Beat & Invariant Suite', async (t) => {
     set: {
       kitId: 'ARCHITECTURAL_INTERIOR',
       variantId: 'moody_night',
-      landmarkProps: ['coffee_cup'],
+      landmarkProps: actions?.some(a => a.associatedPropId || a.target?.kind === 'prop') ? ['coffee_cup'] : [],
+      landmarkPlacements: {
+        coffee_cup: [0, 68, 0]
+      },
       atmosphericDensity: 0.5
     },
     camera: {
@@ -315,6 +318,85 @@ test('F2 Verb Compiler Multi-Beat & Invariant Suite', async (t) => {
         VerbCompiler.compile(contract);
       },
       /references associatedPropId "missing_prop" not present in set.landmarkProps/i
+    );
+  });
+
+  await t.test('F2 Regression: Reach and shoulder derived values change when rig arm lengths or scale change', () => {
+    const standardMetrics = VerbCompiler.deriveRigArmMetrics(undefined, 'hand_r');
+    assert.equal(standardMetrics.upperArmLength, 18);
+    assert.equal(standardMetrics.lowerArmLength, 16);
+    assert.equal(standardMetrics.maxReach, 34);
+
+    const customRig = {
+      id: 'custom_char',
+      type: 'character' as const,
+      baseTransform: { position: [0, 0, 0] as [number, number, number], rotationZDegrees: 0, scale: [1, 1] as [number, number], opacity: 1 },
+      skeleton: {
+        rootJointId: 'torso',
+        joints: [
+          { id: 'torso', parentJointId: null, localOffset2D: [0, 20] as [number, number], length: 20 },
+          { id: 'arm_r_upper', parentJointId: 'torso', localOffset2D: [10, 18] as [number, number], length: 30 },
+          { id: 'arm_r_lower', parentJointId: 'arm_r_upper', localOffset2D: [0, -30] as [number, number], length: 25 }
+        ]
+      },
+      parts: []
+    };
+
+    const customMetrics = VerbCompiler.deriveRigArmMetrics(customRig as any, 'hand_r');
+    assert.equal(customMetrics.upperArmLength, 30);
+    assert.equal(customMetrics.lowerArmLength, 25);
+    assert.equal(customMetrics.maxReach, 55);
+    assert.notEqual(customMetrics.maxReach, standardMetrics.maxReach);
+    assert.deepEqual(customMetrics.shoulderOffset, [10, 38]);
+  });
+
+  await t.test('F2 Regression: One-shot clip timing follows actual clip length (loopFrames)', () => {
+    const beat = createBeat('b1', 0, 70, [
+      {
+        instanceId: 'hero',
+        verb: 'reach_and_grasp',
+        associatedPropId: 'coffee_cup',
+        speedNorm: 1.0,
+        intensityNorm: 0.7
+      }
+    ]);
+    const contract = createBaseContract([beat], 70);
+    const prod = VerbCompiler.compile(contract);
+    const track = prod.choreography.tracks.find((t) => t.rigId === 'hero');
+    assert.ok(track);
+    assert.equal(track.pose?.timeScale, 3.0);
+  });
+
+  await t.test('F2 Regression: Compile errors for undeterminable prop placement', () => {
+    const beat: StoryBeat = {
+      beatId: 'b_undeterminable',
+      startFrame: 0,
+      endFrame: 60,
+      lyricSnippet: '',
+      emotionalTone: 'reflective',
+      narrativeSubtext: 'undeterminable prop',
+      presentCharacters: ['hero'],
+      set: {
+        kitId: 'ARCHITECTURAL_INTERIOR',
+        variantId: 'moody_night',
+        landmarkProps: ['coffee_cup'],
+        atmosphericDensity: 0.5
+      },
+      camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
+      actions: [
+        {
+          instanceId: 'hero',
+          verb: 'walk_to',
+          target: { kind: 'position', pos: [20, 0, 0] },
+          speedNorm: 1.0,
+          intensityNorm: 0.7
+        }
+      ]
+    };
+    const contract = createBaseContract([beat], 60);
+    assert.throws(
+      () => VerbCompiler.compile(contract),
+      /Unable to determine initial placement for prop "coffee_cup"/i
     );
   });
 });

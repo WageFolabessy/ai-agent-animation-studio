@@ -14,7 +14,10 @@ export type TheatricalSetId = z.infer<typeof TheatricalSetIdSchema>;
 export const SceneTransitionTypeSchema = z.enum([
   'CUT',
   'CROSS_FADE',
-  'CAMERA_PAN'
+  'CAMERA_PAN',
+  'cut',
+  'dissolve',
+  'dip_to_black'
 ]);
 export type SceneTransitionType = z.infer<typeof SceneTransitionTypeSchema>;
 

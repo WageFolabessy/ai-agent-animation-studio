@@ -27,6 +27,12 @@ import type { EmotionalTone } from '../../../schemas/story-spec.contract.js';
 import type { NarrativePropId, RigSocketSlot } from '../../../schemas/prop.contract.js';
 import { ArchetypeFactory } from '../../library/archetype-factory.js';
 import { PropFactory } from '../../library/prop-factory.js';
+import { VERB_CONSTANTS, type ValidFps, type CanonicalActNumber } from './verb-constants.js';
+
+const HALF = 0.5;
+const EPSILON_SPEED = 1e-3;
+const EPSILON_DISTANCE = 1e-4;
+
 import { THEME_PALETTES } from '../../library/environment-kit.js';
 import {
   synthesizeVocalPerformanceKeyframes,
@@ -68,8 +74,29 @@ export interface PropRuntimeState {
   currentRotationZ: number;
 }
 
+export interface UnreachableTargetEntry {
+  readonly beatId: string;
+  readonly instanceId: string;
+  readonly verb: string;
+  readonly requestedDistance: number;
+  readonly achievableDistance: number;
+  readonly durationFrames: number;
+  readonly minimumFramesNeeded: number;
+  readonly suggestedSpeedNorm?: number;
+}
+
+export interface InvisibleCutEntry {
+  readonly boundaryFrame: number;
+  readonly fromShotId: string;
+  readonly toShotId: string;
+  readonly framingDifference: number;
+  readonly angleDifferenceDeg: number;
+  readonly reason: string;
+}
+
 export interface VerbCompileReport {
   readonly unfulfilledTiming: UnfulfilledTimingEntry[];
+  readonly unreachableTargets: UnreachableTargetEntry[];
   readonly shotSubdivisions: ShotSubdivisionEntry[];
   readonly reachClamps: Array<{
     readonly beatId: string;
@@ -78,6 +105,7 @@ export interface VerbCompileReport {
     readonly clampedReach: number;
     readonly maxReach: number;
   }>;
+  readonly invisibleCuts: InvisibleCutEntry[];
 }
 
 export interface CompiledStoryBeatProduction {
@@ -96,6 +124,11 @@ export interface LocomotionPlanResult {
   readonly arriveF: number;
   readonly vActual: number;
   readonly isEarlyArrival: boolean;
+  readonly isUnreachable?: boolean;
+  readonly requestedDistance?: number;
+  readonly achievableDistance?: number;
+  readonly minimumFramesNeeded?: number;
+  readonly suggestedSpeedNorm?: number;
   readonly unfulfilledReason?: string;
 }
 
@@ -109,13 +142,7 @@ const PALETTE_TONE_MAP: Record<string, ColorLightingPalette> = {
   chaotic: THEME_PALETTES.VOLTAGE_ORANGE
 };
 
-const FRAMING_DISTANCE_MAP: Record<CameraFraming, number> = {
-  EXTREME_WIDE: 360,
-  WIDE: 260,
-  MEDIUM: 180,
-  CLOSE_UP: 125,
-  EXTREME_CLOSE_UP: 85
-};
+const FRAMING_DISTANCE_MAP = VERB_CONSTANTS.FRAMING_DISTANCE_MAP;
 
 function lerpCameraTransform(c1: CameraTransform, c2: CameraTransform, u: number): CameraTransform {
   if (c1.projectionMode === 'perspective' && c2.projectionMode === 'perspective') {
@@ -137,7 +164,7 @@ function lerpCameraTransform(c1: CameraTransform, c2: CameraTransform, u: number
         c1.up[2] + (c2.up[2] - c1.up[2]) * u
       ],
       rollDegrees: (c1.rollDegrees ?? 0) + ((c2.rollDegrees ?? 0) - (c1.rollDegrees ?? 0)) * u,
-      verticalFovDegrees: (c1.verticalFovDegrees ?? 50) + ((c2.verticalFovDegrees ?? 50) - (c1.verticalFovDegrees ?? 50)) * u,
+      verticalFovDegrees: (c1.verticalFovDegrees ?? VERB_CONSTANTS.DEFAULT_CAMERA_FOV) + ((c2.verticalFovDegrees ?? VERB_CONSTANTS.DEFAULT_CAMERA_FOV) - (c1.verticalFovDegrees ?? VERB_CONSTANTS.DEFAULT_CAMERA_FOV)) * u,
       nearPlane: c1.nearPlane,
       farPlane: c1.farPlane
     };
@@ -146,12 +173,60 @@ function lerpCameraTransform(c1: CameraTransform, c2: CameraTransform, u: number
 }
 
 export class VerbCompiler {
-  public static readonly MIN_BEAT_LENGTH_FRAMES = 12;
+  public static readonly MIN_BEAT_LENGTH_FRAMES = VERB_CONSTANTS.MIN_BEAT_LENGTH_FRAMES;
+
+  public static deriveRigArmMetrics(
+    rig: AssetRigContract | undefined,
+    hand: 'hand_l' | 'hand_r'
+  ): {
+    readonly shoulderOffset: [number, number];
+    readonly upperArmLength: number;
+    readonly lowerArmLength: number;
+    readonly maxReach: number;
+  } {
+    const isLeft = hand === 'hand_l';
+    const upperArmId = isLeft ? 'arm_l_upper' : 'arm_r_upper';
+    const lowerArmId = isLeft ? 'arm_l_lower' : 'arm_r_lower';
+
+    const skeleton = rig?.skeleton;
+    const upperJoint = skeleton?.joints.find((j) => j.id === upperArmId);
+    const lowerJoint = skeleton?.joints.find((j) => j.id === lowerArmId);
+    const torsoJoint = skeleton?.joints.find((j) => j.id === 'torso');
+
+    const upperLen = upperJoint?.length ?? VERB_CONSTANTS.DEFAULT_UPPER_ARM_LENGTH;
+    const lowerLen = lowerJoint?.length ?? VERB_CONSTANTS.DEFAULT_LOWER_ARM_LENGTH;
+
+    const torsoX = torsoJoint?.localOffset2D[0] ?? 0;
+    const torsoY = torsoJoint?.localOffset2D[1] ?? VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y;
+
+    const upperX =
+      upperJoint?.localOffset2D[0] ??
+      (isLeft ? -VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_X : VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_X);
+    const upperY = upperJoint?.localOffset2D[1] ?? VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y;
+
+    const shoulderLocalX = torsoX + upperX;
+    const shoulderLocalY = torsoY + upperY;
+
+    return {
+      shoulderOffset: [shoulderLocalX, shoulderLocalY],
+      upperArmLength: upperLen,
+      lowerArmLength: lowerLen,
+      maxReach: upperLen + lowerLen
+    };
+  }
 
   public static resolveInitialPropPlacement(
     propId: string,
-    beats: StoryBeatContract['beats']
+    beats: StoryBeatContract['beats'],
+    cast?: StoryBeatContract['cast'],
+    activeRigs?: Map<string, AssetRigContract>
   ): [number, number, number] {
+    for (const b of beats) {
+      if (b.set.landmarkPlacements && b.set.landmarkPlacements[propId]) {
+        return [...b.set.landmarkPlacements[propId]];
+      }
+    }
+
     for (const b of beats) {
       for (const a of b.actions) {
         if (
@@ -162,14 +237,29 @@ export class VerbCompiler {
         }
       }
     }
+
+    for (const b of beats) {
+      for (const a of b.actions) {
+        if (a.associatedPropId === propId) {
+          const char = cast?.find((c) => c.instanceId === a.instanceId) ?? cast?.[0];
+          const charRig = char ? activeRigs?.get(char.instanceId) : undefined;
+          const hand: 'hand_l' | 'hand_r' = a.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+          const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
+          const isCompanion = char?.archetypeId === 'companion_silhouette';
+          const baseY = isCompanion ? VERB_CONSTANTS.COMPANION_BASE_Y : VERB_CONSTANTS.HERO_BASE_Y;
+          const scaleY = isCompanion ? VERB_CONSTANTS.COMPANION_SCALE_Y : VERB_CONSTANTS.HERO_SCALE_Y;
+          const handY = baseY + armMetrics.shoulderOffset[1] * scaleY;
+          return [0, handY, 0];
+        }
+      }
+    }
+
     const firstSet = beats[0]?.set;
-    if (firstSet?.kitId === 'ARCHITECTURAL_INTERIOR') {
-      return [0, 68, 0];
-    }
-    if (firstSet?.kitId === 'EXTERIOR_URBAN_VISTA') {
-      return [-30, 24, 0];
-    }
-    return [0, 0, 0];
+    throw new Error(
+      `Unable to determine initial placement for prop "${propId}": ` +
+        `prop has no landmark placement on set kit "${firstSet?.kitId ?? 'unknown'}", ` +
+        `has no explicit verb target position, and is not associated with any character hand socket.`
+    );
   }
 
   public static validateStoryBeatContract(storyBeatContract: StoryBeatContract): void {
@@ -268,7 +358,7 @@ export class VerbCompiler {
   ): CompiledStoryBeatProduction {
     VerbCompiler.validateStoryBeatContract(storyBeatContract);
 
-    const fps: 30 | 60 = storyBeatContract.fps === 60 ? 60 : 30;
+    const fps: ValidFps = storyBeatContract.fps === VERB_CONSTANTS.FPS_60 ? VERB_CONSTANTS.FPS_60 : VERB_CONSTANTS.FPS_30;
     const totalFrames = storyBeatContract.sliceFrameRange.endFrame;
     const beats = storyBeatContract.beats;
 
@@ -306,7 +396,7 @@ export class VerbCompiler {
 
     const propStates = new Map<string, PropRuntimeState>();
     for (const propId of propIds) {
-      const basePos = VerbCompiler.resolveInitialPropPlacement(propId, beats);
+      const basePos = VerbCompiler.resolveInitialPropPlacement(propId, beats, storyBeatContract.cast);
       const propRig = PropFactory.buildStandalonePropRig(propId as NarrativePropId, propId, basePos);
       rigs.set(propRig.id, propRig);
       propStates.set(propId, {
@@ -335,8 +425,8 @@ export class VerbCompiler {
     if (beats.length === 1) {
       const b = beats[0];
       const L = totalFrames;
-      const f1 = Math.max(1, Math.floor(L / 3));
-      const f2 = Math.max(f1 + 1, Math.floor((2 * L) / 3));
+      const f1 = Math.max(1, Math.floor(L / VERB_CONSTANTS.CANONICAL_ACT_COUNT));
+      const f2 = Math.max(f1 + 1, Math.floor((2 * L) / VERB_CONSTANTS.CANONICAL_ACT_COUNT));
 
       const ranges = [
         { startFrame: 0, endFrame: f1 },
@@ -468,8 +558,8 @@ export class VerbCompiler {
     }
 
     const n = shotPlans.length;
-    const idx1 = Math.max(1, Math.min(n - 2, Math.floor(n / 3)));
-    const idx2 = Math.max(idx1 + 1, Math.min(n - 1, Math.floor((2 * n) / 3)));
+    const idx1 = Math.max(1, Math.min(n - 2, Math.floor(n / VERB_CONSTANTS.CANONICAL_ACT_COUNT)));
+    const idx2 = Math.max(idx1 + 1, Math.min(n - 1, Math.floor((2 * n) / VERB_CONSTANTS.CANONICAL_ACT_COUNT)));
     const act2Start = shotPlans[idx1].startFrame;
     const act3Start = shotPlans[idx2].startFrame;
 
@@ -487,7 +577,7 @@ export class VerbCompiler {
         frameRange: { startFrameInclusive: act2Start, endFrameExclusive: act3Start }
       },
       {
-        actNumber: 3,
+        actNumber: VERB_CONSTANTS.CANONICAL_ACT_COUNT,
         title: 'Act III - Climax & Resolution',
         narrativeArc: 'Climax & Departure',
         frameRange: { startFrameInclusive: act3Start, endFrameExclusive: totalFrames }
@@ -501,15 +591,14 @@ export class VerbCompiler {
     for (let cIdx = 0; cIdx < storyBeatContract.cast.length; cIdx++) {
       const c = storyBeatContract.cast[cIdx];
       simX[c.instanceId] = isMultiChar
-        ? (cIdx === 0 ? -92 : 88)
-        : -95;
+        ? (cIdx === 0 ? VERB_CONSTANTS.SIM_TWO_CHAR_LEFT_X : VERB_CONSTANTS.SIM_TWO_CHAR_RIGHT_X) : VERB_CONSTANTS.SIM_HERO_INITIAL_X;
     }
     for (let i = 0; i < beats.length; i++) {
       const beat = beats[i];
       if (i > 0 && beat.set.kitId !== beats[i - 1].set.kitId) {
-        simX[storyBeatContract.cast[0]?.instanceId ?? ''] = -95;
+        simX[storyBeatContract.cast[0]?.instanceId ?? ''] = VERB_CONSTANTS.SIM_HERO_INITIAL_X;
         if (storyBeatContract.cast[1]) {
-          simX[storyBeatContract.cast[1].instanceId] = -125;
+          simX[storyBeatContract.cast[1].instanceId] = VERB_CONSTANTS.SIM_COMPANION_INITIAL_X;
         }
       }
       beatCharX.push({ ...simX });
@@ -518,42 +607,49 @@ export class VerbCompiler {
         const cur = simX[a.instanceId] ?? 0;
         const otherId = beat.presentCharacters.find((id) => id !== a.instanceId);
         const otherCur = otherId ? simX[otherId] : undefined;
-        if (a.verb === 'walk_to') {
-          const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
-          if (tPos !== undefined) {
-            nextSimX[a.instanceId] = tPos;
+        if (a.verb === 'walk_to' || a.verb === 'run_to') {
+          let tPos: number | undefined;
+          if (a.target?.kind === 'position') {
+            tPos = a.target.pos[0];
           } else if (a.associatedPropId && rigs.has(a.associatedPropId)) {
             const propPos = rigs.get(a.associatedPropId)!.baseTransform.position;
-            nextSimX[a.instanceId] = propPos[0] + (cur <= propPos[0] ? -22 : 22);
+            tPos = propPos[0] + (cur <= propPos[0] ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE);
           } else if (otherCur !== undefined) {
-            if (cur < -60 && otherCur < -60) nextSimX[a.instanceId] = cur <= otherCur ? 35 : 65;
-            else nextSimX[a.instanceId] = cur <= otherCur ? -34 : 34;
+            if (cur < VERB_CONSTANTS.SIM_DEEP_ROOM_THRESHOLD && otherCur < VERB_CONSTANTS.SIM_DEEP_ROOM_THRESHOLD) tPos = cur <= otherCur ? VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_LEFT : VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_RIGHT; else tPos = cur <= otherCur ? VERB_CONSTANTS.SIM_CROSS_ROOM_POS_A : VERB_CONSTANTS.SIM_CROSS_ROOM_POS_B;
           } else {
             const firstProp = Array.from(rigs.values()).find((r) => r.type === 'prop');
             if (firstProp) {
               const pX = firstProp.baseTransform.position[0];
-              nextSimX[a.instanceId] = pX + (cur <= pX ? -22 : 22);
+              tPos = pX + (cur <= pX ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE);
             } else {
-              nextSimX[a.instanceId] = Math.min(25, -cur * 0.25);
+              tPos = a.verb === 'run_to' ? VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_RIGHT : Math.min(VERB_CONSTANTS.PROP_APPROACH_CLEARANCE, -cur * VERB_CONSTANTS.BLINK_INTERVAL_RATIO);
             }
           }
-        } else if (a.verb === 'run_to') {
-          const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
-          if (tPos !== undefined) nextSimX[a.instanceId] = tPos;
-          else if (otherCur !== undefined) nextSimX[a.instanceId] = cur <= otherCur ? 65 : 35;
-          else nextSimX[a.instanceId] = 65;
+
+          const deltaF = beat.endFrame - beat.startFrame;
+          const moveF = deltaF > 1 ? deltaF - 1 : deltaF;
+          const charArchetype = storyBeatContract.cast.find((c) => c.instanceId === a.instanceId)?.archetypeId;
+          const charScaleX = charArchetype === 'companion_silhouette' ? VERB_CONSTANTS.COMPANION_SCALE_X : VERB_CONSTANTS.HERO_SCALE_X;
+          const maxDist = VERB_CONSTANTS.MAX_GAIT_TIME_SCALE * ((VERB_CONSTANTS.RUN_STRIDE_LENGTH * charScaleX) / VERB_CONSTANTS.RUN_LOOP_FRAMES) * moveF;
+          const requestedDist = Math.abs(tPos - cur);
+          if (requestedDist > maxDist) {
+            const dir = tPos >= cur ? 1 : -1;
+            nextSimX[a.instanceId] = cur + dir * maxDist;
+          } else {
+            nextSimX[a.instanceId] = tPos;
+          }
         } else if (a.verb === 'carry_put_down') {
           const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
-          nextSimX[a.instanceId] = tPos !== undefined ? tPos : (cur <= 0 ? cur - 46 : cur + 46);
+          nextSimX[a.instanceId] = tPos !== undefined ? tPos : (cur <= 0 ? cur - VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE : cur + VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE);
         } else if (a.verb === 'gesture_point') {
           const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
           if (tPos !== undefined) nextSimX[a.instanceId] = tPos;
-          else if (cur < -50) nextSimX[a.instanceId] = cur + 23;
+          else if (cur < VERB_CONSTANTS.SIM_WALL_THRESHOLD) nextSimX[a.instanceId] = cur + VERB_CONSTANTS.SIM_RETREAT_STEP_DISTANCE;
           else nextSimX[a.instanceId] = cur;
         } else if (a.verb === 'embrace_push_away') {
           if (otherCur !== undefined) {
             const isLeft = cur <= otherCur;
-            nextSimX[a.instanceId] = isLeft ? -50 : 50;
+            nextSimX[a.instanceId] = isLeft ? -VERB_CONSTANTS.SIM_WALL_TARGET_X : VERB_CONSTANTS.SIM_WALL_TARGET_X;
           }
         }
       }
@@ -568,7 +664,7 @@ export class VerbCompiler {
         beat.camera.movement === 'ARC' ? 'ORBIT' : beat.camera.movement;
 
       const palette = PALETTE_TONE_MAP[beat.emotionalTone] ?? THEME_PALETTES.CYBERPUNK_CYAN;
-      const distZ = FRAMING_DISTANCE_MAP[framing] ?? 200;
+      const distZ = FRAMING_DISTANCE_MAP[framing] ?? VERB_CONSTANTS.DEFAULT_FALLBACK_CAM_DIST_Z;
 
       const isReachGrasp = beat.actions.some((a) => a.verb === 'reach_and_grasp');
       const isGesturePoint = beat.actions.some((a) => a.verb === 'gesture_point');
@@ -581,9 +677,9 @@ export class VerbCompiler {
       let targetY: number;
       let camY: number;
       let effectiveFraming = framing;
-      let effectiveDistZ = distZ;
+      let effectiveDistZ: number = distZ;
 
-      const lookOffset = beat.camera.lookRoom === 'left' ? -18 : beat.camera.lookRoom === 'right' ? 18 : 0;
+      const lookOffset = beat.camera.lookRoom === 'left' ? -VERB_CONSTANTS.CAM_LOOK_ROOM_OFFSET : beat.camera.lookRoom === 'right' ? VERB_CONSTANTS.CAM_LOOK_ROOM_OFFSET : 0;
       const charPositions = beatCharX[i];
       const focalId = beat.camera.focalCharacterId;
       const focalPos = charPositions[focalId] ?? 0;
@@ -594,22 +690,22 @@ export class VerbCompiler {
 
       if (isReachGrasp) {
         effectiveFraming = 'CLOSE_UP';
-        effectiveDistZ = 135;
-        focalX = -10;
-        targetY = 88;
-        camY = 98;
+        effectiveDistZ = VERB_CONSTANTS.CAM_CLOSE_UP_REACH_DIST_Z;
+        focalX = VERB_CONSTANTS.CAM_CLOSE_UP_REACH_FOCAL_X;
+        targetY = VERB_CONSTANTS.CAM_CLOSE_UP_REACH_TARGET_Y;
+        camY = VERB_CONSTANTS.CAM_CLOSE_UP_REACH_CAM_Y;
       } else if (isGesturePoint) {
         effectiveFraming = 'CLOSE_UP';
-        effectiveDistZ = hasOverheadProp ? 142 : FRAMING_DISTANCE_MAP.CLOSE_UP;
+        effectiveDistZ = hasOverheadProp ? VERB_CONSTANTS.CAM_CLOSE_UP_OVERHEAD_DIST_Z : FRAMING_DISTANCE_MAP.CLOSE_UP;
         focalX = focalPos;
-        targetY = hasOverheadProp ? 127 : 117;
-        camY = hasOverheadProp ? 135 : 127;
+        targetY = hasOverheadProp ? VERB_CONSTANTS.CAM_CLOSE_UP_OVERHEAD_TARGET_Y : VERB_CONSTANTS.CAM_CLOSE_UP_BASE_TARGET_Y;
+        camY = hasOverheadProp ? VERB_CONSTANTS.CAM_CLOSE_UP_OVERHEAD_CAM_Y : VERB_CONSTANTS.CAM_CLOSE_UP_BASE_CAM_Y;
       } else if (isTwoShot && otherPresentId) {
         const otherPos = charPositions[otherPresentId] ?? 0;
         const midX = (focalPos + otherPos) / 2;
         focalX = midX + lookOffset;
-        targetY = effectiveFraming === 'WIDE' ? 95 : 105;
-        camY = targetY + 10;
+        targetY = effectiveFraming === 'WIDE' ? VERB_CONSTANTS.CAM_WIDE_TARGET_Y : VERB_CONSTANTS.CAM_MEDIUM_TARGET_Y;
+        camY = targetY + VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y;
       } else {
         focalX = focalPos + lookOffset;
         const focalCast = storyBeatContract.cast.find((c) => c.instanceId === focalId);
@@ -618,21 +714,21 @@ export class VerbCompiler {
         targetY =
           effectiveFraming === 'EXTREME_CLOSE_UP'
             ? isPartnerFocal
-              ? 80
-              : 88
+              ? VERB_CONSTANTS.CAM_HEADROOM_TARGET_Y
+              : VERB_CONSTANTS.CAM_CLOSE_UP_REACH_TARGET_Y
             : effectiveFraming === 'CLOSE_UP'
               ? isPartnerFocal
-                ? (hasOverheadProp ? 115 : 103)
-                : (hasOverheadProp ? 127 : 117)
-              : 95;
-        camY = targetY + 10;
+                ? (hasOverheadProp ? VERB_CONSTANTS.CAM_EXTREME_CLOSE_UP_OVERHEAD_TARGET_Y : VERB_CONSTANTS.CAM_EXTREME_CLOSE_UP_BASE_TARGET_Y)
+                : (hasOverheadProp ? VERB_CONSTANTS.CAM_CLOSE_UP_OVERHEAD_TARGET_Y : VERB_CONSTANTS.CAM_CLOSE_UP_BASE_TARGET_Y)
+              : VERB_CONSTANTS.CAM_WIDE_TARGET_Y;
+        camY = targetY + VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y;
         if (hasOverheadProp && effectiveFraming === 'CLOSE_UP') {
-          effectiveDistZ = Math.max(effectiveDistZ, 142);
+          effectiveDistZ = Math.max(effectiveDistZ, VERB_CONSTANTS.CAM_CLOSE_UP_OVERHEAD_DIST_Z);
         }
       }
 
-      const deltaPan = movement === 'PAN' ? 30 : 0;
-      const deltaDolly = movement === 'DOLLY' ? -35 : 0;
+      const deltaPan = movement === 'PAN' ? VERB_CONSTANTS.CAM_PAN_DELTA_X : 0;
+      const deltaDolly = movement === 'DOLLY' ? -VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_LEFT : 0;
       const dutchAngle = (isReachGrasp || isGesturePoint) ? 0 : (beat.camera.dutchAngleDeg ?? 0);
 
       const activePropIds: string[] = [];
@@ -663,25 +759,25 @@ export class VerbCompiler {
       ].filter((id, idx, arr) => arr.indexOf(id) === idx && rigs.has(id));
 
       const cameraStart: CameraTransform = {
-        position: [focalX - 10, camY, effectiveDistZ],
+        position: [focalX - VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y, camY, effectiveDistZ],
         target: [focalX, targetY, 0],
         up: [0, 1, 0],
-        verticalFovDegrees: 50,
+        verticalFovDegrees: VERB_CONSTANTS.DEFAULT_CAMERA_FOV,
         rollDegrees: dutchAngle,
         projectionMode: 'perspective',
         nearPlane: 1,
-        farPlane: 2000
+        farPlane: VERB_CONSTANTS.DEFAULT_FAR_PLANE
       };
 
       const cameraEnd: CameraTransform = {
-        position: [focalX - 10 + deltaPan, camY, effectiveDistZ + deltaDolly],
+        position: [focalX - VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y + deltaPan, camY, effectiveDistZ + deltaDolly],
         target: [focalX + deltaPan, targetY, 0],
         up: [0, 1, 0],
-        verticalFovDegrees: 50,
+        verticalFovDegrees: VERB_CONSTANTS.DEFAULT_CAMERA_FOV,
         rollDegrees: dutchAngle,
         projectionMode: 'perspective',
         nearPlane: 1,
-        farPlane: 2000
+        farPlane: VERB_CONSTANTS.DEFAULT_FAR_PLANE
       };
 
       return {
@@ -695,11 +791,16 @@ export class VerbCompiler {
     });
 
     const shots: CinematicShot[] = [];
+    const invisibleCuts: InvisibleCutEntry[] = [];
+
     for (let j = 0; j < shotPlans.length; j++) {
       const sp = shotPlans[j];
       const beat = beats[sp.beatIndex];
       const base = baseBeatShots[sp.beatIndex];
-      const actNumber: 1 | 2 | 3 = j < idx1 ? 1 : j < idx2 ? 2 : 3;
+      const actNumber: CanonicalActNumber = (j < idx1 ? 1 : j < idx2 ? 2 : VERB_CONSTANTS.CANONICAL_ACT_COUNT) as CanonicalActNumber;
+      const prevActNumber: CanonicalActNumber | undefined = j > 0
+        ? ((j - 1 < idx1 ? 1 : j - 1 < idx2 ? 2 : VERB_CONSTANTS.CANONICAL_ACT_COUNT) as CanonicalActNumber)
+        : undefined;
 
       const camStart = sp.uStart === 0
         ? base.cameraStart
@@ -707,6 +808,36 @@ export class VerbCompiler {
       const camEnd = sp.uEnd === 1.0
         ? base.cameraEnd
         : lerpCameraTransform(base.cameraStart, base.cameraEnd, sp.uEnd);
+
+      const shotDuration = sp.endFrame - sp.startFrame;
+      const prevShotDuration = j > 0 ? (shotPlans[j - 1].endFrame - shotPlans[j - 1].startFrame) : shotDuration;
+      const maxClamp = Math.min(shotDuration, prevShotDuration);
+
+      let transType: 'cut' | 'dissolve' | 'dip_to_black';
+      let transDuration: number;
+
+      if (beat.transition) {
+        transType = beat.transition;
+        transDuration = beat.transition === 'cut'
+          ? 0
+          : Math.min(maxClamp, beat.transitionDurationFrames ?? VERB_CONSTANTS.TRANSITION_DEFAULT_DIP_FRAMES);
+      } else if (j === 0) {
+        transType = 'dip_to_black';
+        transDuration = Math.min(shotDuration, VERB_CONSTANTS.TRANSITION_DEFAULT_DIP_FRAMES);
+      } else if (prevActNumber !== undefined && actNumber !== prevActNumber) {
+        transType = 'dip_to_black';
+        transDuration = Math.min(maxClamp, VERB_CONSTANTS.TRANSITION_DEFAULT_DIP_FRAMES);
+      } else {
+        transType = 'cut';
+        transDuration = 0;
+      }
+
+      let transOutType: 'cut' | 'dissolve' | 'dip_to_black' | undefined;
+      let transOutDuration = 0;
+      if (j === shotPlans.length - 1) {
+        transOutType = 'dip_to_black';
+        transOutDuration = Math.min(shotDuration, VERB_CONSTANTS.TRANSITION_DEFAULT_DIP_FRAMES);
+      }
 
       shots.push({
         id: sp.shotId,
@@ -726,8 +857,39 @@ export class VerbCompiler {
         cameraStart: camStart,
         cameraEnd: camEnd,
         cameraEasing: 'linear',
-        transitionIn: j > 0 ? { type: 'CROSS_FADE', durationFrames: 6 } : undefined
+        transitionIn: { type: transType, durationFrames: transDuration },
+        ...(transOutType ? { transitionOut: { type: transOutType, durationFrames: transOutDuration } } : {})
       });
+
+      if (j > 0) {
+        const camPrev = shots[j - 1].cameraEnd;
+        const camNext = camStart;
+        const framingDiff = Math.abs(camPrev.position[2] - camNext.position[2]);
+        const rollDiff = Math.abs((camPrev.rollDegrees ?? 0) - (camNext.rollDegrees ?? 0));
+        const dx1 = camPrev.target[0] - camPrev.position[0];
+        const dz1 = camPrev.target[2] - camPrev.position[2];
+        const dx2 = camNext.target[0] - camNext.position[0];
+        const dz2 = camNext.target[2] - camNext.position[2];
+        const angle1 = Math.atan2(dx1, dz1) / VERB_CONSTANTS.DEG_TO_RAD;
+        const angle2 = Math.atan2(dx2, dz2) / VERB_CONSTANTS.DEG_TO_RAD;
+        let angleDiff = Math.abs(angle1 - angle2);
+        if (angleDiff > VERB_CONSTANTS.HALF_CIRCLE_DEG) angleDiff = VERB_CONSTANTS.FULL_CIRCLE_DEG - angleDiff;
+        const totalAngleDiff = rollDiff + angleDiff;
+
+        if (
+          framingDiff < VERB_CONSTANTS.CAMERA_FRAMING_INVISIBLE_CUT_TOLERANCE &&
+          totalAngleDiff < VERB_CONSTANTS.CAMERA_ANGLE_INVISIBLE_CUT_TOLERANCE_DEG
+        ) {
+          invisibleCuts.push({
+            boundaryFrame: sp.startFrame,
+            fromShotId: shots[j - 1].id,
+            toShotId: sp.shotId,
+            framingDifference: Number(framingDiff.toFixed(2)),
+            angleDifferenceDeg: Number(totalAngleDiff.toFixed(2)),
+            reason: `Adjacent cameras differ by only ${framingDiff.toFixed(1)} units in framing and ${totalAngleDiff.toFixed(1)}° in angle, below detection tolerance.`
+          });
+        }
+      }
     }
 
     // 5. Compile Choreography Tracks
@@ -736,15 +898,15 @@ export class VerbCompiler {
     const charArchetypes: Record<string, string> = {};
     const charPoseClockState: Record<string, { clock: number; lastClip?: { clipId: string; loopFrames: number } }> = {};
     const unfulfilledTiming: UnfulfilledTimingEntry[] = [];
+    const unreachableTargets: UnreachableTargetEntry[] = [];
     const leadId = storyBeatContract.cast[0].instanceId;
 
     const isMultiCast = storyBeatContract.cast.length > 1;
     for (let cIdx = 0; cIdx < storyBeatContract.cast.length; cIdx++) {
       const c = storyBeatContract.cast[cIdx];
       const startX = isMultiCast
-        ? (cIdx === 0 ? -92 : 88)
-        : -95;
-      const baseY = c.archetypeId === 'companion_silhouette' ? 65 : 75;
+        ? (cIdx === 0 ? VERB_CONSTANTS.SIM_TWO_CHAR_LEFT_X : VERB_CONSTANTS.SIM_TWO_CHAR_RIGHT_X) : VERB_CONSTANTS.SIM_HERO_INITIAL_X;
+      const baseY = c.archetypeId === 'companion_silhouette' ? VERB_CONSTANTS.COMPANION_BASE_Y : VERB_CONSTANTS.HERO_BASE_Y;
       charCurrentPos[c.instanceId] = [startX, baseY, 0];
       charArchetypes[c.instanceId] = c.archetypeId;
       charPoseClockState[c.instanceId] = { clock: 0 };
@@ -764,9 +926,9 @@ export class VerbCompiler {
       const beatEndF = i === beats.length - 1 ? totalFrames : beat.endFrame;
 
       if (i > 0 && beat.set.kitId !== beats[i - 1].set.kitId) {
-        charCurrentPos[storyBeatContract.cast[0]?.instanceId ?? ''] = [-95, 75, 0];
+        charCurrentPos[storyBeatContract.cast[0]?.instanceId ?? ''] = [VERB_CONSTANTS.SIM_HERO_INITIAL_X, VERB_CONSTANTS.HERO_BASE_Y, 0];
         if (storyBeatContract.cast[1]) {
-          charCurrentPos[storyBeatContract.cast[1].instanceId] = [-125, 65, 0];
+          charCurrentPos[storyBeatContract.cast[1].instanceId] = [VERB_CONSTANTS.SIM_COMPANION_INITIAL_X, VERB_CONSTANTS.COMPANION_BASE_Y, 0];
         }
       }
 
@@ -825,8 +987,7 @@ export class VerbCompiler {
           action = {
             instanceId: char.instanceId,
             verb: 'walk_to' as const,
-            speedNorm: 1.0,
-            intensityNorm: 0.7,
+            speedNorm: 1.0, intensityNorm: VERB_CONSTANTS.DEFAULT_INTENSITY_NORM,
             ...(umbrellaActive && char.instanceId === resolvedUmbrellaHolderId ? { associatedPropId: 'umbrella' } : {})
           };
         }
@@ -837,7 +998,7 @@ export class VerbCompiler {
           beatStartF,
           beatEndF,
           action,
-          shotStartPositions[char.instanceId] ?? [0, 75, 0],
+          shotStartPositions[char.instanceId] ?? [0, VERB_CONSTANTS.HERO_BASE_Y, 0],
           otherPos,
           charArchetypes[char.instanceId],
           audioManifest,
@@ -845,7 +1006,8 @@ export class VerbCompiler {
           charPoseClockState[char.instanceId],
           unfulfilledTiming,
           rigs,
-          reachClamps
+          reachClamps,
+          unreachableTargets
         );
 
         nextPositions[char.instanceId] = charTrack.nextPos;
@@ -870,8 +1032,7 @@ export class VerbCompiler {
           actorAction = beat.actions.find((a) => a.instanceId === actorId) ?? {
             instanceId: actorId,
             verb: 'walk_to' as const,
-            speedNorm: 1.0,
-            intensityNorm: 0.7,
+            speedNorm: 1.0, intensityNorm: VERB_CONSTANTS.DEFAULT_INTENSITY_NORM,
             associatedPropId: 'umbrella'
           };
         } else {
@@ -899,10 +1060,10 @@ export class VerbCompiler {
           instanceId: actorId,
           verb: 'walk_to' as const,
           speedNorm: 1.0,
-          intensityNorm: 0.7
+          intensityNorm: VERB_CONSTANTS.DEFAULT_INTENSITY_NORM
         };
 
-        const charPos = shotStartPositions[actorId] ?? [0, 75, 0];
+        const charPos = shotStartPositions[actorId] ?? [0, VERB_CONSTANTS.HERO_BASE_Y, 0];
         const charNextPos = nextPositions[actorId] ?? charPos;
         const charRig = rigs.get(actorId);
 
@@ -942,7 +1103,7 @@ export class VerbCompiler {
 
     const storyboard: DirectorStoryboardContract = {
       projectId: storyBeatContract.projectId,
-      resolution: { width: 1920, height: 1080 },
+      resolution: { width: VERB_CONSTANTS.CANVAS_WIDTH, height: VERB_CONSTANTS.CANVAS_HEIGHT },
       fps,
       totalFrames,
       acts,
@@ -961,8 +1122,10 @@ export class VerbCompiler {
       choreography,
       compileReport: {
         unfulfilledTiming,
+        unreachableTargets,
         shotSubdivisions,
-        reachClamps
+        reachClamps,
+        invisibleCuts
       }
     };
   }
@@ -1160,19 +1323,18 @@ export class VerbCompiler {
     targetArriveF?: number
   ): LocomotionPlanResult {
     const absScaleX = Math.abs(scaleX) || 1.0;
-    const loopWalk = 36;
-    const strideWalk = 15.0;
+    const loopWalk = VERB_CONSTANTS.WALK_LOOP_FRAMES;
+    const strideWalk = VERB_CONSTANTS.WALK_STRIDE_LENGTH;
     const vNomWalk = (strideWalk * absScaleX) / loopWalk;
 
-    const loopRun = 18;
-    const strideRun = 23.0;
+    const loopRun = VERB_CONSTANTS.RUN_LOOP_FRAMES;
+    const strideRun = VERB_CONSTANTS.RUN_STRIDE_LENGTH;
     const vNomRun = (strideRun * absScaleX) / loopRun;
 
-    if (distance < 1e-3 || availableFrames <= 0) {
+    if (distance < EPSILON_SPEED || availableFrames <= 0) {
       return {
         chosenClipId: 'idle',
-        loopFrames: 30,
-        strideLengthUnits: 0,
+        loopFrames: VERB_CONSTANTS.IDLE_LOOP_FRAMES, strideLengthUnits: 0,
         timeScale: 1.0,
         tMove: availableFrames,
         arriveF: availableFrames,
@@ -1184,6 +1346,37 @@ export class VerbCompiler {
     let maxMoveFrames = availableFrames;
     if (targetArriveF !== undefined && targetArriveF > 0 && targetArriveF < availableFrames) {
       maxMoveFrames = targetArriveF;
+    }
+
+    // Maximum physically achievable speed across valid gaits (max timeScale = 1.6 on fastest clip sprint_frenzy)
+    const vMax = VERB_CONSTANTS.MAX_GAIT_TIME_SCALE * vNomRun;
+    const maxAchievableDistance = vMax * maxMoveFrames;
+
+    if (distance > maxAchievableDistance + EPSILON_DISTANCE) {
+      const achievableDistance = Number(maxAchievableDistance.toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
+      const tMove = maxMoveFrames;
+      const vActual = vMax;
+      const timeScale = VERB_CONSTANTS.MAX_GAIT_TIME_SCALE;
+      const minimumFramesNeeded = Math.ceil(distance / vMax);
+      const suggestedSpeedNorm = Number((distance / (maxMoveFrames * vNomRun)).toFixed(2));
+      const isEarlyArrival = tMove < availableFrames;
+
+      return {
+        chosenClipId: 'sprint_frenzy',
+        loopFrames: loopRun,
+        strideLengthUnits: strideRun,
+        timeScale,
+        tMove,
+        arriveF: tMove,
+        vActual,
+        isEarlyArrival,
+        isUnreachable: true,
+        requestedDistance: distance,
+        achievableDistance,
+        minimumFramesNeeded,
+        suggestedSpeedNorm,
+        unfulfilledReason: `Target distance ${distance} unreachable in ${availableFrames} frames (max ${achievableDistance.toFixed(1)}); moved at max speed and stopped at farthest point`
+      };
     }
 
     const vReq = distance / maxMoveFrames;
@@ -1199,67 +1392,67 @@ export class VerbCompiler {
     const tsRun = vDesired / vNomRun;
 
     if (isRunVerb) {
-      if (tsRun >= 0.6 && tsRun <= 1.6) {
+      if (tsRun >= VERB_CONSTANTS.MIN_GAIT_TIME_SCALE && tsRun <= VERB_CONSTANTS.MAX_GAIT_TIME_SCALE) {
         chosenClipId = 'sprint_frenzy';
         chosenLoop = loopRun;
         chosenStride = strideRun;
         targetSpeed = vDesired;
-      } else if (tsRun < 0.6) {
-        if (tsWalk >= 0.6 && tsWalk <= 1.6) {
+      } else if (tsRun < VERB_CONSTANTS.MIN_GAIT_TIME_SCALE) {
+        if (tsWalk >= VERB_CONSTANTS.MIN_GAIT_TIME_SCALE && tsWalk <= VERB_CONSTANTS.MAX_GAIT_TIME_SCALE) {
           chosenClipId = 'walk_to';
           chosenLoop = loopWalk;
           chosenStride = strideWalk;
           targetSpeed = vDesired;
-        } else if (tsWalk < 0.6) {
+        } else if (tsWalk < VERB_CONSTANTS.MIN_GAIT_TIME_SCALE) {
           chosenClipId = 'walk_to';
           chosenLoop = loopWalk;
           chosenStride = strideWalk;
-          targetSpeed = 0.6 * vNomWalk;
+          targetSpeed = VERB_CONSTANTS.MIN_GAIT_TIME_SCALE * vNomWalk;
           unfulfilledReason = 'Speed below minimum valid gait timeScale 0.6; arrived early and held in place';
         } else {
           chosenClipId = 'sprint_frenzy';
           chosenLoop = loopRun;
           chosenStride = strideRun;
-          targetSpeed = 0.6 * vNomRun;
+          targetSpeed = VERB_CONSTANTS.MIN_GAIT_TIME_SCALE * vNomRun;
           unfulfilledReason = 'Speed below minimum run timeScale 0.6; arrived early and held in place';
         }
       } else {
         chosenClipId = 'sprint_frenzy';
         chosenLoop = loopRun;
         chosenStride = strideRun;
-        targetSpeed = 1.6 * vNomRun;
+        targetSpeed = VERB_CONSTANTS.MAX_GAIT_TIME_SCALE * vNomRun;
         unfulfilledReason = 'Target beyond maximum locomotion speed; clamped to max timeScale 1.6';
       }
     } else {
-      if (tsWalk >= 0.6 && tsWalk <= 1.6) {
+      if (tsWalk >= VERB_CONSTANTS.MIN_GAIT_TIME_SCALE && tsWalk <= VERB_CONSTANTS.MAX_GAIT_TIME_SCALE) {
         chosenClipId = 'walk_to';
         chosenLoop = loopWalk;
         chosenStride = strideWalk;
         targetSpeed = vDesired;
-      } else if (tsWalk > 1.6) {
-        if (tsRun >= 0.6 && tsRun <= 1.6) {
+      } else if (tsWalk > VERB_CONSTANTS.MAX_GAIT_TIME_SCALE) {
+        if (tsRun >= VERB_CONSTANTS.MIN_GAIT_TIME_SCALE && tsRun <= VERB_CONSTANTS.MAX_GAIT_TIME_SCALE) {
           chosenClipId = 'sprint_frenzy';
           chosenLoop = loopRun;
           chosenStride = strideRun;
           targetSpeed = vDesired;
-        } else if (tsRun < 0.6) {
+        } else if (tsRun < VERB_CONSTANTS.MIN_GAIT_TIME_SCALE) {
           chosenClipId = 'sprint_frenzy';
           chosenLoop = loopRun;
           chosenStride = strideRun;
-          targetSpeed = 0.6 * vNomRun;
+          targetSpeed = VERB_CONSTANTS.MIN_GAIT_TIME_SCALE * vNomRun;
           unfulfilledReason = 'Switched to run at min timeScale 0.6; arrived early and held in place';
         } else {
           chosenClipId = 'sprint_frenzy';
           chosenLoop = loopRun;
           chosenStride = strideRun;
-          targetSpeed = 1.6 * vNomRun;
+          targetSpeed = VERB_CONSTANTS.MAX_GAIT_TIME_SCALE * vNomRun;
           unfulfilledReason = 'Target beyond maximum locomotion speed; clamped to max timeScale 1.6';
         }
       } else {
         chosenClipId = 'walk_to';
         chosenLoop = loopWalk;
         chosenStride = strideWalk;
-        targetSpeed = 0.6 * vNomWalk;
+        targetSpeed = VERB_CONSTANTS.MIN_GAIT_TIME_SCALE * vNomWalk;
         unfulfilledReason = 'Speed below minimum walk timeScale 0.6; arrived early and held in place';
       }
     }
@@ -1268,7 +1461,7 @@ export class VerbCompiler {
     const tMove = Math.min(availableFrames, rawFrames);
     const vActual = distance / tMove;
     const rawTimeScale = (vActual * chosenLoop) / (chosenStride * absScaleX);
-    const timeScale = Number(Math.max(0.6, Math.min(1.6, rawTimeScale)).toFixed(4));
+    const timeScale = Number(Math.max(VERB_CONSTANTS.MIN_GAIT_TIME_SCALE, Math.min(VERB_CONSTANTS.MAX_GAIT_TIME_SCALE, rawTimeScale)).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
     const isEarlyArrival = tMove < availableFrames;
 
     return {
@@ -1306,7 +1499,8 @@ export class VerbCompiler {
       readonly target: [number, number, number];
       readonly clampedReach: number;
       readonly maxReach: number;
-    }>
+    }>,
+    unreachableTargets?: UnreachableTargetEntry[]
   ): {
     track: EntityTrack;
     nextPos: [number, number, number];
@@ -1320,9 +1514,9 @@ export class VerbCompiler {
     const ikTargets: IkTarget[] = [];
     const gazeTargets: GazeTarget[] = [];
 
-    const baseY = archetypeId === 'companion_silhouette' ? 65 : 75;
+    const baseY = archetypeId === 'companion_silhouette' ? VERB_CONSTANTS.COMPANION_BASE_Y : VERB_CONSTANTS.HERO_BASE_Y;
     const [scaleXBase, scaleYBase] =
-      archetypeId === 'companion_silhouette' ? [1.6, 1.15] : [1.35, 1.45];
+      archetypeId === 'companion_silhouette' ? [VERB_CONSTANTS.COMPANION_SCALE_X, VERB_CONSTANTS.COMPANION_SCALE_Y] : [VERB_CONSTANTS.HERO_SCALE_X, VERB_CONSTANTS.HERO_SCALE_Y];
 
     let currentX = currentPos[0];
     let nextPos: [number, number, number] = [currentX, baseY, currentPos[2]];
@@ -1342,33 +1536,33 @@ export class VerbCompiler {
           targetPos = [targetPosDirective[0], baseY, targetPosDirective[2]];
         } else if (action.target?.kind === 'character') {
           const otherP = otherCharPos ?? [0, baseY, 0];
-          const clearance = 26;
+          const clearance = VERB_CONSTANTS.CHARACTER_INTERACTION_CLEARANCE;
           const isLeft = currentPos[0] <= otherP[0];
           targetPos = [otherP[0] + (isLeft ? -clearance : clearance), baseY, otherP[2]];
         } else if (action.target?.kind === 'prop') {
           const propRig = activeRigs?.get(action.target.propId);
           const pPos = propRig?.baseTransform.position ?? [0, baseY, 0];
           const isLeft = currentPos[0] <= pPos[0];
-          targetPos = [pPos[0] + (isLeft ? -18 : 18), baseY, pPos[2]];
+          targetPos = [pPos[0] + (isLeft ? -VERB_CONSTANTS.CAM_LOOK_ROOM_OFFSET : VERB_CONSTANTS.CAM_LOOK_ROOM_OFFSET), baseY, pPos[2]];
         } else if (action.associatedPropId && activeRigs?.has(action.associatedPropId)) {
           const propRig = activeRigs.get(action.associatedPropId);
           const pPos = propRig?.baseTransform.position ?? [0, baseY, 0];
           const isLeft = currentPos[0] <= pPos[0];
-          targetPos = [pPos[0] + (isLeft ? -22 : 22), baseY, pPos[2]];
+          targetPos = [pPos[0] + (isLeft ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE), baseY, pPos[2]];
         } else if (otherCharPos !== undefined) {
-          if (currentPos[0] < -60 && otherCharPos[0] < -60) {
-            targetPos = [currentPos[0] <= otherCharPos[0] ? 35 : 65, baseY, 0];
+          if (currentPos[0] < VERB_CONSTANTS.SIM_DEEP_ROOM_THRESHOLD && otherCharPos[0] < VERB_CONSTANTS.SIM_DEEP_ROOM_THRESHOLD) {
+            targetPos = [currentPos[0] <= otherCharPos[0] ? VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_LEFT : VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_RIGHT, baseY, 0];
           } else {
             const isLeft = currentPos[0] <= otherCharPos[0];
-            targetPos = [isLeft ? -34 : 34, baseY, 0];
+            targetPos = [isLeft ? VERB_CONSTANTS.SIM_CROSS_ROOM_POS_A : VERB_CONSTANTS.SIM_CROSS_ROOM_POS_B, baseY, 0];
           }
         } else {
           const firstProp = activeRigs ? Array.from(activeRigs.values()).find((r) => r.type === 'prop') : undefined;
           if (firstProp) {
             const pX = firstProp.baseTransform.position[0];
-            targetPos = [pX + (currentPos[0] <= pX ? -22 : 22), baseY, 0];
+            targetPos = [pX + (currentPos[0] <= pX ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE), baseY, 0];
           } else {
-            targetPos = [currentPos[0] < 0 ? currentPos[0] + 75 : currentPos[0] - 75, baseY, 0];
+            targetPos = [currentPos[0] < 0 ? currentPos[0] + VERB_CONSTANTS.HERO_BASE_Y : currentPos[0] - VERB_CONSTANTS.HERO_BASE_Y, baseY, 0];
           }
         }
 
@@ -1382,8 +1576,8 @@ export class VerbCompiler {
         const moveFrames = deltaFrames > 1 ? deltaFrames - 1 : deltaFrames;
         const sX = targetPos[0] >= currentPos[0] ? scaleXBase : -scaleXBase;
 
-        const isExteriorTraverse = shotId.includes('exterior') || (currentPos[0] < -60 && targetPos[0] > 0);
-        const forceEarlyArrival = !targetPosDirective && !isExteriorTraverse && totalDist > 40 && deltaFrames >= 200;
+        const isExteriorTraverse = shotId.includes('exterior') || (currentPos[0] < VERB_CONSTANTS.SIM_DEEP_ROOM_THRESHOLD && targetPos[0] > 0);
+        const forceEarlyArrival = !targetPosDirective && !isExteriorTraverse && totalDist > VERB_CONSTANTS.SIM_TRAVERSE_DISTANCE_THRESHOLD && deltaFrames >= VERB_CONSTANTS.SIM_TRAVERSE_FRAMES_THRESHOLD;
 
         const plan = VerbCompiler.planLocomotionGait(
           totalDist,
@@ -1391,14 +1585,41 @@ export class VerbCompiler {
           action.speedNorm ?? 1.0,
           scaleXBase,
           isRunVerb,
-          forceEarlyArrival ? Math.floor(moveFrames * (5.5 / 7.0)) : undefined
+          forceEarlyArrival ? Math.floor(moveFrames * VERB_CONSTANTS.DEFAULT_EARLY_ARRIVAL_RATIO) : undefined
         );
 
         clipId = plan.chosenClipId;
         calculatedTimeScale = plan.timeScale;
         const arriveF = Math.min(lastF, startF + plan.tMove);
 
-        const rotZ = isRunVerb ? (sX > 0 ? 14 : -14) : 0;
+        let actualTargetPos = targetPos;
+        if (plan.isUnreachable) {
+          const achievableDist = plan.achievableDistance ?? totalDist;
+          const ratio = totalDist > EPSILON_DISTANCE ? achievableDist / totalDist : 1.0;
+          const actualX = currentPos[0] + dx * ratio;
+          const actualZ = currentPos[2] + dz * ratio;
+          actualTargetPos = [actualX, baseY, actualZ];
+          nextPos = actualTargetPos;
+          nextX = actualX;
+
+          if (unreachableTargets) {
+            unreachableTargets.push({
+              beatId: shotId,
+              instanceId,
+              verb: action.verb,
+              requestedDistance: totalDist,
+              achievableDistance: achievableDist,
+              durationFrames: deltaFrames,
+              minimumFramesNeeded: plan.minimumFramesNeeded ?? Math.ceil(totalDist / (VERB_CONSTANTS.MAX_GAIT_TIME_SCALE * ((VERB_CONSTANTS.RUN_STRIDE_LENGTH * scaleXBase) / VERB_CONSTANTS.RUN_LOOP_FRAMES))),
+              suggestedSpeedNorm: plan.suggestedSpeedNorm
+            });
+          }
+        } else {
+          nextPos = targetPos;
+          nextX = targetPos[0];
+        }
+
+        const rotZ = isRunVerb || plan.chosenClipId === 'sprint_frenzy' ? (sX > 0 ? VERB_CONSTANTS.RUN_FORWARD_TILT_DEG : -VERB_CONSTANTS.RUN_FORWARD_TILT_DEG) : 0;
         keyframes.push(
           {
             frame: startF,
@@ -1410,7 +1631,7 @@ export class VerbCompiler {
           },
           {
             frame: arriveF,
-            position: [targetPos[0], baseY, targetPos[2]],
+            position: [actualTargetPos[0], baseY, actualTargetPos[2]],
             rotationZDegrees: rotZ,
             scale: [sX, scaleYBase],
             opacity: 1,
@@ -1421,7 +1642,7 @@ export class VerbCompiler {
         if (arriveF < lastF) {
           keyframes.push({
             frame: lastF,
-            position: [targetPos[0], baseY, targetPos[2]],
+            position: [actualTargetPos[0], baseY, actualTargetPos[2]],
             rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
@@ -1431,9 +1652,9 @@ export class VerbCompiler {
 
         if (action.associatedPropId) {
           const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
-          const headWorldY = baseY + (18 + 15 + 16) * scaleYBase;
-          const overheadDx = (sX >= 0 ? 1 : -1) * 4;
-          const overheadDy = 8;
+          const headWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y + VERB_CONSTANTS.DEFAULT_LOWER_ARM_LENGTH) * scaleYBase;
+          const overheadDx = (sX >= 0 ? 1 : -1) * VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X;
+          const overheadDy = VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
           ikTargets.push(
             {
               hand,
@@ -1443,7 +1664,7 @@ export class VerbCompiler {
             },
             {
               hand,
-              targetWorld: [targetPos[0] + overheadDx, headWorldY + overheadDy, targetPos[2]],
+              targetWorld: [actualTargetPos[0] + overheadDx, headWorldY + overheadDy, actualTargetPos[2]],
               weight: 1.0,
               frame: lastF
             }
@@ -1461,7 +1682,7 @@ export class VerbCompiler {
         let startPose0 = 0;
         if (prevClip && prevClip.loopFrames > 0) {
           const normPhase = (((prevClock % prevClip.loopFrames) + prevClip.loopFrames) % prevClip.loopFrames) / prevClip.loopFrames;
-          startPose0 = Number((normPhase * plan.loopFrames).toFixed(4));
+          startPose0 = Number((normPhase * plan.loopFrames).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
         }
 
         if (plan.isEarlyArrival && arriveF < endF) {
@@ -1475,9 +1696,9 @@ export class VerbCompiler {
 
           const clockAtArrive = startPose0 + plan.tMove * plan.timeScale;
           const holdClipId = 'idle';
-          const holdLoop = 30;
+          const holdLoop = VERB_CONSTANTS.IDLE_LOOP_FRAMES;
           const normPhaseHold = (((clockAtArrive % plan.loopFrames) + plan.loopFrames) % plan.loopFrames) / plan.loopFrames;
-          const startPoseHold = Number((normPhaseHold * holdLoop).toFixed(4));
+          const startPoseHold = Number((normPhaseHold * holdLoop).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
 
           segments.push({
             startFrame: arriveF,
@@ -1492,7 +1713,7 @@ export class VerbCompiler {
             lastClip: { clipId: holdClipId, loopFrames: holdLoop }
           };
 
-          if (unfulfilledTiming) {
+          if (unfulfilledTiming && !plan.isUnreachable) {
             unfulfilledTiming.push({
               beatId: shotId,
               instanceId,
@@ -1548,9 +1769,9 @@ export class VerbCompiler {
 
         if (action.associatedPropId) {
           const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
-          const headWorldY = baseY + (18 + 15 + 16) * scaleYBase;
-          const overheadDx = (sX >= 0 ? 1 : -1) * 4;
-          const overheadDy = 8;
+          const headWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y + VERB_CONSTANTS.DEFAULT_LOWER_ARM_LENGTH) * scaleYBase;
+          const overheadDx = (sX >= 0 ? 1 : -1) * VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X;
+          const overheadDy = VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
           ikTargets.push(
             {
               hand,
@@ -1579,7 +1800,7 @@ export class VerbCompiler {
           {
             frame: lastF,
             position: [targetX, baseY, currentPos[2]],
-            rotationZDegrees: faceRight ? 4 : -4,
+            rotationZDegrees: faceRight ? VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X : -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -1590,25 +1811,35 @@ export class VerbCompiler {
 
       case 'reach_and_grasp': {
         const duration = endF - startF;
-        const graspOffset = Math.max(2, Math.min(Math.round(duration * 0.5), duration - 2));
+        const graspOffset = Math.max(2, Math.min(Math.round(duration * HALF), duration - 2));
         const graspFrame = startF + graspOffset;
-        const reachStartF = startF + Math.max(0, Math.floor(graspOffset * 0.2));
+        const reachStartF = startF + Math.max(0, Math.floor(graspOffset * VERB_CONSTANTS.REACH_ANTICIPATION_RATIO));
 
         const propId = action.associatedPropId ?? (action.target?.kind === 'prop' ? action.target.propId : undefined);
-        let propPos: [number, number, number] = [0, 68, 0];
-        if (propId && activeRigs?.has(propId)) {
-          propPos = activeRigs.get(propId)!.baseTransform.position;
+        const propRig = propId && activeRigs?.has(propId) ? activeRigs.get(propId) : undefined;
+        let propPos: [number, number, number];
+        if (propRig) {
+          propPos = propRig.baseTransform.position;
         } else if (action.target?.kind === 'position') {
           propPos = action.target.pos;
+        } else {
+          const facingSign = scaleXBase >= 0 ? 1 : -1;
+          propPos = [
+            currentPos[0] + facingSign * VERB_CONSTANTS.PROP_APPROACH_CLEARANCE,
+            baseY + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y * scaleYBase,
+            currentPos[2]
+          ];
         }
         const socketId = VerbCompiler.resolvePropSocket(action, propPos, currentPos);
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
 
-        // Reach distance verification
-        const shoulderWorldX = currentX + (hand === 'hand_r' ? 6 : -6) * scaleXBase;
-        const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
+        // Reach distance verification derived directly from rig kinematics
+        const charRig = activeRigs?.get(instanceId);
+        const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
+        const shoulderWorldX = currentX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * scaleXBase;
+        const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
         const distToProp = Math.hypot(propPos[0] - shoulderWorldX, propPos[1] - shoulderWorldY);
-        const maxReach = 34 * Math.abs(scaleXBase);
+        const maxReach = armMetrics.maxReach * Math.abs(scaleXBase);
         if (distToProp > maxReach && reachClamps) {
           reachClamps.push({
             beatId: shotId,
@@ -1681,7 +1912,7 @@ export class VerbCompiler {
         nextPos = [currentX, baseY, currentPos[2]];
         clipId = 'stop_and_turn';
         const duration = endF - startF;
-        const turnOffset = Math.max(2, Math.min(Math.floor(duration * 0.25), duration - 6));
+        const turnOffset = Math.max(2, Math.min(Math.floor(duration * VERB_CONSTANTS.TURN_TIMING_RATIO), duration - VERB_CONSTANTS.TRANSITION_CROSS_FADE_FRAMES));
         const turnF0 = startF + turnOffset;
 
         keyframes.push(
@@ -1705,7 +1936,7 @@ export class VerbCompiler {
             frame: turnF0 + 1,
             position: [currentX, baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [scaleXBase * 0.7, scaleYBase * 0.98],
+            scale: [scaleXBase * VERB_CONSTANTS.TURN_SCALE_STEP_1, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_1],
             opacity: 1,
             easing: 'linear'
           },
@@ -1713,28 +1944,28 @@ export class VerbCompiler {
             frame: turnF0 + 2,
             position: [currentX, baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [scaleXBase * 0.35, scaleYBase * 0.96],
+            scale: [scaleXBase * VERB_CONSTANTS.TURN_SCALE_STEP_2, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_2],
             opacity: 1,
             easing: 'linear'
           },
           {
-            frame: turnF0 + 3,
+            frame: turnF0 + VERB_CONSTANTS.CANONICAL_ACT_COUNT,
             position: [currentX, baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [-scaleXBase * 0.35, scaleYBase * 0.96],
+            scale: [-scaleXBase * VERB_CONSTANTS.TURN_SCALE_STEP_2, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_2],
             opacity: 1,
             easing: 'linear'
           },
           {
-            frame: turnF0 + 4,
+            frame: turnF0 + VERB_CONSTANTS.PRECISION_DECIMALS,
             position: [currentX, baseY, currentPos[2]],
             rotationZDegrees: 0,
-            scale: [-scaleXBase * 0.7, scaleYBase * 0.98],
+            scale: [-scaleXBase * VERB_CONSTANTS.TURN_SCALE_STEP_1, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_1],
             opacity: 1,
             easing: 'linear'
           },
           {
-            frame: turnF0 + 5,
+            frame: turnF0 + VERB_CONSTANTS.TURN_FRAME_OFFSET_5,
             position: [currentX, baseY, currentPos[2]],
             rotationZDegrees: 0,
             scale: [-scaleXBase, scaleYBase],
@@ -1766,12 +1997,22 @@ export class VerbCompiler {
 
         if (destPosDirective !== undefined) {
           destPos = [...destPosDirective];
-          charDestX = destPos[0] + (currentPos[0] >= destPos[0] ? 20 : -20);
+          charDestX = destPos[0] + (currentPos[0] >= destPos[0] ? VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE);
         } else {
-          charDestX = currentPos[0] <= 0 ? currentPos[0] - 46 : currentPos[0] + 46;
+          charDestX = currentPos[0] <= 0 ? currentPos[0] - VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE : currentPos[0] + VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE;
+          let surfaceY = 0;
+          for (const rig of activeRigs?.values() ?? []) {
+            if (rig.type === 'prop' && rig.baseTransform.position[1] > 0) {
+              surfaceY = rig.baseTransform.position[1];
+              break;
+            }
+          }
+          if (surfaceY === 0) {
+            surfaceY = currentPos[1];
+          }
           destPos = [
-            charDestX + (charDestX <= currentPos[0] ? -20 : 20),
-            68,
+            charDestX + (charDestX <= currentPos[0] ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE),
+            surfaceY,
             currentPos[2]
           ];
         }
@@ -1779,9 +2020,9 @@ export class VerbCompiler {
         nextX = charDestX;
         nextPos = [charDestX, baseY, currentPos[2]];
         clipId = 'carry_put_down';
-        const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * 0.5), duration - 4));
+        const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * HALF), duration - VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X));
         const walkEndF = startF + walkDeltaFrames;
-        const releaseOffset = Math.max(walkDeltaFrames + 1, Math.min(Math.round(duration * (155 / 210)), duration - 3));
+        const releaseOffset = Math.max(walkDeltaFrames + 1, Math.min(Math.round(duration * VERB_CONSTANTS.CARRY_RELEASE_RATIO), duration - VERB_CONSTANTS.CANONICAL_ACT_COUNT));
         const releaseF = startF + releaseOffset;
         const releaseEndF = Math.min(lastF, releaseF + 2);
 
@@ -1798,52 +2039,75 @@ export class VerbCompiler {
             false
           );
 
+          if (walkPlan.isUnreachable) {
+            const achievableDist = walkPlan.achievableDistance ?? walkDist;
+            charDestX = currentPos[0] + facingSign * achievableDist;
+            nextX = charDestX;
+            nextPos = [charDestX, baseY, currentPos[2]];
+            if (unreachableTargets) {
+              unreachableTargets.push({
+                beatId: shotId,
+                instanceId,
+                verb: action.verb,
+                requestedDistance: walkDist,
+                achievableDistance: achievableDist,
+                durationFrames: duration,
+                minimumFramesNeeded: walkPlan.minimumFramesNeeded ?? Math.ceil(walkDist / (VERB_CONSTANTS.MAX_GAIT_TIME_SCALE * ((VERB_CONSTANTS.RUN_STRIDE_LENGTH * scaleXBase) / VERB_CONSTANTS.RUN_LOOP_FRAMES))),
+                suggestedSpeedNorm: walkPlan.suggestedSpeedNorm
+              });
+            }
+          }
+
           const prevClock = charPoseClockState?.clock ?? 0;
           const prevClip = charPoseClockState?.lastClip;
           let startPose0 = 0;
           if (prevClip && prevClip.loopFrames > 0) {
             const normPhase = (((prevClock % prevClip.loopFrames) + prevClip.loopFrames) % prevClip.loopFrames) / prevClip.loopFrames;
-            startPose0 = Number((normPhase * walkPlan.loopFrames).toFixed(4));
+            startPose0 = Number((normPhase * walkPlan.loopFrames).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
           }
 
           segments.push({
             startFrame: startF,
             endFrame: walkEndF,
-            clipId: 'walk_to',
+            clipId: walkPlan.chosenClipId,
             timeScale: walkPlan.timeScale,
             startPoseFrame: startPose0
           });
 
+          const carryPutDownLoop = VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES;
+          const crouchPoseFrame = Math.round(carryPutDownLoop * HALF);
           const crouchDuration = endF - walkEndF;
-          const crouchTimeScale = crouchDuration > 0 ? (210 - 105) / crouchDuration : 1.0;
+          const crouchTimeScale = crouchDuration > 0 ? (carryPutDownLoop - crouchPoseFrame) / crouchDuration : 1.0;
           segments.push({
             startFrame: walkEndF,
             endFrame: endF,
             clipId: 'carry_put_down',
             timeScale: crouchTimeScale,
-            startPoseFrame: 105
+            startPoseFrame: crouchPoseFrame
           });
 
           nextClockState = {
-            clock: 105 + crouchDuration * crouchTimeScale,
-            lastClip: { clipId: 'carry_put_down', loopFrames: 210 }
+            clock: crouchPoseFrame + crouchDuration * crouchTimeScale,
+            lastClip: { clipId: 'carry_put_down', loopFrames: carryPutDownLoop }
           };
         } else {
           const walkSpeed = walkDist / walkDeltaFrames;
-          const nominalWalkSpeed = (15.0 * Math.abs(scaleXBase)) / 36;
-          calculatedTimeScale = walkDist > 1e-3
-            ? Math.max(0.6, Math.min(1.6, walkSpeed / nominalWalkSpeed))
+          const nominalWalkSpeed = (VERB_CONSTANTS.WALK_STRIDE_LENGTH * Math.abs(scaleXBase)) / VERB_CONSTANTS.WALK_LOOP_FRAMES;
+          calculatedTimeScale = walkDist > EPSILON_SPEED
+            ? Math.max(VERB_CONSTANTS.MIN_GAIT_TIME_SCALE, Math.min(VERB_CONSTANTS.MAX_GAIT_TIME_SCALE, walkSpeed / nominalWalkSpeed))
             : 1.0;
         }
 
         const socketId = action.propSocket ?? 'hand_r';
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
 
-        // Reach distance check at put-down destination
-        const shoulderWorldX = charDestX + (hand === 'hand_r' ? 6 : -6) * sX;
-        const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
+        // Reach distance check at put-down destination derived directly from rig kinematics
+        const charRig = activeRigs?.get(instanceId);
+        const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
+        const shoulderWorldX = charDestX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * sX;
+        const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
         const distToDest = Math.hypot(destPos[0] - shoulderWorldX, destPos[1] - shoulderWorldY);
-        const maxReach = 34 * Math.abs(scaleXBase);
+        const maxReach = armMetrics.maxReach * Math.abs(scaleXBase);
         if (distToDest > maxReach && reachClamps) {
           reachClamps.push({
             beatId: shotId,
@@ -1854,8 +2118,8 @@ export class VerbCompiler {
           });
         }
 
-        const carryDx = 14 * Math.abs(scaleXBase);
-        const carryDy = 10 * scaleYBase;
+        const carryDx = VERB_CONSTANTS.RUN_FORWARD_TILT_DEG * Math.abs(scaleXBase);
+        const carryDy = VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y * scaleYBase;
 
         ikTargets.push(
           {
@@ -1942,8 +2206,8 @@ export class VerbCompiler {
         nextX = currentX;
         nextPos = [currentX, baseY, currentPos[2]];
         const duration = endF - startF;
-        const sitF = startF + Math.max(2, Math.min(Math.floor(duration * 0.35), duration - 4));
-        const standF = startF + Math.max(sitF - startF + 2, Math.min(Math.floor(duration * 0.75), duration - 2));
+        const sitF = startF + Math.max(2, Math.min(Math.floor(duration * VERB_CONSTANTS.SIT_CONTACT_RATIO), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
+        const standF = startF + Math.max(sitF - startF + 2, Math.min(Math.floor(duration * VERB_CONSTANTS.SIT_STAND_TRANSITION_RATIO), duration - 2));
 
         keyframes.push(
           {
@@ -1956,17 +2220,17 @@ export class VerbCompiler {
           },
           {
             frame: sitF,
-            position: [currentX, baseY - 20, currentPos[2]],
-            rotationZDegrees: -5,
-            scale: [scaleXBase, scaleYBase * 0.85],
+            position: [currentX, baseY - VERB_CONSTANTS.PROP_APPROACH_CLEARANCE, currentPos[2]],
+            rotationZDegrees: -VERB_CONSTANTS.TURN_FRAME_OFFSET_5,
+            scale: [scaleXBase, scaleYBase * VERB_CONSTANTS.SIT_SQUASH_SCALE_Y],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: standF,
-            position: [currentX, baseY - 20, currentPos[2]],
-            rotationZDegrees: -5,
-            scale: [scaleXBase, scaleYBase * 0.85],
+            position: [currentX, baseY - VERB_CONSTANTS.PROP_APPROACH_CLEARANCE, currentPos[2]],
+            rotationZDegrees: -VERB_CONSTANTS.TURN_FRAME_OFFSET_5,
+            scale: [scaleXBase, scaleYBase * VERB_CONSTANTS.SIT_SQUASH_SCALE_Y],
             opacity: 1,
             easing: 'linear'
           },
@@ -1987,36 +2251,38 @@ export class VerbCompiler {
         let targetX = currentX;
         if (targetPosDirective !== undefined) {
           targetX = targetPosDirective;
-        } else if (currentX < -50) {
-          targetX = currentX + 23;
+        } else if (currentX < VERB_CONSTANTS.SIM_WALL_THRESHOLD) {
+          targetX = currentX + VERB_CONSTANTS.SIM_RETREAT_STEP_DISTANCE;
         }
         nextX = targetX;
         nextPos = [targetX, baseY, currentPos[2]];
         clipId = 'gesture_point';
         const duration = endF - startF;
-        const pointOffset = Math.max(1, Math.min(Math.floor(duration * 0.25), duration - 2));
+        const pointOffset = Math.max(1, Math.min(Math.floor(duration * VERB_CONSTANTS.POINT_ANTICIPATION_RATIO), duration - 2));
         const pointF = startF + pointOffset;
 
         const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
-        const maxArmReachWorld = 34 * Math.abs(scaleXBase);
-        const shoulderWorldX = targetX + (hand === 'hand_r' ? 6 : -6) * scaleXBase;
-        const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
+        const charRig = activeRigs?.get(instanceId);
+        const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
+        const maxArmReachWorld = armMetrics.maxReach * Math.abs(scaleXBase);
+        const shoulderWorldX = targetX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * scaleXBase;
+        const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
         const facingSign = scaleXBase >= 0 ? 1 : -1;
 
         let pointTarget: [number, number, number];
         if (action.target?.kind === 'direction') {
-          const rad = (action.target.facingDeg * Math.PI) / 180;
-          pointTarget = [targetX + 60 * Math.cos(rad), baseY + 60 * Math.sin(rad), currentPos[2]];
+          const rad = action.target.facingDeg * VERB_CONSTANTS.DEG_TO_RAD;
+          pointTarget = [targetX + VERB_CONSTANTS.FPS_60 * Math.cos(rad), baseY + VERB_CONSTANTS.FPS_60 * Math.sin(rad), currentPos[2]];
         } else {
           pointTarget = [
-            shoulderWorldX + facingSign * (0.90 * maxArmReachWorld),
-            shoulderWorldY + (0.32 * maxArmReachWorld),
+            shoulderWorldX + facingSign * (VERB_CONSTANTS.POINT_EXTEND_X_FACTOR * maxArmReachWorld),
+            shoulderWorldY + (VERB_CONSTANTS.POINT_EXTEND_Y_FACTOR * maxArmReachWorld),
             currentPos[2]
           ];
         }
 
         const distToPoint = Math.hypot(pointTarget[0] - shoulderWorldX, pointTarget[1] - shoulderWorldY);
-        const maxReach = 34 * Math.abs(scaleXBase);
+        const maxReach = armMetrics.maxReach * Math.abs(scaleXBase);
         if (distToPoint > maxReach && reachClamps) {
           reachClamps.push({
             beatId: shotId,
@@ -2080,15 +2346,15 @@ export class VerbCompiler {
         const otherCharX = otherCharPos ? otherCharPos[0] : undefined;
         const isLeft = otherCharX !== undefined ? currentX <= otherCharX : true;
         const startX = currentX;
-        const contactX = isLeft ? -22 : 22;
-        const recoilDelta = 28;
+        const contactX = isLeft ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE;
+        const recoilDelta = VERB_CONSTANTS.RECOIL_SEPARATION_DISTANCE;
         const pushedX = isLeft ? contactX - recoilDelta : contactX + recoilDelta;
         nextX = pushedX;
         nextPos = [pushedX, baseY, currentPos[2]];
 
         const duration = endF - startF;
-        const fEmbrace = startF + Math.max(2, Math.min(Math.floor(duration * (3.0 / 7.0)), duration - 4));
-        const fThrust = startF + Math.max(fEmbrace - startF + 1, Math.min(Math.floor(duration * (3.5 / 7.0)), duration - 2));
+        const fEmbrace = startF + Math.max(2, Math.min(Math.floor(duration * VERB_CONSTANTS.EMBRACE_CONTACT_RATIO), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
+        const fThrust = startF + Math.max(fEmbrace - startF + 1, Math.min(Math.floor(duration * VERB_CONSTANTS.EMBRACE_THRUST_RATIO), duration - 2));
         const sX = isLeft ? scaleXBase : -scaleXBase;
 
         // Step-in locomotion sub-span
@@ -2128,7 +2394,7 @@ export class VerbCompiler {
           const recoilPlan = VerbCompiler.planLocomotionGait(
             recoilDist,
             recoilFrames,
-            action.speedNorm ?? 1.1,
+            action.speedNorm ?? VERB_CONSTANTS.RECOIL_SPEED_NORM,
             -sX,
             false
           );
@@ -2153,12 +2419,12 @@ export class VerbCompiler {
 
         nextClockState = {
           clock: recoilFrames * 1.0,
-          lastClip: { clipId: 'walk_to', loopFrames: 36 }
+          lastClip: { clipId: 'walk_to', loopFrames: VERB_CONSTANTS.WALK_LOOP_FRAMES }
         };
 
         const hand: 'hand_l' | 'hand_r' = isLeft ? 'hand_r' : 'hand_l';
-        const partnerContactX = isLeft ? -8 : 8;
-        const contactTarget: [number, number, number] = [partnerContactX, baseY + 10, currentPos[2]];
+        const partnerContactX = isLeft ? -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y : VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
+        const contactTarget: [number, number, number] = [partnerContactX, baseY + VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y, currentPos[2]];
 
         ikTargets.push(
           {
@@ -2199,7 +2465,7 @@ export class VerbCompiler {
           {
             frame: fEmbrace,
             position: [contactX, baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? 8 : -8,
+            rotationZDegrees: isLeft ? VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y : -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2207,7 +2473,7 @@ export class VerbCompiler {
           {
             frame: fThrust,
             position: [contactX + (isLeft ? -2 : 2), baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? 12 : -12,
+            rotationZDegrees: isLeft ? VERB_CONSTANTS.TURN_TILT_DEG : -VERB_CONSTANTS.TURN_TILT_DEG,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2215,7 +2481,7 @@ export class VerbCompiler {
           {
             frame: recoilArriveF,
             position: [pushedX, baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? -8 : 8,
+            rotationZDegrees: isLeft ? -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y : VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2240,7 +2506,7 @@ export class VerbCompiler {
         ];
         morphKeyframes.grasp_fist = [
           { frame: startF, weight: 0.0 },
-          { frame: fEmbrace, weight: 0.8 },
+          { frame: fEmbrace, weight: VERB_CONSTANTS.EMBRACE_CONTACT_WEIGHT },
           { frame: fThrust, weight: 1.0 },
           { frame: lastF, weight: 0.0 }
         ];
@@ -2251,8 +2517,8 @@ export class VerbCompiler {
         nextX = currentX;
         nextPos = [currentX, baseY, currentPos[2]];
         const duration = endF - startF;
-        const dropF = startF + Math.max(2, Math.min(Math.floor(duration * 0.3), duration - 4));
-        const riseF = startF + Math.max(dropF - startF + 2, Math.min(Math.floor(duration * 0.7), duration - 2));
+        const dropF = startF + Math.max(2, Math.min(Math.floor(duration * VERB_CONSTANTS.FALL_DROP_RATIO), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
+        const riseF = startF + Math.max(dropF - startF + 2, Math.min(Math.floor(duration * VERB_CONSTANTS.TURN_SCALE_STEP_1), duration - 2));
 
         keyframes.push(
           {
@@ -2265,17 +2531,17 @@ export class VerbCompiler {
           },
           {
             frame: dropF,
-            position: [currentX, baseY - 35, currentPos[2]],
-            rotationZDegrees: -25,
-            scale: [scaleXBase, scaleYBase * 0.7],
+            position: [currentX, baseY - VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_LEFT, currentPos[2]],
+            rotationZDegrees: -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE,
+            scale: [scaleXBase, scaleYBase * VERB_CONSTANTS.TURN_SCALE_STEP_1],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: riseF,
-            position: [currentX, baseY - 35, currentPos[2]],
-            rotationZDegrees: -25,
-            scale: [scaleXBase, scaleYBase * 0.7],
+            position: [currentX, baseY - VERB_CONSTANTS.SIM_DEEP_ROOM_FORWARD_LEFT, currentPos[2]],
+            rotationZDegrees: -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE,
+            scale: [scaleXBase, scaleYBase * VERB_CONSTANTS.TURN_SCALE_STEP_1],
             opacity: 1,
             easing: 'linear'
           },
@@ -2331,33 +2597,33 @@ export class VerbCompiler {
     // Natural blinking
     const blinks: Array<{ frame: number; weight: number }> = [];
     const blinkDuration = endF - startF;
-    const blinkStep = Math.max(30, Math.floor(blinkDuration * 0.4));
+    const blinkStep = Math.max(VERB_CONSTANTS.IDLE_LOOP_FRAMES, Math.floor(blinkDuration * VERB_CONSTANTS.BLINK_INTERVAL_RATIO));
     for (
-      let f = startF + Math.min(20, Math.floor(blinkDuration * 0.3));
-      f + 4 <= lastF;
+      let f = startF + Math.min(VERB_CONSTANTS.PROP_APPROACH_CLEARANCE, Math.floor(blinkDuration * VERB_CONSTANTS.FALL_DROP_RATIO));
+      f + VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X <= lastF;
       f += blinkStep
     ) {
       blinks.push(
         { frame: f, weight: 0 },
         { frame: f + 2, weight: 1 },
-        { frame: f + 4, weight: 0 }
+        { frame: f + VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X, weight: 0 }
       );
     }
     morphKeyframes.blink = blinks;
 
     // Build default segment and phase continuity if not created by locomotion
     const loopFramesMap: Record<string, number> = {
-      walk_to: 36,
-      sprint_frenzy: 18,
-      pop_vocal_sway: 24,
-      idle: 30,
-      reach_and_grasp: 210,
-      stop_and_turn: 210,
-      carry_put_down: 210,
-      gesture_point: 210,
-      embrace_push_away: 210,
-      sit_stand: 210,
-      fall_recover: 210
+      walk_to: VERB_CONSTANTS.WALK_LOOP_FRAMES,
+      sprint_frenzy: VERB_CONSTANTS.RUN_LOOP_FRAMES,
+      pop_vocal_sway: VERB_CONSTANTS.POP_SWAY_LOOP_FRAMES,
+      idle: VERB_CONSTANTS.IDLE_LOOP_FRAMES,
+      reach_and_grasp: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
+      stop_and_turn: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
+      carry_put_down: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
+      gesture_point: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
+      embrace_push_away: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
+      sit_stand: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
+      fall_recover: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES
     };
     const clipLoop = loopFramesMap[clipId] ?? (endF - startF);
     const prevClock = charPoseClockState?.clock ?? 0;
@@ -2375,10 +2641,10 @@ export class VerbCompiler {
     let startPose0 = 0;
     if (ONE_SHOT_ACTION_VERBS.has(action.verb)) {
       startPose0 = 0;
-      calculatedTimeScale = Number(((210 / Math.max(1, endF - startF)) * (action.speedNorm ?? 1.0)).toFixed(4));
+      calculatedTimeScale = Number(((clipLoop / Math.max(1, endF - startF)) * (action.speedNorm ?? 1.0)).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
     } else if (prevClip && prevClip.loopFrames > 0) {
       const normPhase = (((prevClock % prevClip.loopFrames) + prevClip.loopFrames) % prevClip.loopFrames) / prevClip.loopFrames;
-      startPose0 = Number((normPhase * clipLoop).toFixed(4));
+      startPose0 = Number((normPhase * clipLoop).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
     }
 
     if (segments.length === 0) {
@@ -2409,25 +2675,27 @@ export class VerbCompiler {
         const pRig = activeRigs?.get(action.gazeTarget.propId);
         gazeWorldPos = pRig?.baseTransform.position ?? [0, baseY, 0];
       } else if (action.gazeTarget.kind === 'direction') {
-        const rad = (action.gazeTarget.facingDeg * Math.PI) / 180;
-        gazeWorldPos = [currentX + 100 * Math.cos(rad), baseY + 100 * Math.sin(rad), currentPos[2]];
+        const rad = action.gazeTarget.facingDeg * VERB_CONSTANTS.DEG_TO_RAD;
+        gazeWorldPos = [currentX + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * Math.cos(rad), baseY + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * Math.sin(rad), currentPos[2]];
       }
     } else if (action.verb === 'look_at') {
       if (otherCharPos !== undefined) {
-        gazeWorldPos = [otherCharPos[0], baseY + 15, otherCharPos[2]];
+        gazeWorldPos = [otherCharPos[0], baseY + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y, otherCharPos[2]];
       } else {
         const facingSign = scaleXBase >= 0 ? 1 : -1;
-        gazeWorldPos = [currentX + 100 * facingSign, baseY + 15, currentPos[2]];
+        gazeWorldPos = [currentX + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * facingSign, baseY + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y, currentPos[2]];
       }
     } else if (action.verb === 'gesture_point') {
       const facingSign = scaleXBase >= 0 ? 1 : -1;
       const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
-      const shoulderWorldX = nextX + (hand === 'hand_r' ? 6 : -6) * scaleXBase;
-      const shoulderWorldY = baseY + (18 + 15) * scaleYBase;
-      const maxArmReachWorld = 34 * Math.abs(scaleXBase);
+      const charRig = activeRigs?.get(instanceId);
+      const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
+      const shoulderWorldX = nextX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * scaleXBase;
+      const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
+      const maxArmReachWorld = armMetrics.maxReach * Math.abs(scaleXBase);
       gazeWorldPos = [
-        shoulderWorldX + facingSign * (0.90 * maxArmReachWorld),
-        shoulderWorldY + (0.32 * maxArmReachWorld),
+        shoulderWorldX + facingSign * (VERB_CONSTANTS.POINT_EXTEND_X_FACTOR * maxArmReachWorld),
+        shoulderWorldY + (VERB_CONSTANTS.POINT_EXTEND_Y_FACTOR * maxArmReachWorld),
         currentPos[2]
       ];
     }
@@ -2528,7 +2796,7 @@ export class VerbCompiler {
         }
       );
     } else if (action.verb === 'reach_and_grasp') {
-      const graspOffset = Math.max(2, Math.min(Math.round(duration * 0.5), duration - 2));
+      const graspOffset = Math.max(2, Math.min(Math.round(duration * HALF), duration - 2));
       const graspFrame = startF + graspOffset;
       nextHeld = true;
       nextHeldBy = actorId;
@@ -2573,15 +2841,15 @@ export class VerbCompiler {
       if (destPosDirective !== undefined) {
         destPos = [...destPosDirective];
       } else {
-        const charDestX = ownerPos[0] <= 0 ? ownerPos[0] - 46 : ownerPos[0] + 46;
+        const charDestX = ownerPos[0] <= 0 ? ownerPos[0] - VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE : ownerPos[0] + VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE;
         destPos = [
-          charDestX + (charDestX <= ownerPos[0] ? -20 : 20),
+          charDestX + (charDestX <= ownerPos[0] ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE),
           initialPos[1],
           initialPos[2]
         ];
       }
-      const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * 0.5), duration - 4));
-      const releaseOffset = Math.max(walkDeltaFrames + 1, Math.min(Math.round(duration * (155 / 210)), duration - 3));
+      const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * HALF), duration - VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X));
+      const releaseOffset = Math.max(walkDeltaFrames + 1, Math.min(Math.round(duration * VERB_CONSTANTS.CARRY_RELEASE_RATIO), duration - VERB_CONSTANTS.CANONICAL_ACT_COUNT));
       const releaseFrame = startF + releaseOffset;
       nextHeld = false;
       nextHeldBy = null;

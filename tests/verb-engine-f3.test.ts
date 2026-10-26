@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
+import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
 import type { StoryBeatContract, ActionVerbType } from '../src/schemas/story-beat.contract.js';
+import type { AudioAnalysisManifest, AudioFrameFeature } from '../src/schemas/audio.contract.js';
 
 test('F3 Verb Engine Timing Clamps & Code Hygiene Suite', async (t) => {
   const ALL_VERBS: ActionVerbType[] = [
@@ -332,35 +335,101 @@ test('F3 Verb Engine Timing Clamps & Code Hygiene Suite', async (t) => {
     assert.deepEqual(lastKf.position, [-55, 68, 0]);
   });
 
-  await t.test('Hygiene scan: Zero denylisted scenario names or absolute frame numbers in verb-engine', () => {
+  await t.test('Hygiene scan: TypeScript-AST enforcement of allowlisted numeric literals, ratios, and comments in verb-engine', () => {
     const verbEngineDir = path.resolve(process.cwd(), 'src/engine/director/verb-engine');
     const files = fs.readdirSync(verbEngineDir).filter((f) => f.endsWith('.ts'));
 
     assert.ok(files.length > 0, 'verb-engine directory must contain typescript files');
 
-    // Denylist: absolute frame number comments and scenario-specific object names in comments / logic
+    const ALLOWED_NUMBERS = new Set([0, 1, 2, -1]);
     const frameNumberCommentPattern = /\/\/.*(?:\bframe\s+\d+\b|~frame\b)/i;
     const denylistedCommentWords = [
       /\/\/.*\bdesk\b/i,
       /\/\/.*\bcup\b/i,
+      /\/\/.*\bchair\b/i,
       /\/\/.*\bumbrella\b/i
     ];
 
+    function isInsideNamedTolerance(node: ts.Node): boolean {
+      let cur: ts.Node | undefined = node;
+      while (cur) {
+        if (ts.isVariableDeclaration(cur) && ts.isIdentifier(cur.name)) {
+          const n = cur.name.text.toUpperCase();
+          if (n.includes('TOLERANCE') || n.includes('EPSILON') || n.includes('THRESHOLD') || n === 'HALF') {
+            return true;
+          }
+        }
+        cur = cur.parent;
+      }
+      return false;
+    }
+
+    function isInsideExportedConstantsBlock(node: ts.Node): boolean {
+      let cur: ts.Node | undefined = node;
+      while (cur) {
+        if (ts.isVariableDeclaration(cur) && ts.isIdentifier(cur.name) && cur.name.text === 'VERB_CONSTANTS') {
+          return true;
+        }
+        cur = cur.parent;
+      }
+      return false;
+    }
+
+    function isNum(n: ts.Node): boolean {
+      return (
+        ts.isNumericLiteral(n) ||
+        (ts.isPrefixUnaryExpression(n) &&
+          n.operator === ts.SyntaxKind.MinusToken &&
+          ts.isNumericLiteral(n.operand))
+      );
+    }
+
     for (const file of files) {
       const fullPath = path.join(verbEngineDir, file);
-      const content = fs.readFileSync(fullPath, 'utf8');
-      const lines = content.split('\n');
+      const sourceText = fs.readFileSync(fullPath, 'utf8');
+      const sourceFile = ts.createSourceFile(fullPath, sourceText, ts.ScriptTarget.Latest, true);
 
+      // 1. AST walk for literal ratios and non-allowlisted numeric literals
+      function walkAst(node: ts.Node) {
+        if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.SlashToken) {
+          if (isNum(node.left) && isNum(node.right)) {
+            const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+            assert.fail(
+              `Hygiene AST violation in ${file}:${line + 1}: forbidden literal ratio "a / b": "${node.getText(sourceFile)}"`
+            );
+          }
+        }
+
+        if (ts.isNumericLiteral(node)) {
+          const val = Number(node.text);
+          if (!ALLOWED_NUMBERS.has(val)) {
+            if (isInsideExportedConstantsBlock(node)) {
+              // Allowed inside exported VERB_CONSTANTS block
+            } else if (isInsideNamedTolerance(node)) {
+              // Allowed inside named tolerance / epsilon / threshold / HALF
+            } else {
+              const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+              assert.fail(
+                `Hygiene AST violation in ${file}:${line + 1}: non-allowlisted numeric literal "${node.text}". Must be in [0, 1, 2, -1], named 0.5, declared named tolerance, or inside VERB_CONSTANTS.`
+              );
+            }
+          }
+        }
+
+        ts.forEachChild(node, walkAst);
+      }
+
+      walkAst(sourceFile);
+
+      // 2. Comments check for absolute frame numbers and denylisted scenario names
+      const lines = sourceText.split('\n');
       for (let lineNo = 1; lineNo <= lines.length; lineNo++) {
         const line = lines[lineNo - 1];
-
-        // 1. Check for absolute frame numbers in comments
         assert.ok(
           !frameNumberCommentPattern.test(line),
           `Hygiene violation in ${file}:${lineNo}: absolute frame number in comment: "${line.trim()}"`
         );
 
-        // 2. Check for denylisted scenario object names in comments
         for (const pattern of denylistedCommentWords) {
           assert.ok(
             !pattern.test(line),
@@ -369,5 +438,242 @@ test('F3 Verb Engine Timing Clamps & Code Hygiene Suite', async (t) => {
         }
       }
     }
+  });
+
+  await t.test('F3 Transition Model: hard cuts have full opacity, act boundaries dip to black, frame pure and chunk independent', () => {
+    const dummyAudio = (f: number): AudioFrameFeature => ({
+      frameIndex: f,
+      timestamp: f / 30,
+      rms: 0,
+      rmsRelativeGlobal: 0,
+      rmsRelativeLocal: 0,
+      localWindowFrames: 30,
+      spectralFlux: 0,
+      onsetStrength: 0,
+      isOnset: false,
+      bands: { subBass: 0, bass: 0, lowMid: 0, mid: 0, highMid: 0, presence: 0, brilliance: 0 }
+    });
+
+    const createSyntheticManifest = (totalFrames: number): AudioAnalysisManifest => ({
+      metadata: {
+        audioFilePath: 'synthetic.wav',
+        sampleRate: 44100,
+        durationSeconds: totalFrames / 30,
+        totalFrames,
+        fps: 30
+      },
+      normalization: { globalRmsMax: 1.0, localWindowFrames: 30 },
+      lyrics: [],
+      beatEvents: [],
+      storageReference: { type: 'memory_columnar', columnLayoutVersion: 1 }
+    });
+
+    // 6-beat contract across 3 acts (total 600 frames, 100 frames per beat)
+    // Acts partitioned: shotRanges [0..2] -> Act 1 (b1, b2), Act 2 (b3, b4), Act 3 (b5, b6)
+    const testContract: StoryBeatContract = {
+      projectId: 'transition_test',
+      songDurationSec: 600 / 30,
+      fps: 30,
+      sliceFrameRange: { startFrame: 0, endFrame: 600 },
+      cast: [
+        {
+          instanceId: 'hero',
+          role: 'PROTAGONIST',
+          archetypeId: 'hero_silhouette',
+          palette: { primary: '#0a1128', accent: '#00f0ff' }
+        }
+      ],
+      beats: [
+        {
+          beatId: 'b1',
+          startFrame: 0,
+          endFrame: 100,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'act 1 start',
+          presentCharacters: ['hero'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: [],
+            atmosphericDensity: 0.5
+          },
+          camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
+          actions: [{ instanceId: 'hero', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.7 }]
+        },
+        {
+          beatId: 'b2',
+          startFrame: 100,
+          endFrame: 200,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'act 1 interior cut',
+          presentCharacters: ['hero'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: [],
+            atmosphericDensity: 0.5
+          },
+          // Identical camera to test invisible cut detection
+          camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
+          actions: [{ instanceId: 'hero', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.7 }]
+        },
+        {
+          beatId: 'b3',
+          startFrame: 200,
+          endFrame: 300,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'act 2 boundary',
+          presentCharacters: ['hero'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: [],
+            atmosphericDensity: 0.5
+          },
+          camera: { framing: 'CLOSE_UP', movement: 'DOLLY', focalCharacterId: 'hero', lookRoom: 'right', dutchAngleDeg: 0 },
+          actions: [{ instanceId: 'hero', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.7 }]
+        },
+        {
+          beatId: 'b4',
+          startFrame: 300,
+          endFrame: 400,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'act 2 interior cut',
+          presentCharacters: ['hero'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: [],
+            atmosphericDensity: 0.5
+          },
+          camera: { framing: 'MEDIUM', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
+          actions: [{ instanceId: 'hero', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.7 }]
+        },
+        {
+          beatId: 'b5',
+          startFrame: 400,
+          endFrame: 500,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'act 3 boundary',
+          presentCharacters: ['hero'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: [],
+            atmosphericDensity: 0.5
+          },
+          camera: { framing: 'WIDE', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
+          actions: [{ instanceId: 'hero', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.7 }]
+        },
+        {
+          beatId: 'b6',
+          startFrame: 500,
+          endFrame: 600,
+          lyricSnippet: '',
+          emotionalTone: 'reflective',
+          narrativeSubtext: 'act 3 interior cut',
+          presentCharacters: ['hero'],
+          set: {
+            kitId: 'ARCHITECTURAL_INTERIOR',
+            variantId: 'moody_night',
+            landmarkProps: [],
+            atmosphericDensity: 0.5
+          },
+          camera: { framing: 'MEDIUM', movement: 'STATIC', focalCharacterId: 'hero', lookRoom: 'center', dutchAngleDeg: 0 },
+          actions: [{ instanceId: 'hero', verb: 'look_at', speedNorm: 1.0, intensityNorm: 0.7 }]
+        }
+      ],
+      unfulfilledRequests: []
+    };
+
+    const manifest = createSyntheticManifest(600);
+    const prod = VerbCompiler.compile(testContract, manifest);
+    const shots = prod.storyboard.shots;
+
+    // 1. Slice start (shot 0): dip_to_black 10 frames
+    assert.equal(shots[0].transitionIn?.type, 'dip_to_black');
+    assert.equal(shots[0].transitionIn?.durationFrames, 10);
+
+    // 2. Ordinary boundary (shot 1, intra-act within Act 1): cut with duration 0
+    assert.equal(shots[1].transitionIn?.type, 'cut');
+    assert.equal(shots[1].transitionIn?.durationFrames, 0);
+
+    // 3. Act boundary (shot 2, Act 1 -> Act 2): dip_to_black 10 frames
+    assert.equal(shots[2].transitionIn?.type, 'dip_to_black');
+    assert.equal(shots[2].transitionIn?.durationFrames, 10);
+
+    // 4. Ordinary boundary (shot 3, intra-act within Act 2): cut with duration 0
+    assert.equal(shots[3].transitionIn?.type, 'cut');
+    assert.equal(shots[3].transitionIn?.durationFrames, 0);
+
+    // 5. Act boundary (shot 4, Act 2 -> Act 3): dip_to_black 10 frames
+    assert.equal(shots[4].transitionIn?.type, 'dip_to_black');
+    assert.equal(shots[4].transitionIn?.durationFrames, 10);
+
+    // 6. Ordinary boundary (shot 5, intra-act within Act 3): cut with duration 0
+    assert.equal(shots[5].transitionIn?.type, 'cut');
+    assert.equal(shots[5].transitionIn?.durationFrames, 0);
+
+    // 7. Slice end (shot 5 transitionOut): dip_to_black 10 frames
+    assert.equal(shots[5].transitionOut?.type, 'dip_to_black');
+    assert.equal(shots[5].transitionOut?.durationFrames, 10);
+
+    // 8. Invisible cuts detection: shot 0 to shot 1 had identical camera
+    assert.ok(prod.compileReport.invisibleCuts && prod.compileReport.invisibleCuts.length >= 1, 'Expected invisible cuts reported');
+    const cut01 = prod.compileReport.invisibleCuts.find((ic) => ic.boundaryFrame === 100);
+    assert.ok(cut01, 'Expected invisible cut at frame 100');
+    assert.equal(cut01?.fromShotId, shots[0].id);
+    assert.equal(cut01?.toShotId, shots[1].id);
+
+    // 9. Opacity values through FrameStateBuilder
+    const builder = new FrameStateBuilder({
+      storyboard: prod.storyboard,
+      choreography: prod.choreography,
+      rigs: prod.rigs,
+      audioManifest: manifest,
+      getAudioFeatureAtFrame: dummyAudio
+    });
+
+    // Hard cut at frame 100: frame 99 (end of shot 0) and frame 100 (start of shot 1) must be full opacity
+    const frame99 = builder.buildFrameState(99);
+    const frame100 = builder.buildFrameState(100);
+    assert.equal(frame99.transitionOverlayOpacity, undefined, 'Frame 99 must have full opacity');
+    assert.equal(frame100.transitionOverlayOpacity, undefined, 'Frame 100 must have full opacity (cut)');
+
+    // Act boundary at frame 200 (shot 2): dip_to_black progression
+    const frame200 = builder.buildFrameState(200);
+    assert.equal(frame200.transitionOverlayOpacity, 1.0, 'Frame 200 must be full black');
+    const frame205 = builder.buildFrameState(205);
+    assert.equal(frame205.transitionOverlayOpacity, 0.5, 'Frame 205 must be half black (u=0.5)');
+    const frame210 = builder.buildFrameState(210);
+    assert.equal(frame210.transitionOverlayOpacity, undefined, 'Frame 210 must be full scene opacity');
+
+    // Slice end at frame 599 (shot 5): dip_to_black progression
+    const frame590 = builder.buildFrameState(590);
+    assert.equal(frame590.transitionOverlayOpacity, 0.1, 'Frame 590 must start dipping to black');
+    const frame599 = builder.buildFrameState(599);
+    assert.equal(frame599.transitionOverlayOpacity, 1.0, 'Frame 599 (last frame) must be full black');
+
+    // 10. Frame purity: evaluating frame in random vs sequential order yields identical output
+    const stateA = builder.buildFrameState(205);
+    const stateB = builder.buildFrameState(205);
+    assert.deepEqual(stateA, stateB, 'Frame evaluation must be pure function of frameIndex');
+
+    // 11. Chunk independence: separate builders yield identical output
+    const builder2 = new FrameStateBuilder({
+      storyboard: prod.storyboard,
+      choreography: prod.choreography,
+      rigs: prod.rigs,
+      audioManifest: manifest,
+      getAudioFeatureAtFrame: dummyAudio
+    });
+    const stateChunk1 = builder.buildFrameState(203);
+    const stateChunk2 = builder2.buildFrameState(203);
+    assert.deepEqual(stateChunk1, stateChunk2, 'Different instances must yield identical frame state');
   });
 });

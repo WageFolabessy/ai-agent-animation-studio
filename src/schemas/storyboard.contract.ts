@@ -59,7 +59,8 @@ export const CinematicShotSchema = z.object({
   activeRigIds: z.array(z.string().min(1)).min(1),
   environmentZone: EnvironmentZoneTypeEnum.optional(),
   theatricalSetId: TheatricalSetIdSchema.optional(),
-  transitionIn: ShotTransitionSpecSchema.optional()
+  transitionIn: ShotTransitionSpecSchema.optional(),
+  transitionOut: ShotTransitionSpecSchema.optional()
 }).strict().refine(
   (shot) => shot.cameraStart.projectionMode === shot.cameraEnd.projectionMode,
   { message: 'Camera projectionMode must match between start and end' }

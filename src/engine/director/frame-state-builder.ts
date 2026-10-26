@@ -278,8 +278,10 @@ export class FrameStateBuilder {
       const localFrame = frameIndex - shot.frameRange.startFrameInclusive;
       if (localFrame >= 0 && localFrame < shot.transitionIn.durationFrames) {
         const u = localFrame / shot.transitionIn.durationFrames;
-        if (shot.transitionIn.type === 'CROSS_FADE') {
+        if (shot.transitionIn.type === 'CROSS_FADE' || shot.transitionIn.type === 'dissolve') {
           transitionOverlayOpacity = Number(((1 - u) * 0.85).toFixed(3));
+        } else if (shot.transitionIn.type === 'dip_to_black') {
+          transitionOverlayOpacity = Number((1 - u).toFixed(3));
         } else if (shot.transitionIn.type === 'CAMERA_PAN') {
           const panShift = (1 - u) * (1 - u) * -40;
           baseCamera = {
@@ -296,6 +298,22 @@ export class FrameStateBuilder {
             ]
           };
         }
+      }
+    }
+
+    if (shot.transitionOut && shot.transitionOut.durationFrames > 0) {
+      const framesFromEnd = shot.frameRange.endFrameExclusive - 1 - frameIndex;
+      if (framesFromEnd >= 0 && framesFromEnd < shot.transitionOut.durationFrames) {
+        const u = 1 - (framesFromEnd / shot.transitionOut.durationFrames);
+        let outOpacity = 0;
+        if (shot.transitionOut.type === 'CROSS_FADE' || shot.transitionOut.type === 'dissolve') {
+          outOpacity = Number((u * 0.85).toFixed(3));
+        } else if (shot.transitionOut.type === 'dip_to_black') {
+          outOpacity = Number(u.toFixed(3));
+        }
+        transitionOverlayOpacity = transitionOverlayOpacity !== undefined
+          ? Math.max(transitionOverlayOpacity, outOpacity)
+          : outOpacity;
       }
     }
 
