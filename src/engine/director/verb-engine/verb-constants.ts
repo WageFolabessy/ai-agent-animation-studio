@@ -36,8 +36,6 @@ export const VERB_CONSTANTS = {
   IDLE_LOOP_FRAMES: 30,
   /** Pop vocal sway clip loop length in frames. */
   POP_SWAY_LOOP_FRAMES: 24,
-  /** Standard one-shot narrative clip loop length in frames. */
-  ONE_SHOT_CLIP_FRAMES: 210,
 
   /** Minimum length of a beat in frames (hard duration lower bound). */
   MIN_BEAT_LENGTH_FRAMES: 12,

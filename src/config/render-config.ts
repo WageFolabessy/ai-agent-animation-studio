@@ -24,6 +24,9 @@ export const AudioMuxConfigSchema = z.object({
 
 export type AudioMuxConfig = z.infer<typeof AudioMuxConfigSchema>;
 
+export const RasterQualitySchema = z.enum(['full', 'fast']).default('full');
+export type RasterQuality = z.infer<typeof RasterQualitySchema>;
+
 export const BaseRenderConfigSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -33,6 +36,7 @@ export const BaseRenderConfigSchema = z.object({
   crf: z.number().int().min(0).max(51).default(18),
   preset: z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow']).default('fast'),
   threads: z.union([z.literal('auto'), z.number().int().min(1).max(32)]).default(AUTO_FFMPEG_THREADS),
+  rasterQuality: RasterQualitySchema.default('full'),
   audio: AudioMuxConfigSchema.optional()
 }).strict();
 

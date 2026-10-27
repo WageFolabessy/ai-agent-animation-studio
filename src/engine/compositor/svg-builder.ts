@@ -306,12 +306,14 @@ export class SvgBuilder {
     fill: string,
     stroke?: string,
     strokeWidth = 1,
-    opacity = 1
+    opacity = 1,
+    shapeRendering?: 'optimizeSpeed' | 'geometricPrecision' | 'crispEdges'
   ): this {
     const pointList = points.map(([x, y]) => `${fmt(x)},${fmt(y)}`).join(' ');
     const strokeAttrs = stroke ? ` stroke="${escapeXmlAttr(stroke)}" stroke-width="${fmt(strokeWidth)}"` : '';
+    const renderingAttr = shapeRendering ? ` shape-rendering="${shapeRendering}"` : '';
     this.elements.push(
-      `<polygon points="${pointList}" fill="${escapeXmlAttr(fill)}"${strokeAttrs} opacity="${fmt(opacity)}"/>`
+      `<polygon points="${pointList}" fill="${escapeXmlAttr(fill)}"${strokeAttrs} opacity="${fmt(opacity)}"${renderingAttr}/>`
     );
     return this;
   }

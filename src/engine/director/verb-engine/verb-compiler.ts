@@ -215,6 +215,31 @@ export class VerbCompiler {
     };
   }
 
+  /**
+   * Derives clip duration in frames from rig clip data (loopFrames or last keyframe frame).
+   * Falls back to fallbackFrames if the clip or keyframes are not found.
+   */
+  public static getClipDuration(
+    rig: AssetRigContract | undefined,
+    clipId: string,
+    fallbackFrames: number = 0
+  ): number {
+    const clip = rig?.poseClips?.[clipId];
+    if (!clip) {
+      return fallbackFrames;
+    }
+    if (typeof clip.loopFrames === 'number' && clip.loopFrames > 0) {
+      return clip.loopFrames;
+    }
+    if (clip.keyframes && clip.keyframes.length > 0) {
+      const lastKeyframe = clip.keyframes[clip.keyframes.length - 1];
+      if (typeof lastKeyframe?.frame === 'number' && lastKeyframe.frame > 0) {
+        return lastKeyframe.frame;
+      }
+    }
+    return fallbackFrames;
+  }
+
   public static resolveInitialPropPlacement(
     propId: string,
     beats: StoryBeatContract['beats'],
@@ -1513,6 +1538,7 @@ export class VerbCompiler {
     const segments: PoseSegment[] = [];
     const ikTargets: IkTarget[] = [];
     const gazeTargets: GazeTarget[] = [];
+    const charRig = activeRigs?.get(instanceId);
 
     const baseY = archetypeId === 'companion_silhouette' ? VERB_CONSTANTS.COMPANION_BASE_Y : VERB_CONSTANTS.HERO_BASE_Y;
     const [scaleXBase, scaleYBase] =
@@ -1834,7 +1860,6 @@ export class VerbCompiler {
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
 
         // Reach distance verification derived directly from rig kinematics
-        const charRig = activeRigs?.get(instanceId);
         const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
         const shoulderWorldX = currentX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * scaleXBase;
         const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
@@ -2074,7 +2099,7 @@ export class VerbCompiler {
             startPoseFrame: startPose0
           });
 
-          const carryPutDownLoop = VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES;
+          const carryPutDownLoop = VerbCompiler.getClipDuration(charRig, 'carry_put_down', endF - walkEndF);
           const crouchPoseFrame = Math.round(carryPutDownLoop * HALF);
           const crouchDuration = endF - walkEndF;
           const crouchTimeScale = crouchDuration > 0 ? (carryPutDownLoop - crouchPoseFrame) / crouchDuration : 1.0;
@@ -2102,7 +2127,6 @@ export class VerbCompiler {
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
 
         // Reach distance check at put-down destination derived directly from rig kinematics
-        const charRig = activeRigs?.get(instanceId);
         const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
         const shoulderWorldX = charDestX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * sX;
         const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
@@ -2616,16 +2640,10 @@ export class VerbCompiler {
       walk_to: VERB_CONSTANTS.WALK_LOOP_FRAMES,
       sprint_frenzy: VERB_CONSTANTS.RUN_LOOP_FRAMES,
       pop_vocal_sway: VERB_CONSTANTS.POP_SWAY_LOOP_FRAMES,
-      idle: VERB_CONSTANTS.IDLE_LOOP_FRAMES,
-      reach_and_grasp: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
-      stop_and_turn: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
-      carry_put_down: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
-      gesture_point: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
-      embrace_push_away: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
-      sit_stand: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES,
-      fall_recover: VERB_CONSTANTS.ONE_SHOT_CLIP_FRAMES
+      idle: VERB_CONSTANTS.IDLE_LOOP_FRAMES
     };
-    const clipLoop = loopFramesMap[clipId] ?? (endF - startF);
+    const rigClipDuration = VerbCompiler.getClipDuration(charRig, clipId, 0);
+    const clipLoop = rigClipDuration > 0 ? rigClipDuration : (loopFramesMap[clipId] ?? (endF - startF));
     const prevClock = charPoseClockState?.clock ?? 0;
     const prevClip = charPoseClockState?.lastClip;
     const ONE_SHOT_ACTION_VERBS = new Set([

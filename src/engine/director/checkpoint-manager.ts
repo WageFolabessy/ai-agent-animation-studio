@@ -109,7 +109,8 @@ export function computeChunkFingerprint(inputs: ChunkFingerprintInputs): string 
       fps: inputs.renderConfig.fps,
       preset: inputs.renderConfig.preset,
       crf: inputs.renderConfig.crf,
-      threads: inputs.renderConfig.threads
+      threads: inputs.renderConfig.threads,
+      rasterQuality: inputs.renderConfig.rasterQuality ?? 'full'
     },
     audioManifestHash: inputs.audioManifestHash,
     featuresBinSha256: inputs.featuresBinSha256,

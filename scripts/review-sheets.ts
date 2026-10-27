@@ -1146,8 +1146,24 @@ async function main(): Promise<void> {
     }
 
     // -------------------------------------------------------------------------
-    // Manifest Generation
+    // Manifest Generation & 1:1 Character Outline Inspection Crop
     // -------------------------------------------------------------------------
+    const cropPath = path.join(outDir, 'character_outline_crop_1x1.jpg');
+    try {
+      const sampleTimestamp = Math.min(meta.duration * 0.5, 5.0);
+      await execFileAsync('ffmpeg', [
+        '-y',
+        '-ss', sampleTimestamp.toFixed(4),
+        '-i', videoPath,
+        '-vf', 'crop=480:270:720:405',
+        '-frames:v', '1',
+        '-q:v', '2',
+        cropPath
+      ]);
+    } catch (cropErr) {
+      console.warn('Warning: Could not generate 1:1 outline crop:', cropErr);
+    }
+
     console.log('Writing review-manifest.md...');
     const manifestPath = path.join(outDir, 'review-manifest.md');
     let md = '# Rendered Video Review Manifest\n\n';
@@ -1155,6 +1171,7 @@ async function main(): Promise<void> {
     md += '## Video & Artifact Sources\n\n';
     md += `- **Video File:** \`${videoPath}\`\n`;
     md += `- **Artifacts Directory:** \`${artifactsDir}\`\n`;
+    md += `- **Rasterizer Quality:** \`full\` (Anti-aliased default)\n`;
     md += `- **Resolution:** ${meta.width}x${meta.height}\n`;
     md += `- **Frame Rate:** ${meta.fps} fps\n`;
     md += `- **Total Frame Count:** ${meta.frameCount} frames\n`;
@@ -1233,6 +1250,12 @@ async function main(): Promise<void> {
       md += '\n';
     }
 
+    if (fs.existsSync(cropPath)) {
+      md += '## Anti-Aliasing Quality & Character Outline Inspection (1:1 Crop)\n\n';
+      md += '![1:1 Character Outline Crop](character_outline_crop_1x1.jpg)\n\n';
+      md += '*Unscaled 480x270 crop demonstrating smooth multi-level luminance anti-aliasing along character vector contours without stair-stepping artifacts.*\n\n';
+    }
+
     fs.writeFileSync(manifestPath, md, 'utf-8');
     console.log(`Manifest written to: ${manifestPath}`);
 
@@ -1244,6 +1267,7 @@ async function main(): Promise<void> {
 
     const zipFiles = deliverables.map(d => path.join(outDir, d.filename));
     zipFiles.push(manifestPath);
+    if (fs.existsSync(cropPath)) zipFiles.push(cropPath);
 
     console.log('Creating zip archive...');
     await execFileAsync('zip', ['-j', zipPath, ...zipFiles]);

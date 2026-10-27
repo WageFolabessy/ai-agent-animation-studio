@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
+import { ArchetypeFactory } from '../src/engine/library/archetype-factory.js';
 import { validateProjectContracts, validateChoreography } from '../src/schemas/invariants.js';
 import { createRenderConfig } from '../src/config/render-config.js';
 import type { StoryBeatContract, StoryBeat } from '../src/schemas/story-beat.contract.js';
@@ -350,7 +351,37 @@ test('F2 Verb Compiler Multi-Beat & Invariant Suite', async (t) => {
     assert.deepEqual(customMetrics.shoulderOffset, [10, 38]);
   });
 
-  await t.test('F2 Regression: One-shot clip timing follows actual clip length (loopFrames)', () => {
+  await t.test('F2 Regression: One-shot clip timing follows actual clip length (loopFrames or keyframes)', () => {
+    // 1. Direct unit verification of getClipDuration
+    const dummyRig = {
+      id: 'test_rig',
+      name: 'Test Rig',
+      type: 'character' as const,
+      baseTransform: { position: [0, 0, 0] as [number, number, number], rotationZDegrees: 0, scale: [1, 1] as [number, number] },
+      poseClips: {
+        loop_clip: {
+          interpolationMode: 'linear' as const,
+          loopFrames: 48,
+          keyframes: [{ frame: 0, jointTransforms: [] }, { frame: 48, jointTransforms: [] }]
+        },
+        oneshot_clip: {
+          interpolationMode: 'linear' as const,
+          keyframes: [{ frame: 0, jointTransforms: [] }, { frame: 160, jointTransforms: [] }]
+        },
+        empty_clip: {
+          interpolationMode: 'linear' as const,
+          keyframes: []
+        }
+      }
+    };
+
+    assert.equal(VerbCompiler.getClipDuration(dummyRig as any, 'loop_clip', 10), 48);
+    assert.equal(VerbCompiler.getClipDuration(dummyRig as any, 'oneshot_clip', 10), 160);
+    assert.equal(VerbCompiler.getClipDuration(dummyRig as any, 'empty_clip', 10), 10);
+    assert.equal(VerbCompiler.getClipDuration(dummyRig as any, 'nonexistent', 25), 25);
+    assert.equal(VerbCompiler.getClipDuration(undefined, 'any', 30), 30);
+
+    // 2. Standard rig reach_and_grasp (clip length = 210 keyframes) on 70f beat -> timeScale = 210 / 70 = 3.0
     const beat = createBeat('b1', 0, 70, [
       {
         instanceId: 'hero',
@@ -365,6 +396,89 @@ test('F2 Verb Compiler Multi-Beat & Invariant Suite', async (t) => {
     const track = prod.choreography.tracks.find((t) => t.rigId === 'hero');
     assert.ok(track);
     assert.equal(track.pose?.timeScale, 3.0);
+
+    // 3. Proportional scaling: changing clip length to 140 changes timeScale proportionally to 2.0 (140 / 70)
+    const origBuild = ArchetypeFactory.build;
+    try {
+      ArchetypeFactory.build = (opts) => {
+        const rig = origBuild(opts);
+        if (rig.poseClips?.['reach_and_grasp']) {
+          rig.poseClips['reach_and_grasp'] = {
+            ...rig.poseClips['reach_and_grasp'],
+            keyframes: [
+              { frame: 0, jointTransforms: [] },
+              { frame: 140, jointTransforms: [] }
+            ]
+          };
+        }
+        return rig;
+      };
+
+      const prod140 = VerbCompiler.compile(contract);
+      const track140 = prod140.choreography.tracks.find((t) => t.rigId === 'hero');
+      assert.ok(track140);
+      assert.equal(track140.pose?.timeScale, 2.0);
+      // Verify exact proportionality: timeScale140 / timeScale210 === 140 / 210
+      assert.equal(
+        Number(((track140.pose!.timeScale / track.pose!.timeScale) * 210).toFixed(1)),
+        140.0
+      );
+    } finally {
+      ArchetypeFactory.build = origBuild;
+    }
+  });
+
+  await t.test('F2 Regression: Grasp and release timing passes across multiple beat lengths', () => {
+    for (const duration of [30, 60, 120, 210]) {
+      // Reach and grasp timing
+      const reachBeat = createBeat('b_reach', 0, duration, [
+        {
+          instanceId: 'hero',
+          verb: 'reach_and_grasp',
+          associatedPropId: 'coffee_cup',
+          speedNorm: 1.0,
+          intensityNorm: 0.7
+        }
+      ]);
+      const reachContract = createBaseContract([reachBeat], duration);
+      const reachProd = VerbCompiler.compile(reachContract);
+      const propTracks = reachProd.choreography.tracks.filter((t) => t.rigId === 'coffee_cup');
+      assert.ok(propTracks.length > 0, `Prop tracks exist for reach duration ${duration}`);
+      const allSpans = propTracks.flatMap((t) => t.attachmentSpans ?? []);
+      assert.ok(allSpans.length > 0, `Attachment spans exist across shots for duration ${duration}`);
+
+      const expectedGraspOffset = Math.max(2, Math.min(Math.round(duration * 0.5), duration - 2));
+      assert.equal(allSpans[0].startFrame, expectedGraspOffset);
+      assert.equal(allSpans[allSpans.length - 1].endFrame, duration);
+
+      const heroTracks = reachProd.choreography.tracks.filter((t) => t.rigId === 'hero');
+      const allIkTargets = heroTracks.flatMap((t) => t.ikTargets ?? []);
+      const graspIk = allIkTargets.find((ik) => ik.frame === expectedGraspOffset);
+      assert.ok(graspIk, `IK target at grasp frame exists for duration ${duration}`);
+      assert.equal(graspIk.weight, 1.0);
+
+      // Carry put down release timing
+      const carryBeat = createBeat('b_carry', 0, duration, [
+        {
+          instanceId: 'hero',
+          verb: 'carry_put_down',
+          associatedPropId: 'coffee_cup',
+          target: { kind: 'position', pos: [30, 0, 0] },
+          speedNorm: 1.0,
+          intensityNorm: 0.7
+        }
+      ]);
+      const carryContract = createBaseContract([carryBeat], duration);
+      const carryProd = VerbCompiler.compile(carryContract);
+      const carryPropTracks = carryProd.choreography.tracks.filter((t) => t.rigId === 'coffee_cup');
+      assert.ok(carryPropTracks.length > 0, `Prop tracks exist for carry duration ${duration}`);
+      const allCarrySpans = carryPropTracks.flatMap((t) => t.attachmentSpans ?? []);
+      const walkDelta = Math.max(1, Math.min(Math.floor(duration * 0.5), duration - 12));
+      const expectedReleaseOffset = Math.max(walkDelta + 1, Math.min(Math.round(duration * (155 / 210)), duration - 3));
+      if (allCarrySpans.length > 0) {
+        assert.equal(allCarrySpans[allCarrySpans.length - 1].endFrame, expectedReleaseOffset);
+      }
+    }
   });
 
   await t.test('F2 Regression: Compile errors for undeterminable prop placement', () => {

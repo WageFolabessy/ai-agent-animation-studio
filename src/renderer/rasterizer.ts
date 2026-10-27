@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import { Resvg } from '@resvg/resvg-js';
 import { BUNDLED_FONT_FAMILY, BUNDLED_FONT_PATH } from '../config/fonts.js';
 import { assertValidSvgPolicy } from '../engine/compositor/svg-policy-validator.js';
+import type { RasterQuality } from '../config/render-config.js';
+
+export type { RasterQuality };
 
 export interface RasterizerOptions {
   width?: number;
@@ -11,6 +14,8 @@ export interface RasterizerOptions {
   /** Font file to load. Defaults to the bundled DejaVu Sans font. */
   fontPath?: string;
   defaultFontFamily?: string;
+  /** Rasterizer quality. Default is 'full' (anti-aliased). */
+  quality?: RasterQuality;
 }
 
 /**
@@ -29,6 +34,7 @@ export class SvgRasterizer {
   private readonly fontPath: string;
   private readonly defaultFontFamily: string;
   private readonly expectedBytes: number;
+  private readonly quality: RasterQuality;
 
   constructor(options: RasterizerOptions = {}) {
     this.width = options.width ?? 1920;
@@ -36,6 +42,7 @@ export class SvgRasterizer {
     this.loadSystemFonts = options.loadSystemFonts ?? false;
     this.fontPath = options.fontPath ?? BUNDLED_FONT_PATH;
     this.defaultFontFamily = options.defaultFontFamily ?? BUNDLED_FONT_FAMILY;
+    this.quality = options.quality ?? 'full';
     this.expectedBytes = this.width * this.height * 4;
 
     if (!this.loadSystemFonts && !fs.existsSync(this.fontPath)) {
@@ -44,6 +51,10 @@ export class SvgRasterizer {
           'SvgRasterizer requires a valid font file when loadSystemFonts is false.'
       );
     }
+  }
+
+  public getQuality(): RasterQuality {
+    return this.quality;
   }
 
   /**
@@ -57,9 +68,6 @@ export class SvgRasterizer {
     const hasText = svgMarkup.includes('<text');
     const resvg = new Resvg(svgMarkup, {
       fitTo: { mode: 'width', value: this.width },
-      shapeRendering: 0,
-      textRendering: 0,
-      imageRendering: 1,
       font: hasText
         ? {
             fontFiles: [this.fontPath],

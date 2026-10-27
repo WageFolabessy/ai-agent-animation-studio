@@ -152,6 +152,25 @@ test('Hygiene: Zero temporary svg or png files across entire workspace disk', ()
   assert.equal(junk.length, 0, `No .png or .svg files allowed in workspace: ${junk.join(', ')}`);
 });
 
+test('Hygiene: Zero unexpected scratch, temp, or stray directories in repo root', () => {
+  const ALLOWED_ROOT_DIRS = new Set([
+    '.git',
+    'assets',
+    'docs',
+    'node_modules',
+    'output',
+    'python',
+    'scripts',
+    'src',
+    'tests'
+  ]);
+  const rootEntries = fs.readdirSync('.', { withFileTypes: true });
+  const unexpectedDirs = rootEntries
+    .filter((e) => e.isDirectory() && !ALLOWED_ROOT_DIRS.has(e.name))
+    .map((e) => e.name);
+  assert.deepEqual(unexpectedDirs, [], `Found unexpected directories in repo root: ${unexpectedDirs.join(', ')}`);
+});
+
 test('Hygiene: Detects and rejects temporary image files located in subdirectories', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aaas-hygiene-'));
   const subDir = path.join(tmpDir, 'test_sub_hygiene');

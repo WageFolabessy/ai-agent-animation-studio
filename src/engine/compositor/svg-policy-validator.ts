@@ -64,6 +64,28 @@ const POLICY_RULES: readonly PolicyRule[] = [
   {
     name: 'FORBIDDEN_DECLARATION',
     find: firstMatch(/<!\s*(?:DOCTYPE|ENTITY)\b/i)
+  },
+  {
+    name: 'DISALLOWED_SHAPE_RENDERING',
+    find: (svgMarkup) => {
+      // 1. Text elements must NEVER have shape-rendering
+      if (/<text\b[^>]*\bshape-rendering\s*=/i.test(svgMarkup)) {
+        return 'shape-rendering on text element';
+      }
+      // 2. Character, prop, caption or overlay elements must NEVER have shape-rendering
+      const forbiddenPattern = /<(?:polygon|path|circle|rect|line)\b[^>]*(?:char|prop|actor|hero|companion|partner|lead|lyric|caption|overlay)[^>]*\bshape-rendering\s*=/i;
+      const forbiddenMatch = forbiddenPattern.exec(svgMarkup);
+      if (forbiddenMatch) {
+        return forbiddenMatch[0];
+      }
+      // 3. Any value other than allowlisted SVG keywords
+      const invalidValuePattern = /\bshape-rendering\s*=\s*["'](?!optimizeSpeed|geometricPrecision|crispEdges|inherit)[^"']*["']/i;
+      const invalidMatch = invalidValuePattern.exec(svgMarkup);
+      if (invalidMatch) {
+        return invalidMatch[0];
+      }
+      return null;
+    }
   }
 ];
 
