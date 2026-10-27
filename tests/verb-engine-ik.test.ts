@@ -8,6 +8,7 @@ import {
 import { computeCameraBasis } from '../src/engine/camera/camera-3d.js';
 import { projectToScreen } from '../src/engine/camera/projection.js';
 import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinematics.js';
+import { CANONICAL_HAND_MORPH_TARGETS } from '../src/engine/rigging/morpher.js';
 import { BipedPoseClips } from '../src/engine/library/archetype-factory.js';
 import { VerbCompiler } from '../src/engine/director/verb-engine/verb-compiler.js';
 import { FrameStateBuilder } from '../src/engine/director/frame-state-builder.js';
@@ -755,7 +756,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       `Walk leg oscillation must be > 20 degrees, got ${thighOscillation}`
     );
     const walkEndPos = walkTrack.transform.keyframes[walkTrack.transform.keyframes.length - 1].position;
-    assert.equal(walkEndPos[0], -22, `Walk end X must be -22, got ${walkEndPos[0]}`);
+    assert.equal(walkEndPos[0], -15, `Walk end X must be -15, got ${walkEndPos[0]}`);
 
     // Invariant 2: At grasp frame (~315) and release frame (~785), wrist is <= 2.5 units from cup
     // Frame 315 (relative frame 105 in beat_02_reach_grasp)
@@ -771,7 +772,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const graspFk = computeSkeletonFK(leadRig.skeleton!, graspJointAngles, graspJointOffsets);
     const armLowerAff = graspFk.get('arm_r_lower')!;
     const graspWrist = applyAffine2D(armLowerAff, [0, -16]);
-    const worldWrist315: [number, number] = [-22 + 1.35 * graspWrist[0], 75 + 1.45 * graspWrist[1]];
+    const worldWrist315: [number, number] = [-15 + 1.35 * graspWrist[0], 75 + 1.45 * graspWrist[1]];
     const distDesk1 = Math.hypot(worldWrist315[0] - 0, worldWrist315[1] - 68);
     assert.ok(
       distDesk1 <= 2.5,
@@ -793,10 +794,10 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const putDownWrist = applyAffine2D(armLowerAff2, [0, -16]);
     // Character facing left (-1.35) at stopped position X = -68
     const worldWrist785: [number, number] = [-68 + (-1.35) * putDownWrist[0], 75 + 1.45 * putDownWrist[1]];
-    const distDesk2 = Math.hypot(worldWrist785[0] - (-90), worldWrist785[1] - 68);
+    const distDesk2 = Math.hypot(worldWrist785[0] - (-83), worldWrist785[1] - 68);
     assert.ok(
       distDesk2 <= 2.5,
-      `At release frame 785, wrist must be within 2.5 units of Desk 2 cup [-90, 68], got ${distDesk2}`
+      `At release frame 785, wrist must be within 2.5 units of Desk 2 cup [-83, 68], got ${distDesk2}`
     );
 
     // Invariant 3: In beat_03_snap_turn, scale[0] is +1.35 at frame 420 and flips to -1.35 between 460 and 480
@@ -827,8 +828,8 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const pWrist = applyAffine2D(pArmLower, [0, -16]);
     const shoulderWorldY = 75 + 1.45 * pShoulder.ty;
     const wristWorldY = 75 + 1.45 * pWrist[1];
-    const shoulderWorldX = -22 + 1.35 * pShoulder.tx;
-    const wristWorldX = -22 + 1.35 * pWrist[0];
+    const shoulderWorldX = -15 + 1.35 * pShoulder.tx;
+    const wristWorldX = -15 + 1.35 * pWrist[0];
     const yDiff = wristWorldY - shoulderWorldY;
     const xDiff = Math.abs(wristWorldX - shoulderWorldX);
     assert.ok(
@@ -899,13 +900,13 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             variantId: 'moody_night',
             landmarkProps: ['desk', 'coffee_cup'],
             landmarkPlacements: {
-              coffee_cup: [-24, 68, 0]
+              coffee_cup: [-55, 68, 0]
             },
             atmosphericDensity: 0.5
           },
           actions: [
-            { instanceId: 'protagonist_lead', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, target: { kind: 'position', pos: [-46, 0, 0] } },
-            { instanceId: 'narrative_partner', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, target: { kind: 'position', pos: [34, 0, 0] } }
+            { instanceId: 'protagonist_lead', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, target: { kind: 'position', pos: [-40, 0, 0] } },
+            { instanceId: 'narrative_partner', verb: 'walk_to', speedNorm: 1.0, intensityNorm: 0.7, target: { kind: 'position', pos: [38, 0, 0] } }
           ],
           camera: { framing: 'WIDE', movement: 'DOLLY', focalCharacterId: 'protagonist_lead', lookRoom: 'center', dutchAngleDeg: 0 }
         },
@@ -922,7 +923,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
             variantId: 'dramatic_twilight',
             landmarkProps: ['desk', 'coffee_cup'],
             landmarkPlacements: {
-              coffee_cup: [-24, 68, 0]
+              coffee_cup: [-55, 68, 0]
             },
             atmosphericDensity: 0.6
           },
@@ -1127,8 +1128,8 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       `Stage 2 Beat 3 min embrace separation in [450, 515] must be <= 20.0 units, got ${minEmbraceSep.toFixed(2)}`
     );
     assert.ok(
-      maxRecoilSep >= 85.0,
-      `Stage 2 Beat 3 max recoil separation in [575, 625] must be >= 85.0 units, got ${maxRecoilSep.toFixed(2)}`
+      maxRecoilSep >= 80.0,
+      `Stage 2 Beat 3 max recoil separation in [575, 625] must be >= 80.0 units, got ${maxRecoilSep.toFixed(2)}`
     );
 
     // 5. Carry walk leg swing: during carry walk sub-span (frames 640..720), leg swings actively
@@ -1213,7 +1214,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       }
     }
 
-    // 8. Staging separation progression: approach >= 64, recoil >= 90, run/outlook >= 52
+    // 8. Staging separation progression: approach >= 64, recoil >= 80, run/outlook >= 52
     const s2ApproachState = s2Builder.buildFrameState(200);
     const heroApp = s2ApproachState.entities.find(e => e.rigId === 'protagonist_lead')!;
     const partnerApp = s2ApproachState.entities.find(e => e.rigId === 'narrative_partner')!;
@@ -1224,9 +1225,9 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const heroRec = s2RecoilState.entities.find(e => e.rigId === 'protagonist_lead')!;
     const partnerRec = s2RecoilState.entities.find(e => e.rigId === 'narrative_partner')!;
     const sepRec = Math.abs(heroRec.worldPosition[0] - partnerRec.worldPosition[0]);
-    assert.ok(sepRec >= 90.0, `Recoil separation at frame 620 must be >= 90.0, got ${sepRec.toFixed(2)}`);
+    assert.ok(sepRec >= 80.0, `Recoil separation at frame 620 must be >= 80.0, got ${sepRec.toFixed(2)}`);
 
-    // True root translation on recoil: outward displacement between embrace thrust (516) and recoil arrival (629) >= 35.0 u
+    // True root translation on recoil: outward displacement between embrace thrust (516) and recoil arrival (629) >= 30.0 u
     const s2ThrustState = s2Builder.buildFrameState(516);
     const s2EndRecoilState = s2Builder.buildFrameState(629);
     const heroThrustX = s2ThrustState.entities.find(e => e.rigId === 'protagonist_lead')!.worldPosition[0];
@@ -1236,12 +1237,12 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const heroRecoilDist = Math.abs(heroEndRecoilX - heroThrustX);
     const partnerRecoilDist = Math.abs(partnerEndRecoilX - partnerThrustX);
     assert.ok(
-      heroRecoilDist >= 35.0,
-      `Hero outward recoil displacement (${heroRecoilDist.toFixed(1)} u) must be >= 35.0 u`
+      heroRecoilDist >= 30.0,
+      `Hero outward recoil displacement (${heroRecoilDist.toFixed(1)} u) must be >= 30.0 u`
     );
     assert.ok(
-      partnerRecoilDist >= 35.0,
-      `Partner outward recoil displacement (${partnerRecoilDist.toFixed(1)} u) must be >= 35.0 u`
+      partnerRecoilDist >= 30.0,
+      `Partner outward recoil displacement (${partnerRecoilDist.toFixed(1)} u) must be >= 30.0 u`
     );
 
     for (let f = 750; f < 1050; f += 30) {
@@ -1261,7 +1262,7 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       `Mid-stance knee flexion must be within [-14, -6] deg, got ${kneeAngle.toFixed(2)}`
     );
 
-    // 10. Zero Floating Cup (Stage 1 frames 795..1049) & Full-Body Crouch+Lean at Release (frame 795)
+    // 10. Zero Floating Cup (Stage 1 frames 795..1049) & Deficit-Based Upright Reach at Y_target=68 (frame 785)
     for (let f = 795; f < 1050; f++) {
       const state = s1Builder.buildFrameState(f);
       const cup = state.entities.find(e => e.rigId === 'coffee_cup')!;
@@ -1274,12 +1275,12 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
     const releaseState = s1Builder.buildFrameState(785);
     const heroRelease = releaseState.entities.find(e => e.rigId === 'protagonist_lead')!;
     assert.ok(
-      heroRelease.worldPosition[1] <= 67.0,
-      `Release crouch rootY (${heroRelease.worldPosition[1].toFixed(2)}) must be <= 67.0`
+      heroRelease.worldPosition[1] >= 73.0,
+      `Upright desk release rootY (${heroRelease.worldPosition[1].toFixed(2)}) must be >= 73.0`
     );
     assert.ok(
-      (heroRelease.jointAngles['torso'] ?? 0) >= 14.0,
-      `Release torso forward lean (${(heroRelease.jointAngles['torso'] ?? 0).toFixed(2)} deg) must be >= 14.0 deg`
+      Math.abs(heroRelease.jointAngles['torso'] ?? 0) <= 6.0,
+      `Upright desk release |torso| (${Math.abs(heroRelease.jointAngles['torso'] ?? 0).toFixed(2)} deg) must be <= 6.0 deg`
     );
     const fkRelease = computeSkeletonFK(heroRigDef.skeleton!, heroRelease.jointAngles, heroRelease.jointOffsets);
     const wristReleaseLocal = applyAffine2D(fkRelease.get('arm_r_lower')!, [0, -16]);
@@ -1302,5 +1303,173 @@ test('Verb Engine & Analytical IK Suite', async (t) => {
       cupJumpDist <= 2.0,
       `Stage 1 cross-cut cup position jump at 419->420 must be <= 2.0 u, got ${cupJumpDist.toFixed(2)} u`
     );
+
+    // 11. Fix 1 — Unbroken Spine Coverage across [-20 deg, +25 deg] torso lean for both biped rigs
+    for (const rigDef of [heroRigDef, partnerRigDef]) {
+      const abdomenPart = rigDef.parts.find(p => p.id === 'abdomen_connector')!;
+      const torsoPart = rigDef.parts.find(p => p.id === 'torso_body')!;
+      assert.ok(abdomenPart && abdomenPart.shape.kind === 'polygon', `abdomen_connector must exist on ${rigDef.id}`);
+      assert.ok(torsoPart && torsoPart.shape.kind === 'polygon', `torso_body must exist on ${rigDef.id}`);
+      const abdomenPts = abdomenPart.shape.points;
+      const torsoPts = torsoPart.shape.points;
+
+      for (const torsoDeg of [-20, -10, 0, 10, 25]) {
+        const fkSpine = computeSkeletonFK(
+          rigDef.skeleton!,
+          { pelvis: 0, torso: torsoDeg },
+          { pelvis: [0, 0], torso: [0, 8] }
+        );
+        const pelvisAff = fkSpine.get('pelvis')!;
+        const torsoAff = fkSpine.get('torso')!;
+
+        const abdomenWorldYs = abdomenPts.map((pt: [number, number]) => 75 + applyAffine2D(pelvisAff, pt)[1] * rigDef.baseTransform.scale[1]);
+        const torsoWorldYs = torsoPts.map((pt: [number, number]) => 75 + applyAffine2D(torsoAff, pt)[1] * rigDef.baseTransform.scale[1]);
+
+        const topAbdomen = Math.max(...abdomenWorldYs);
+        const bottomTorso = Math.min(...torsoWorldYs);
+        const spineOverlap = topAbdomen - bottomTorso;
+        assert.ok(
+          spineOverlap >= 6.0,
+          `${rigDef.id} at torso=${torsoDeg} deg: spine vertical overlap (topAbdomen=${topAbdomen.toFixed(1)} - bottomTorso=${bottomTorso.toFixed(1)} = ${spineOverlap.toFixed(1)} u) must be >= 6.0 u`
+        );
+      }
+    }
+
+    // 12. Fix 2 — Low floor target Y_target = 30 triggers automatic crouch (rootY <= 62.0) and torso lean (>= 15.0 deg)
+    const lowFloorContract: StoryBeatContract = {
+      ...sharedStage1Contract,
+      beats: [
+        sharedStage1Contract.beats[0],
+        {
+          ...sharedStage1Contract.beats[1],
+          actions: [
+            {
+              instanceId: 'protagonist_lead',
+              verb: 'reach_and_grasp',
+              speedNorm: 1.0,
+              intensityNorm: 0.85,
+              target: { kind: 'position', pos: [0, 30, 0] }
+            }
+          ]
+        }
+      ],
+      sliceFrameRange: { startFrame: 0, endFrame: 420 },
+      songDurationSec: 14
+    };
+    const lowFloorManifest: AudioAnalysisManifest = {
+      ...syntheticManifest,
+      metadata: { ...syntheticManifest.metadata, durationSeconds: 14, totalFrames: 420 }
+    };
+    const lowFloorProd = VerbCompiler.compile(lowFloorContract, lowFloorManifest);
+    const lowFloorBuilder = new FrameStateBuilder({
+      storyboard: lowFloorProd.storyboard,
+      choreography: lowFloorProd.choreography,
+      rigs: lowFloorProd.rigs,
+      audioManifest: lowFloorManifest,
+      getAudioFeatureAtFrame: dummyAudioFeature
+    });
+    const lowGraspState = lowFloorBuilder.buildFrameState(315);
+    const heroLowGrasp = lowGraspState.entities.find(e => e.rigId === 'protagonist_lead')!;
+    assert.ok(
+      heroLowGrasp.worldPosition[1] <= 62.0,
+      `Low target Y=30 grasp rootY (${heroLowGrasp.worldPosition[1].toFixed(2)}) must lower to <= 62.0`
+    );
+    assert.ok(
+      (heroLowGrasp.jointAngles['torso'] ?? 0) >= 15.0,
+      `Low target Y=30 grasp torso lean (${(heroLowGrasp.jointAngles['torso'] ?? 0).toFixed(2)} deg) must be >= 15.0 deg`
+    );
+
+    // 13. Fix 3 — Anatomically Constant Hand Morphs (<= 8.0 u max extent, |len(point) - len(open_rest)| <= 1.0 u, <= 6-frame snap)
+    const handTargetExtents: Record<string, number> = {};
+    for (const target of CANONICAL_HAND_MORPH_TARGETS) {
+      let maxExtent = 0;
+      for (const seg of target.segments) {
+        for (const pt of [seg.p0, seg.p1, seg.p2, seg.p3]) {
+          const d = Math.hypot(pt[0], pt[1]);
+          if (d > maxExtent) maxExtent = d;
+        }
+      }
+      handTargetExtents[target.name] = maxExtent;
+      assert.ok(
+        maxExtent <= 8.0,
+        `Hand morph "${target.name}" max local bounding extent (${maxExtent.toFixed(2)} u) must be <= 8.0 u`
+      );
+    }
+    const pointLenDiff = Math.abs(handTargetExtents['point'] - handTargetExtents['open_rest']);
+    assert.ok(
+      pointLenDiff <= 1.0,
+      `|len(point) - len(open_rest)| (${pointLenDiff.toFixed(2)} u) must be <= 1.0 u`
+    );
+    const pointTrackS1 = stage1Production.choreography.tracks.find(
+      t => t.shotId === 'beat_05_gesture_point' && t.rigId === 'protagonist_lead'
+    )!;
+    const pointMorphKfs = pointTrackS1.morphKeyframes?.['point'] ?? [];
+    assert.ok(pointMorphKfs.length >= 3, 'gesture_point must have point morph keyframes');
+    const pointSnapFrames = pointMorphKfs[2].frame - pointMorphKfs[1].frame;
+    assert.ok(
+      pointSnapFrames <= 6,
+      `Hand morph point snap transition (${pointSnapFrames} frames) must complete within <= 6 frames`
+    );
+
+    // 14. Fix 4 — Zero Stationary Leg Pumping on companion_silhouette across frames 215..415 and 845..1045
+    for (const [spanStart, spanEnd] of [[215, 415], [845, 1045]] as const) {
+      for (const legJoint of ['leg_l_upper', 'leg_l_lower', 'leg_r_upper', 'leg_r_lower'] as const) {
+        const vals: number[] = [];
+        for (let f = spanStart; f <= spanEnd; f++) {
+          const st = s2Builder.buildFrameState(f);
+          const comp = st.entities.find(e => e.rigId === 'narrative_partner')!;
+          vals.push(comp.jointAngles[legJoint] ?? 0);
+        }
+        const delta = Math.max(...vals) - Math.min(...vals);
+        assert.equal(
+          delta,
+          0.0,
+          `Stationary companion_silhouette ${legJoint} oscillation across [${spanStart}, ${spanEnd}] must be 0.0 deg, got ${delta}`
+        );
+      }
+    }
+
+    // 15. Fix 5 — Unobstructed Stage 2 Embrace (X in [-44, +44], embrace sep at f=490 in [18, 24], wrap-around IK past partner center)
+    for (let f = 420; f < 630; f++) {
+      const st = s2Builder.buildFrameState(f);
+      const hero = st.entities.find(e => e.rigId === 'protagonist_lead')!;
+      const comp = st.entities.find(e => e.rigId === 'narrative_partner')!;
+      assert.ok(
+        hero.worldPosition[0] >= -44.0,
+        `Frame ${f}: Hero X (${hero.worldPosition[0].toFixed(2)}) during embrace/push must stay >= -44.0 (clear of side-table [-74, -50])`
+      );
+      assert.ok(
+        comp.worldPosition[0] <= 44.0,
+        `Frame ${f}: Companion X (${comp.worldPosition[0].toFixed(2)}) during embrace/push must stay <= 44.0`
+      );
+    }
+    const f490State = s2Builder.buildFrameState(490);
+    const hero490 = f490State.entities.find(e => e.rigId === 'protagonist_lead')!;
+    const comp490 = f490State.entities.find(e => e.rigId === 'narrative_partner')!;
+    const embraceSep490 = Math.abs(hero490.worldPosition[0] - comp490.worldPosition[0]);
+    assert.ok(
+      embraceSep490 >= 18.0 && embraceSep490 <= 24.0,
+      `At frame 490, embrace separation (${embraceSep490.toFixed(2)} u) must be in [18.0, 24.0]`
+    );
+
+    const heroEmbraceTrack = stage2Production.choreography.tracks.find(
+      t => t.shotId === f490State.shotId && t.rigId === 'protagonist_lead'
+    )!;
+    const compEmbraceTrack = stage2Production.choreography.tracks.find(
+      t => t.shotId === f490State.shotId && t.rigId === 'narrative_partner'
+    )!;
+    for (const hand of ['hand_r', 'hand_l'] as const) {
+      const heroIk = heroEmbraceTrack.ikTargets?.find(ik => ik.hand === hand && ik.weight === 1.0 && (ik.frame ?? 0) >= 460 && (ik.frame ?? 0) <= 515)!;
+      const compIk = compEmbraceTrack.ikTargets?.find(ik => ik.hand === hand && ik.weight === 1.0 && (ik.frame ?? 0) >= 460 && (ik.frame ?? 0) <= 515)!;
+      assert.ok(heroIk && compIk, `Both characters must have ${hand} embrace IK targets in [460, 515]`);
+      assert.ok(
+        heroIk.targetWorld[0] >= comp490.worldPosition[0] + 10.0,
+        `Hero ${hand} embrace IK target X (${heroIk.targetWorld[0]}) must wrap past Companion center (${comp490.worldPosition[0]}) + 10`
+      );
+      assert.ok(
+        compIk.targetWorld[0] <= hero490.worldPosition[0] - 10.0,
+        `Companion ${hand} embrace IK target X (${compIk.targetWorld[0]}) must wrap past Hero center (${hero490.worldPosition[0]}) - 10`
+      );
+    }
   });
 });

@@ -70,51 +70,74 @@ export const VERB_CONSTANTS = {
   RECOIL_SPEED_NORM: 1.1,
 
   /** Default approach clearance distance to a prop. */
-  PROP_APPROACH_CLEARANCE: 22,
+  PROP_APPROACH_CLEARANCE: 15,
   /** Default character-to-character clearance distance. */
   CHARACTER_INTERACTION_CLEARANCE: 26,
   /** Recoil push separation delta distance. */
-  RECOIL_SEPARATION_DISTANCE: 38,
+  RECOIL_SEPARATION_DISTANCE: 32,
   /** Half-distance between two characters during close embrace. */
-  EMBRACE_CONTACT_HALF_SEPARATION: 8,
+  EMBRACE_CONTACT_HALF_SEPARATION: 10,
   /** Depth Z offset for partner rig during close embrace to prevent z-fighting. */
   EMBRACE_PARTNER_DEPTH_Z: -3,
   /** Inward torso lean in degrees during embrace. */
   EMBRACE_TORSO_LEAN_DEG: 7,
   /** Hand reach past partner center X during embrace wrap. */
-  EMBRACE_WRAP_REACH_PAST_X: 18,
+  EMBRACE_WRAP_REACH_PAST_X: 14,
   /** Upper back Y offset for right-hand embrace wrap. */
   EMBRACE_WRAP_SHOULDER_Y_OFFSET: 34,
   /** Mid-back Y offset for left-hand embrace wrap. */
-  EMBRACE_WRAP_LOWER_Y_OFFSET: 30,
+  EMBRACE_WRAP_LOWER_Y_OFFSET: 28,
+  /** Frames before embrace contact when open arms begin raising. */
+  EMBRACE_ARM_RAISE_LEAD_FRAMES: 18,
 
-  /** Pelvis vertical drop in world units when crouching to grasp or set down a low prop. */
-  REACH_CROUCH_DROP_Y: 10,
-  /** Local shoulder Y drop when leaning forward during crouch reach. */
-  REACH_CROUCH_SHOULDER_DROP_Y: 6,
+  /** Natural standing shoulder settle in local units when reaching. */
+  REACH_SHOULDER_SETTLE_Y: 4,
+  /** Efficiency factor of upright arm extension before crouching begins. */
+  REACH_ARM_EFFICIENCY_FACTOR: 0.975,
+  /** Pelvis vertical drop scale per unit of reach deficit. */
+  REACH_DEFICIT_CROUCH_SCALE: 0.75,
+  /** Maximum pelvis vertical drop in world units when crouching for low floor props. */
+  REACH_MAX_CROUCH_DROP_Y: 18,
+  /** Base upright torso forward lean in degrees when reaching. */
+  REACH_BASE_TORSO_LEAN_DEG: 3,
+  /** Additional torso forward lean scale in degrees per unit of reach deficit. */
+  REACH_DEFICIT_LEAN_SCALE: 1.1,
+  /** Maximum torso forward lean in degrees when crouching for low floor props. */
+  REACH_MAX_TORSO_LEAN_DEG: 22,
+  /** Upright crouch threshold below which root body rotation stays zero. */
+  REACH_UPRIGHT_CROUCH_THRESHOLD: 2.0,
+  /** Fast hand morph transition duration in frames. */
+  HAND_MORPH_SNAP_FRAMES: 6,
+  /** Pelvis vertical drop in world units when sitting. */
+  SIT_DROP_Y: 22,
+  /** Body tilt angle in degrees during fall recovery. */
+  FALL_TILT_DEG: 22,
   /** Horizontal forward offset from torso center when carrying a handheld prop. */
   CARRY_HAND_FORWARD_OFFSET_X: 14,
   /** Vertical offset above character root Y when carrying a handheld prop at chest level. */
   CARRY_HAND_HEIGHT_OFFSET_Y: 18,
   /** Timing ratio inside reach_and_grasp when upward carry lift begins. */
   CARRY_LIFT_START_RATIO: 0.6429,
+  /** Timing ratio inside reach_and_grasp when prop is placed back before confrontation turn. */
+  CARRY_PUT_BACK_RATIO: 0.7429,
   /** Blink duration in frames. */
   BLINK_DURATION_FRAMES: 4,
 
   /** Simulation traversal staging positions and thresholds. */
   SIM_HERO_INITIAL_X: -95,
   SIM_COMPANION_INITIAL_X: -125,
-  SIM_TWO_CHAR_LEFT_X: -92,
-  SIM_TWO_CHAR_RIGHT_X: 88,
+  SIM_TWO_CHAR_LEFT_X: -96,
+  SIM_TWO_CHAR_RIGHT_X: 92,
+  SIM_CONFRONT_END_X: -38,
   SIM_DEEP_ROOM_THRESHOLD: -60,
   SIM_DEEP_ROOM_FORWARD_LEFT: 35,
   SIM_DEEP_ROOM_FORWARD_RIGHT: 65,
   SIM_CROSS_ROOM_POS_A: -34,
   SIM_CROSS_ROOM_POS_B: 34,
-  SIM_DEFAULT_STEP_DISTANCE: 46,
+  SIM_DEFAULT_STEP_DISTANCE: 53,
   SIM_RETREAT_STEP_DISTANCE: 23,
   SIM_WALL_THRESHOLD: -50,
-  SIM_WALL_TARGET_X: 50,
+  SIM_WALL_TARGET_X: 42,
   SIM_TRAVERSE_DISTANCE_THRESHOLD: 40,
   SIM_TRAVERSE_FRAMES_THRESHOLD: 200,
 
@@ -176,9 +199,10 @@ export const VERB_CONSTANTS = {
   GRASP_CONTACT_RATIO: 0.5,
   CARRY_RELEASE_RATIO: 0.7381,
   DEFAULT_EARLY_ARRIVAL_RATIO: 0.7857,
-  EMBRACE_STEP_IN_RATIO: 0.25,
-  EMBRACE_CONTACT_RATIO: 0.4571,
-  EMBRACE_THRUST_RATIO: 0.4857,
+  EMBRACE_STEP_IN_RATIO: 0.2571,
+  EMBRACE_CONTACT_RATIO: 0.4857,
+  EMBRACE_THRUST_RATIO: 0.5143,
+  EMBRACE_RECOIL_ARRIVE_RATIO: 0.7571,
   EMBRACE_CONTACT_WEIGHT: 0.8,
   SIT_CONTACT_RATIO: 0.35,
   SIT_STAND_TRANSITION_RATIO: 0.75,

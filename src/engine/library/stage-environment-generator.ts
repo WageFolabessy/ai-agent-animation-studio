@@ -689,17 +689,18 @@ export class StageEnvironmentGenerator {
                 : undefined;
 
             if (sideTableCenterX !== undefined) {
-              // Side-table configuration (e.g., X = -52) leaving center floor X ∈ [-35, +45] completely open
-              const sxL = sideTableCenterX - 16;
-              const sxR = sideTableCenterX + 16;
+              // Side-table configuration (e.g., X = -62, Z = -12) leaving center floor X ∈ [-44, +44] completely open
+              const sxL = sideTableCenterX - 12;
+              const sxR = sideTableCenterX + 12;
+              const stZ = -12;
               polygons.push(
                 {
                   // Side-table top
                   vertices: [
-                    [sxL, 65, 0],
-                    [sxR, 65, 0],
-                    [sxR, 68, 0],
-                    [sxL, 68, 0]
+                    [sxL, 65, stZ],
+                    [sxR, 65, stZ],
+                    [sxR, 68, stZ],
+                    [sxL, 68, stZ]
                   ],
                   fill: shadeHexColor(palette.secondary, 0.25),
                   opacity: 1.0,
@@ -708,10 +709,10 @@ export class StageEnvironmentGenerator {
                 {
                   // Side-table left pedestal
                   vertices: [
-                    [sxL + 2, 0, 0],
-                    [sxL + 10, 0, 0],
-                    [sxL + 10, 65, 0],
-                    [sxL + 2, 65, 0]
+                    [sxL + 2, 0, stZ],
+                    [sxL + 8, 0, stZ],
+                    [sxL + 8, 65, stZ],
+                    [sxL + 2, 65, stZ]
                   ],
                   fill: shadeHexColor(palette.background, 0.1),
                   opacity: 1.0,
@@ -720,10 +721,10 @@ export class StageEnvironmentGenerator {
                 {
                   // Side-table right leg
                   vertices: [
-                    [sxR - 6, 0, 0],
-                    [sxR - 2, 0, 0],
-                    [sxR - 2, 65, 0],
-                    [sxR - 6, 65, 0]
+                    [sxR - 6, 0, stZ],
+                    [sxR - 2, 0, stZ],
+                    [sxR - 2, 65, stZ],
+                    [sxR - 6, 65, stZ]
                   ],
                   fill: shadeHexColor(palette.background, 0.1),
                   opacity: 1.0,
@@ -732,10 +733,10 @@ export class StageEnvironmentGenerator {
                 {
                   // Side-table middle shelf
                   vertices: [
-                    [sxL + 10, 32, 0],
-                    [sxR - 6, 32, 0],
-                    [sxR - 6, 35, 0],
-                    [sxL + 10, 35, 0]
+                    [sxL + 8, 32, stZ],
+                    [sxR - 6, 32, stZ],
+                    [sxR - 6, 35, stZ],
+                    [sxL + 8, 35, stZ]
                   ],
                   fill: shadeHexColor(palette.background, 0.15),
                   opacity: 0.95,
@@ -744,16 +745,16 @@ export class StageEnvironmentGenerator {
               );
               lines.push(
                 {
-                  p0: [sxL, 68, 1],
-                  p1: [sxR, 68, 1],
+                  p0: [sxL, 68, stZ + 1],
+                  p1: [sxR, 68, stZ + 1],
                   stroke: palette.primary,
                   strokeWidth: 2.0,
                   opacity: 0.95,
                   tier: 2
                 },
                 {
-                  p0: [sxL + 10, 35, 1],
-                  p1: [sxR - 6, 35, 1],
+                  p0: [sxL + 8, 35, stZ + 1],
+                  p1: [sxR - 6, 35, stZ + 1],
                   stroke: palette.primary,
                   strokeWidth: 1.5,
                   opacity: 0.9,

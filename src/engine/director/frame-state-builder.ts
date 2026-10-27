@@ -382,6 +382,12 @@ export class FrameStateBuilder {
             (activeGaze && activeGaze.weight > 1e-4)
           );
 
+          const crouchDrop = 75.0 - trackState.worldPosition[1];
+          if (crouchDrop > 2.0 && jointAngles['torso'] !== undefined) {
+            const deficitEst = crouchDrop / 0.75;
+            jointAngles['torso'] = Math.min(22.0, 3.0 + deficitEst * 1.1);
+          }
+
           const fkPre = hasIkOrGaze
             ? computeSkeletonFK(rig.skeleton, jointAngles, poseResult.jointOffsets)
             : null;

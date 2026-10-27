@@ -183,25 +183,34 @@ export function samplePoseTrack(
     }
   }
 
-  const isLocomotionClip = clipId === 'walk_to' || clipId === 'sprint_frenzy' || clipId === 'run_to';
-  if (rootSpeed !== undefined && isLocomotionClip) {
+  const isKneelingOrSittingClip =
+    clipId === 'sit_down' ||
+    clipId === 'fall_knees' ||
+    clipId === 'collapse_to_knees' ||
+    clipId === 'bench_contemplation';
+  const isReachClip = clipId === 'reach_and_grasp' || clipId === 'carry_put_down';
+  if (rootSpeed !== undefined && !isKneelingOrSittingClip && rig.skeleton?.joints.some((j) => j.id === 'leg_l_upper')) {
     const STANDING_REST_LEG_ANGLES: Record<string, number> = {
       leg_l_upper: 4,
       leg_l_lower: -6,
       leg_r_upper: -4,
       leg_r_lower: -6
     };
-    if (rootSpeed < 0.05) {
+    if (rootSpeed < 0.03) {
       for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {
         jointAngles[jId] = angle;
       }
-      jointOffsets['pelvis'] = [0, 0];
-    } else if (rootSpeed < 0.20) {
-      const blendFactor = (rootSpeed - 0.05) / 0.15;
+      if (!isReachClip) {
+        jointOffsets['pelvis'] = [0, 0];
+      }
+    } else if (rootSpeed < 0.18) {
+      const blendFactor = (rootSpeed - 0.03) / 0.15;
       for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {
         jointAngles[jId] = lerp(angle, jointAngles[jId] ?? angle, blendFactor);
       }
-      jointOffsets['pelvis'] = lerpVec2([0, 0], jointOffsets['pelvis'] ?? [0, 0], blendFactor);
+      if (!isReachClip) {
+        jointOffsets['pelvis'] = lerpVec2([0, 0], jointOffsets['pelvis'] ?? [0, 0], blendFactor);
+      }
     }
   }
 

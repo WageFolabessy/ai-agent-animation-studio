@@ -46,7 +46,7 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'moody_night',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [-24, 68, 0]
+          coffee_cup: [-55, 68, 0]
         },
         atmosphericDensity: 0.5
       },
@@ -56,14 +56,14 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
           verb: 'walk_to',
           speedNorm: 1.0,
           intensityNorm: 0.7,
-          target: { kind: 'position', pos: [-46, 0, 0] }
+          target: { kind: 'position', pos: [-40, 0, 0] }
         },
         {
           instanceId: 'narrative_partner',
           verb: 'walk_to',
           speedNorm: 1.0,
           intensityNorm: 0.7,
-          target: { kind: 'position', pos: [34, 0, 0] }
+          target: { kind: 'position', pos: [38, 0, 0] }
         }
       ],
       camera: {
@@ -87,7 +87,7 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'dramatic_twilight',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [-24, 68, 0]
+          coffee_cup: [-55, 68, 0]
         },
         atmosphericDensity: 0.6
       },
@@ -277,7 +277,7 @@ export const STAGE2_SYNTHETIC_STORY_SPEC: StorySpecContract = {
           ? ('PARALLEL_WALK' as const)
           : ('DUET_PERFORMANCE' as const),
     environmentKitId: 'industrial_city' as const,
-    kitParams: { sideTableCenterX: -24 },
+    kitParams: { sideTableCenterX: -62 },
     colorThemeId: 'CYBERPUNK_CYAN' as const,
     cameraIntensity: 0.6,
     lyricMotifs: [],
