@@ -124,8 +124,9 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
         const fk1 = computeSkeletonFK(rig.skeleton!, e1.jointAngles, e1.jointOffsets);
 
         for (const limb of ['leg_l_lower', 'leg_r_lower']) {
-          const tip0 = applyAffine2D(fk0.get(limb)!, [0, -22]);
-          const tip1 = applyAffine2D(fk1.get(limb)!, [0, -22]);
+          const boneLen = rig.skeleton!.joints.find((j) => j.id === limb)?.length ?? 22;
+          const tip0 = applyAffine2D(fk0.get(limb)!, [0, -boneLen]);
+          const tip1 = applyAffine2D(fk1.get(limb)!, [0, -boneLen]);
 
           // Interior contact condition: foot planted at ground (min ground Y) and moving backward in local rig space
           const isContact =
@@ -173,7 +174,6 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
         for (const duration of durations) {
           for (const speedNorm of speedNorms) {
             totalCases++;
-            const isRun = verb === 'run_to';
             const startX = -95;
             const targetX = startX + dist;
 
@@ -244,7 +244,7 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
               );
             } else {
               // Feasible arrival within 1 unit of target
-              const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0) ?? allKfs[allKfs.length - 1];
+              const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1e-3) ?? allKfs[allKfs.length - 1];
               assert.ok(
                 Math.abs(arriveKf.position[0] - targetX) <= 1.0,
                 `Feasible ${verb} ${dist}u/${duration}f arrived at ${arriveKf.position[0]} expected ${targetX}`
@@ -262,9 +262,7 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
             });
 
             const rig = production.rigs.get('hero')!;
-            const clipUsed = heroTracks[0].pose?.clipId ?? (isRun ? 'sprint_frenzy' : 'walk_to');
-            const isRunClip = clipUsed === 'sprint_frenzy';
-
+            const isRunClip = heroTracks.some((t) => t.pose?.clipId === 'sprint_frenzy');
             const lastMoveF = isUnreachable ? duration - 1 : (allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0)?.frame ?? duration - 1);
             for (let f = 5; f < lastMoveF - 5; f++) {
               const s0 = builder.buildFrameState(f);
@@ -278,8 +276,9 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
               const fk1 = computeSkeletonFK(rig.skeleton!, e1.jointAngles, e1.jointOffsets);
 
               for (const limb of ['leg_l_lower', 'leg_r_lower']) {
-                const tip0 = applyAffine2D(fk0.get(limb)!, [0, -22]);
-                const tip1 = applyAffine2D(fk1.get(limb)!, [0, -22]);
+                const boneLen = rig.skeleton!.joints.find((j) => j.id === limb)?.length ?? 22;
+                const tip0 = applyAffine2D(fk0.get(limb)!, [0, -boneLen]);
+                const tip1 = applyAffine2D(fk1.get(limb)!, [0, -boneLen]);
                 const isContact =
                   ((tip0[1] < -45.99 && tip1[1] < -45.99) || (tip0[1] < -40.99 && tip1[1] < -40.99 && isRunClip)) &&
                   tip1[0] < tip0[0] - 1e-3;
@@ -399,7 +398,7 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
           `Unreachable case dist=${tc.dist} dur=${tc.duration}: stopped at ${arriveKf.position[0]} expected ${expectedX}`
         );
       } else {
-        const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1.0) ?? allKfs[allKfs.length - 1];
+        const arriveKf = allKfs.find((kf) => Math.abs(kf.position[0] - targetX) <= 1e-3) ?? allKfs[allKfs.length - 1];
         arriveF = arriveKf.frame;
         // 2. Arrival never after beat end
         assert.ok(
@@ -479,12 +478,12 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
         const fk1 = computeSkeletonFK(rig.skeleton!, e1.jointAngles, e1.jointOffsets);
 
         for (const limb of ['leg_l_lower', 'leg_r_lower']) {
-          const tip0 = applyAffine2D(fk0.get(limb)!, [0, -22]);
-          const tip1 = applyAffine2D(fk1.get(limb)!, [0, -22]);
-          const isRunClip = heroTracks[0].pose?.clipId === 'sprint_frenzy' || tc.isRun;
+          const boneLen = rig.skeleton!.joints.find((j) => j.id === limb)?.length ?? 22;
+          const tip0 = applyAffine2D(fk0.get(limb)!, [0, -boneLen]);
+          const tip1 = applyAffine2D(fk1.get(limb)!, [0, -boneLen]);
           // Interior contact condition: foot planted at ground (min ground Y) and moving backward in local rig space
           const isContact =
-            ((tip0[1] < -45.99 && tip1[1] < -45.99) || (tip0[1] < -40.99 && tip1[1] < -40.99 && isRunClip)) &&
+            ((tip0[1] < -45.99 && tip1[1] < -45.99) || (tip0[1] < -40.99 && tip1[1] < -40.99 && tc.isRun)) &&
             tip1[0] < tip0[0] - 1e-3;
           if (isContact) {
             const wFoot0 = e0.worldPosition[0] + e0.scale[0] * tip0[0];

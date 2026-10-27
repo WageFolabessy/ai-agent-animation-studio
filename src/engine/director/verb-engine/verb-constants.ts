@@ -60,9 +60,9 @@ export const VERB_CONSTANTS = {
   COMPANION_SCALE_Y: 1.15,
 
   /** Default base Y floor placement for protagonist hero rig. */
-  HERO_BASE_Y: 75,
+  HERO_BASE_Y: 66.7,
   /** Default base Y floor placement for companion partner rig. */
-  COMPANION_BASE_Y: 65,
+  COMPANION_BASE_Y: 56.3,
 
   /** Default action intensity norm. */
   DEFAULT_INTENSITY_NORM: 0.7,
@@ -74,9 +74,9 @@ export const VERB_CONSTANTS = {
   /** Default character-to-character clearance distance. */
   CHARACTER_INTERACTION_CLEARANCE: 26,
   /** Recoil push separation delta distance. */
-  RECOIL_SEPARATION_DISTANCE: 28,
+  RECOIL_SEPARATION_DISTANCE: 26,
   /** Half-distance between two characters during close embrace. */
-  EMBRACE_CONTACT_HALF_SEPARATION: 14,
+  EMBRACE_CONTACT_HALF_SEPARATION: 10,
   /** Depth Z offset for partner rig during close embrace to prevent z-fighting. */
   EMBRACE_PARTNER_DEPTH_Z: -3,
   /** Inward torso lean in degrees during embrace. */
@@ -127,8 +127,8 @@ export const VERB_CONSTANTS = {
 
   /** Simulation traversal staging positions and thresholds. */
   SIM_HERO_INITIAL_X: -95,
-  SIM_COMPANION_INITIAL_X: -143,
-  SIM_TWO_CHAR_LEFT_X: -2,
+  SIM_COMPANION_INITIAL_X: -151,
+  SIM_TWO_CHAR_LEFT_X: -94,
   SIM_TWO_CHAR_RIGHT_X: 96,
   SIM_CONFRONT_END_X: -49,
   SIM_DEEP_ROOM_THRESHOLD: -60,
@@ -225,14 +225,29 @@ export const VERB_CONSTANTS = {
 
   /** Gaze and pointing directional reach factors. */
   DEG_TO_RAD: Math.PI / 180,
-  POINT_EXTEND_X_FACTOR: 0.865,
-  POINT_EXTEND_Y_FACTOR: 0.46,
+  POINT_EXTEND_X_FACTOR: 0.885,
+  POINT_EXTEND_Y_FACTOR: 0.465,
   GAZE_DEFAULT_LOOK_DISTANCE: 100,
 
   /** Overhead prop hold socket local X displacement in front of chest. */
   OVERHEAD_PROP_OFFSET_X: 26,
   /** Overhead prop hold socket local Y displacement relative to shoulder. */
-  OVERHEAD_PROP_OFFSET_Y: -12
+  OVERHEAD_PROP_OFFSET_Y: -12,
+
+  /** Prop grasp socket horizontal and vertical alignment offset. */
+  PROP_GRASP_OFFSET_X: 4.5,
+  PROP_GRASP_OFFSET_Y: -2.5,
+
+  /** Embrace interaction shoulder height offsets and wrap target offsets. */
+  EMBRACE_HERO_SHOULDER_OFFSET_Y: 48,
+  EMBRACE_COMPANION_SHOULDER_OFFSET_Y: 38,
+  EMBRACE_WRAP_OFFSET_X: 6,
+  EMBRACE_HERO_BACK_OFFSET_Y: -10,
+  EMBRACE_WRAP_L_OFFSET_X: 4,
+  EMBRACE_COMPANION_WRAP_L_OFFSET_Y: -4,
+  EMBRACE_HERO_WRAP_L_OFFSET_Y: -14,
+  EMBRACE_PUSH_THRUST_OFFSET_X: -5,
+  EMBRACE_HERO_PUSH_THRUST_OFFSET_X: 5
 } as const;
 
 export type ValidFps = typeof VERB_CONSTANTS.FPS_30 | typeof VERB_CONSTANTS.FPS_60;

@@ -1671,7 +1671,7 @@ export class VerbCompiler {
           nextX = targetPos[0];
         }
 
-        const rotZ = isRunVerb || plan.chosenClipId === 'sprint_frenzy' ? (sX > 0 ? VERB_CONSTANTS.RUN_FORWARD_TILT_DEG : -VERB_CONSTANTS.RUN_FORWARD_TILT_DEG) : 0;
+        const rotZ = 0;
         keyframes.push(
           {
             frame: startF,
@@ -1895,6 +1895,15 @@ export class VerbCompiler {
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
         const reachSign = propPos[0] >= currentX ? 1 : -1;
         const sXReach = reachSign * Math.abs(scaleXBase);
+        const isCoffeeCupHandR = (propId === 'coffee_cup' || action.associatedPropId === 'coffee_cup') && hand === 'hand_r';
+        const cupTargetOffset: [number, number, number] = isCoffeeCupHandR
+          ? [VERB_CONSTANTS.PROP_GRASP_OFFSET_X * reachSign, VERB_CONSTANTS.PROP_GRASP_OFFSET_Y, 0]
+          : [0, 0, 0];
+        const wristGraspPos: [number, number, number] = [
+          propPos[0] - cupTargetOffset[0],
+          propPos[1] - cupTargetOffset[1],
+          propPos[2]
+        ];
 
         // Deficit-based reach lowering: upright standing reach for waist-height surfaces, automatic crouch for low targets
         const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
@@ -1954,37 +1963,37 @@ export class VerbCompiler {
           ikTargets.push(
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 0.0,
               frame: reachStartF
             },
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 1.0,
               frame: graspFrame
             },
             {
               hand,
-              targetWorld: [propPos[0], propPos[1] + VERB_CONSTANTS.REACH_INSPECT_LIFT_Y, propPos[2]],
+              targetWorld: [wristGraspPos[0], wristGraspPos[1] + VERB_CONSTANTS.REACH_INSPECT_LIFT_Y, wristGraspPos[2]],
               weight: 1.0,
               frame: liftF
             },
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 1.0,
               frame: putBackF
             },
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 0.0,
               frame: putBackSnapEndF
             },
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 0.0,
               frame: lastF
             }
@@ -2111,13 +2120,13 @@ export class VerbCompiler {
           ikTargets.push(
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 0.0,
               frame: reachStartF
             },
             {
               hand,
-              targetWorld: propPos,
+              targetWorld: wristGraspPos,
               weight: 1.0,
               frame: graspFrame
             },
@@ -2400,6 +2409,15 @@ export class VerbCompiler {
 
         const socketId = action.propSocket ?? 'hand_r';
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
+        const isCoffeeCupHandR = action.associatedPropId === 'coffee_cup' && hand === 'hand_r';
+        const cupTargetOffset: [number, number, number] = isCoffeeCupHandR
+          ? [VERB_CONSTANTS.PROP_GRASP_OFFSET_X * facingSign, VERB_CONSTANTS.PROP_GRASP_OFFSET_Y, 0]
+          : [0, 0, 0];
+        const wristDestPos: [number, number, number] = [
+          destPos[0] - cupTargetOffset[0],
+          destPos[1] - cupTargetOffset[1],
+          destPos[2]
+        ];
 
         // Deficit-based reach lowering at put-down destination
         const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
@@ -2457,25 +2475,25 @@ export class VerbCompiler {
           },
           {
             hand,
-            targetWorld: destPos,
+            targetWorld: wristDestPos,
             weight: 1.0,
             frame: releaseF - 1
           },
           {
             hand,
-            targetWorld: destPos,
+            targetWorld: wristDestPos,
             weight: 1.0,
             frame: releaseF
           },
           {
             hand,
-            targetWorld: destPos,
+            targetWorld: wristDestPos,
             weight: 0.0,
             frame: releaseEndF
           },
           {
             hand,
-            targetWorld: destPos,
+            targetWorld: wristDestPos,
             weight: 0.0,
             frame: lastF
           }
@@ -2844,21 +2862,18 @@ export class VerbCompiler {
         };
 
         const otherContactX = -contactX;
-        const wrapTargetR: [number, number, number] = [
-          otherContactX + (isLeft ? VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X : -VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X),
-          baseY + VERB_CONSTANTS.EMBRACE_WRAP_SHOULDER_Y_OFFSET,
-          zPos
-        ];
-        const wrapTargetL: [number, number, number] = [
-          otherContactX + (isLeft ? VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X - 2 : -(VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X - 2)),
-          baseY + VERB_CONSTANTS.EMBRACE_WRAP_LOWER_Y_OFFSET,
-          zPos
-        ];
-        const thrustTarget: [number, number, number] = [
-          otherContactX + (isLeft ? -VERB_CONSTANTS.PRECISION_DECIMALS : VERB_CONSTANTS.PRECISION_DECIMALS),
-          baseY + VERB_CONSTANTS.EMBRACE_WRAP_SHOULDER_Y_OFFSET,
-          zPos
-        ];
+        const heroShoulderY = VERB_CONSTANTS.HERO_BASE_Y + VERB_CONSTANTS.EMBRACE_HERO_SHOULDER_OFFSET_Y;
+        const companionShoulderY = VERB_CONSTANTS.COMPANION_BASE_Y + VERB_CONSTANTS.EMBRACE_COMPANION_SHOULDER_OFFSET_Y;
+
+        const wrapTargetR: [number, number, number] = isLeft
+          ? [otherContactX + VERB_CONSTANTS.EMBRACE_WRAP_OFFSET_X, companionShoulderY + 2, 0]
+          : [otherContactX - VERB_CONSTANTS.EMBRACE_WRAP_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_HERO_BACK_OFFSET_Y, -2];
+        const wrapTargetL: [number, number, number] = isLeft
+          ? [otherContactX + VERB_CONSTANTS.EMBRACE_WRAP_L_OFFSET_X, companionShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, 0]
+          : [otherContactX - VERB_CONSTANTS.EMBRACE_WRAP_L_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_HERO_WRAP_L_OFFSET_Y, -2];
+        const thrustTarget: [number, number, number] = isLeft
+          ? [otherContactX + VERB_CONSTANTS.EMBRACE_PUSH_THRUST_OFFSET_X, companionShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, 0]
+          : [otherContactX + VERB_CONSTANTS.EMBRACE_HERO_PUSH_THRUST_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, -2];
         const fArmRaise = Math.max(startF, fStepInArrive - VERB_CONSTANTS.EMBRACE_ARM_RAISE_LEAD_FRAMES);
         const ikReleaseF = Math.min(recoilArriveF, fThrust + VERB_CONSTANTS.HAND_MORPH_SNAP_FRAMES);
 

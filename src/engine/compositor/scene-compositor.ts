@@ -514,9 +514,10 @@ export class SceneCompositor {
         );
         if (!ctx) continue;
 
+        const isCoffeeCup = rig.id === 'coffee_cup' || (rig.type === 'prop' && /cup/.test(rig.id));
         sortables.push({
           kind: 'billboard_entity',
-          depthKey: ctx.depthZ,
+          depthKey: isCoffeeCup ? ctx.depthZ - 4.0 : ctx.depthZ,
           tier,
           layerPass: 1,
           index: submitIndex++,
@@ -530,9 +531,10 @@ export class SceneCompositor {
         const camPoint = worldToCameraSpace(entity.worldPosition, camera, basis);
         if (camPoint[2] < camera.nearPlane || camPoint[2] > camera.farPlane) continue;
 
+        const isCoffeeCup = rig.id === 'coffee_cup' || (rig.type === 'prop' && /cup/.test(rig.id));
         sortables.push({
           kind: 'planar_entity',
-          depthKey: camPoint[2],
+          depthKey: isCoffeeCup ? camPoint[2] - 4.0 : camPoint[2],
           tier,
           layerPass: 1,
           index: submitIndex++,
@@ -572,7 +574,41 @@ export class SceneCompositor {
             layerPass: 0,
             index: submitIndex++,
             fill: '#000000',
-            opacity: Number((0.36 * entity.opacity).toFixed(3)),
+            opacity: Number((0.28 * entity.opacity).toFixed(3)),
+            worldVertices: shadowVerts
+          });
+        }
+      }
+
+      // Floor contact shadow for table / desk bases
+      if (rig.type === 'prop' && /table|desk/.test(rig.id) && entity.opacity > 0.05) {
+        const tableX = entity.worldPosition[0];
+        const tableZ = entity.worldPosition[2];
+        const rx = 16;
+        const rz = 8;
+        const shadowSteps = 8;
+        const shadowVerts: Vec3[] = [];
+        for (let s = 0; s < shadowSteps; s++) {
+          const theta = (s * Math.PI * 2) / shadowSteps;
+          shadowVerts.push([
+            tableX + rx * Math.cos(theta),
+            0.2,
+            tableZ + rz * Math.sin(theta)
+          ]);
+        }
+
+        const camVerts = shadowVerts.map((v) => worldToCameraSpace(v, camera, basis));
+        if (camVerts.every((v) => v[2] >= camera.nearPlane && v[2] <= camera.farPlane)) {
+          sortables.push({
+            kind: 'env_polygon',
+            category: 'lighting',
+            vertices: camVerts,
+            depthKey: entity.worldPosition[2] - 2,
+            tier: 1,
+            layerPass: 0,
+            index: submitIndex++,
+            fill: '#000000',
+            opacity: Number((0.28 * entity.opacity).toFixed(3)),
             worldVertices: shadowVerts
           });
         }

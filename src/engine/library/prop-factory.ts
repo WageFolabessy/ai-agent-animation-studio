@@ -363,7 +363,7 @@ export class PropFactory {
     basePosition?: [number, number, number]
   ): AssetRigContract {
     const defaultBasePos: [number, number, number] =
-      basePosition ?? (propId === 'coffee_cup' ? [0, 72, 0] : [0, 35, 0]);
+      basePosition ?? (propId === 'coffee_cup' ? [0, 63, 0] : [0, 35, 0]);
     const parts: RigPart[] =
       propId === 'umbrella'
         ? [

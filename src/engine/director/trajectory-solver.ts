@@ -11,8 +11,8 @@ export const ARCHETYPE_CANONICAL_BASE_Y: Record<CharacterArchetypeId, number> = 
   biped_three_quarters: 75,
   quadruped_beast: 50,
   aerial_drone: 140,
-  hero_silhouette: 75,
-  companion_silhouette: 65
+  hero_silhouette: 66.7,
+  companion_silhouette: 56.3
 };
 
 export interface AnatomicalFocusSpec {

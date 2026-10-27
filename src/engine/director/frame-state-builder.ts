@@ -382,7 +382,8 @@ export class FrameStateBuilder {
             (activeGaze && activeGaze.weight > 1e-4)
           );
 
-          const crouchDrop = 75.0 - trackState.worldPosition[1];
+          const standingBaseY = rig.baseTransform.position[1];
+          const crouchDrop = standingBaseY - trackState.worldPosition[1];
           if (crouchDrop > 2.0 && jointAngles['torso'] !== undefined) {
             const deficitEst = crouchDrop / 0.75;
             jointAngles['torso'] = Math.min(22.0, 3.0 + deficitEst * 1.1);
@@ -565,9 +566,14 @@ export class FrameStateBuilder {
         const rotX = scaledX * cosR - scaledY * sinR;
         const rotY = scaledX * sinR + scaledY * cosR;
 
+        const facingSign = Math.sign(ownerEntity.scale[0] || 1);
+        const isCoffeeCupHandR = entity.rigId === 'coffee_cup' && span.socketId === 'hand_r';
+        const cupOffsetX = isCoffeeCupHandR ? 4.5 * facingSign : 0;
+        const cupOffsetY = isCoffeeCupHandR ? -2.5 : 0;
+
         entity.worldPosition = [
-          ownerEntity.worldPosition[0] + rotX,
-          ownerEntity.worldPosition[1] + rotY,
+          ownerEntity.worldPosition[0] + rotX + cupOffsetX,
+          ownerEntity.worldPosition[1] + rotY + cupOffsetY,
           ownerEntity.worldPosition[2] + 1e-3
         ];
         entity.scale = [

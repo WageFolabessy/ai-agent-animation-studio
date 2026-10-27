@@ -201,7 +201,7 @@ export function samplePoseTrack(
         jointAngles[jId] = angle;
       }
       if (!isReachClip) {
-        jointOffsets['pelvis'] = [0, 0];
+        jointOffsets['pelvis'] = [0, 1.8];
       }
     } else if (rootSpeed < 0.18) {
       const blendFactor = (rootSpeed - 0.03) / 0.15;
@@ -209,7 +209,7 @@ export function samplePoseTrack(
         jointAngles[jId] = lerp(angle, jointAngles[jId] ?? angle, blendFactor);
       }
       if (!isReachClip) {
-        jointOffsets['pelvis'] = lerpVec2([0, 0], jointOffsets['pelvis'] ?? [0, 0], blendFactor);
+        jointOffsets['pelvis'] = lerpVec2([0, 1.8], jointOffsets['pelvis'] ?? [0, 1.8], blendFactor);
       }
     }
   }

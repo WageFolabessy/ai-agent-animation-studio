@@ -689,28 +689,28 @@ export class StageEnvironmentGenerator {
                 : undefined;
 
             const addPedestalTable = (centerX: number): void => {
-              const sxL = centerX - 8;
-              const sxR = centerX + 8;
+              const sxL = centerX - 12;
+              const sxR = centerX + 12;
               polygons.push(
                 {
-                  // Pedestal tabletop [Y = 69..72, Z = 0]
+                  // Pedestal tabletop [Y = 60..63, Z = 0]
                   vertices: [
-                    [sxL, 69, 0],
-                    [sxR, 69, 0],
-                    [sxR, 72, 0],
-                    [sxL, 72, 0]
+                    [sxL, 60, 0],
+                    [sxR, 60, 0],
+                    [sxR, 63, 0],
+                    [sxL, 63, 0]
                   ],
                   fill: shadeHexColor(palette.secondary, 0.25),
                   opacity: 1.0,
                   tier: 2
                 },
                 {
-                  // Central pedestal column [Y = 3..69, Z = 0]
+                  // Central pedestal column [Y = 3..60, Z = 0]
                   vertices: [
-                    [centerX - 3, 3, 0],
-                    [centerX + 3, 3, 0],
-                    [centerX + 3, 69, 0],
-                    [centerX - 3, 69, 0]
+                    [centerX - 3.5, 3, 0],
+                    [centerX + 3.5, 3, 0],
+                    [centerX + 3.5, 60, 0],
+                    [centerX - 3.5, 60, 0]
                   ],
                   fill: shadeHexColor(palette.background, 0.12),
                   opacity: 1.0,
@@ -719,10 +719,10 @@ export class StageEnvironmentGenerator {
                 {
                   // Pedestal base plate [Y = 0..3, Z = 0]
                   vertices: [
-                    [centerX - 6, 0, 0],
-                    [centerX + 6, 0, 0],
-                    [centerX + 6, 3, 0],
-                    [centerX - 6, 3, 0]
+                    [centerX - 9, 0, 0],
+                    [centerX + 9, 0, 0],
+                    [centerX + 9, 3, 0],
+                    [centerX - 9, 3, 0]
                   ],
                   fill: shadeHexColor(palette.secondary, 0.1),
                   opacity: 1.0,
@@ -730,8 +730,8 @@ export class StageEnvironmentGenerator {
                 }
               );
               lines.push({
-                p0: [sxL, 72, 0.5],
-                p1: [sxR, 72, 0.5],
+                p0: [sxL, 63, 0.5],
+                p1: [sxR, 63, 0.5],
                 stroke: palette.primary,
                 strokeWidth: 2.0,
                 opacity: 0.95,

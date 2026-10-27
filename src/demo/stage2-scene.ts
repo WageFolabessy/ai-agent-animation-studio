@@ -46,17 +46,18 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'moody_night',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [-70, 72, 0]
+          coffee_cup: [-56, 63, 0]
         },
         atmosphericDensity: 0.5
       },
       actions: [
         {
           instanceId: 'protagonist_lead',
-          verb: 'walk_to',
+          verb: 'carry_put_down',
           speedNorm: 1.0,
           intensityNorm: 0.7,
-          target: { kind: 'position', pos: [-49, 0, 0] }
+          associatedPropId: 'coffee_cup',
+          target: { kind: 'position', pos: [-56, 63, 0] }
         },
         {
           instanceId: 'narrative_partner',
@@ -87,17 +88,17 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'dramatic_twilight',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [-70, 72, 0]
+          coffee_cup: [-56, 63, 0]
         },
         atmosphericDensity: 0.6
       },
       actions: [
         {
           instanceId: 'protagonist_lead',
-          verb: 'reach_and_grasp',
+          verb: 'walk_to',
           speedNorm: 1.0,
           intensityNorm: 0.8,
-          associatedPropId: 'coffee_cup'
+          target: { kind: 'position', pos: [-32, 0, 0] }
         },
         {
           instanceId: 'narrative_partner',
@@ -107,10 +108,10 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         }
       ],
       camera: {
-        framing: 'INSERT',
+        framing: 'MEDIUM',
         movement: 'STATIC',
         focalCharacterId: 'protagonist_lead',
-        lookRoom: 'center',
+        lookRoom: 'right',
         dutchAngleDeg: 0
       }
     },
@@ -181,7 +182,7 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
           speedNorm: 1.0,
           intensityNorm: 0.7,
           associatedPropId: 'umbrella',
-          target: { kind: 'position', pos: [17, 0, 0] }
+          target: { kind: 'position', pos: [9, 0, 0] }
         }
       ],
       camera: {
@@ -223,7 +224,7 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
           speedNorm: 1.0,
           intensityNorm: 0.75,
           associatedPropId: 'umbrella',
-          target: { kind: 'position', pos: [17, 0, 0] }
+          target: { kind: 'position', pos: [9, 0, 0] }
         }
       ],
       camera: {
@@ -271,13 +272,13 @@ export const STAGE2_SYNTHETIC_STORY_SPEC: StorySpecContract = {
     stagingMode: 'theatrical' as const,
     theatricalSetId: b.set.kitId,
     interactionBehavior:
-      b.beatId === 'beat_03_embrace_push'
+      b.beatId === 'beat_02_interior_confront' || b.beatId === 'beat_03_embrace_push'
         ? ('FACE_TO_FACE' as const)
         : b.beatId === 'beat_04_exterior_run'
           ? ('PARALLEL_WALK' as const)
           : ('DUET_PERFORMANCE' as const),
     environmentKitId: 'industrial_city' as const,
-    kitParams: { sideTableCenterX: -70 },
+    kitParams: { sideTableCenterX: -56 },
     colorThemeId: 'CYBERPUNK_CYAN' as const,
     cameraIntensity: 0.6,
     lyricMotifs: [],
@@ -301,8 +302,8 @@ export const STAGE2_RENDER_OPTIONS = {
   height: 1080,
   crf: 18,
   preset: 'superfast' as const,
-  threads: 5,
-  chunkFrames: 350,
+  threads: 2,
+  chunkFrames: 210,
   resume: false,
   stagingMode: 'theatrical' as const,
   fps: STAGE2_FPS
