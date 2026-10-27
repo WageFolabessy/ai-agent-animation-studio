@@ -841,6 +841,7 @@ export class VerbCompiler {
       let transType: 'cut' | 'dissolve' | 'dip_to_black';
       let transDuration: number;
 
+      const prevSetKitId = j > 0 ? beats[shotPlans[j - 1].beatIndex].set.kitId : undefined;
       if (beat.transition) {
         transType = beat.transition;
         transDuration = beat.transition === 'cut'
@@ -849,7 +850,7 @@ export class VerbCompiler {
       } else if (j === 0) {
         transType = 'dip_to_black';
         transDuration = Math.min(shotDuration, VERB_CONSTANTS.TRANSITION_DEFAULT_DIP_FRAMES);
-      } else if (prevActNumber !== undefined && actNumber !== prevActNumber) {
+      } else if (prevActNumber !== undefined && actNumber !== prevActNumber && beat.set.kitId !== prevSetKitId) {
         transType = 'dip_to_black';
         transDuration = Math.min(maxClamp, VERB_CONSTANTS.TRANSITION_DEFAULT_DIP_FRAMES);
       } else {
@@ -993,6 +994,9 @@ export class VerbCompiler {
         }
       }
 
+      const nextBeatHasEmbrace =
+        i + 1 < beats.length && beats[i + 1].actions.some((a) => a.verb === 'embrace_push_away');
+
       for (let cIdx = 0; cIdx < presentList.length; cIdx++) {
         const char = presentList[cIdx];
         const otherChar = presentList.find((other) => other.instanceId !== char.instanceId);
@@ -1032,7 +1036,8 @@ export class VerbCompiler {
           unfulfilledTiming,
           rigs,
           reachClamps,
-          unreachableTargets
+          unreachableTargets,
+          nextBeatHasEmbrace
         );
 
         nextPositions[char.instanceId] = charTrack.nextPos;
@@ -1102,7 +1107,8 @@ export class VerbCompiler {
           pState,
           charPos,
           charNextPos,
-          charRig
+          charRig,
+          nextBeatHasEmbrace
         );
 
         propStates.set(propId, propResult.nextState);
@@ -1525,7 +1531,8 @@ export class VerbCompiler {
       readonly clampedReach: number;
       readonly maxReach: number;
     }>,
-    unreachableTargets?: UnreachableTargetEntry[]
+    unreachableTargets?: UnreachableTargetEntry[],
+    releaseBeforeEnd?: boolean
   ): {
     track: EntityTrack;
     nextPos: [number, number, number];
@@ -1678,23 +1685,31 @@ export class VerbCompiler {
 
         if (action.associatedPropId) {
           const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
-          const headWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y + VERB_CONSTANTS.DEFAULT_LOWER_ARM_LENGTH) * scaleYBase;
+          const shoulderWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y) * scaleYBase;
           const overheadDx = (sX >= 0 ? 1 : -1) * VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X;
           const overheadDy = VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
           ikTargets.push(
             {
               hand,
-              targetWorld: [currentPos[0] + overheadDx, headWorldY + overheadDy, currentPos[2]],
+              targetWorld: [currentPos[0] + overheadDx, shoulderWorldY + overheadDy, currentPos[2]],
               weight: 1.0,
               frame: startF
             },
             {
               hand,
-              targetWorld: [actualTargetPos[0] + overheadDx, headWorldY + overheadDy, actualTargetPos[2]],
+              targetWorld: [actualTargetPos[0] + overheadDx, shoulderWorldY + overheadDy, actualTargetPos[2]],
               weight: 1.0,
-              frame: lastF
+              frame: arriveF
             }
           );
+          if (arriveF < lastF) {
+            ikTargets.push({
+              hand,
+              targetWorld: [actualTargetPos[0] + overheadDx, shoulderWorldY + overheadDy, actualTargetPos[2]],
+              weight: 1.0,
+              frame: lastF
+            });
+          }
         }
 
         morphKeyframes.open_rest = [
@@ -1795,19 +1810,19 @@ export class VerbCompiler {
 
         if (action.associatedPropId) {
           const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
-          const headWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y + VERB_CONSTANTS.DEFAULT_LOWER_ARM_LENGTH) * scaleYBase;
+          const shoulderWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y) * scaleYBase;
           const overheadDx = (sX >= 0 ? 1 : -1) * VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X;
           const overheadDy = VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
           ikTargets.push(
             {
               hand,
-              targetWorld: [targetX + overheadDx, headWorldY + overheadDy, currentPos[2]],
+              targetWorld: [targetX + overheadDx, shoulderWorldY + overheadDy, currentPos[2]],
               weight: 1.0,
               frame: startF
             },
             {
               hand,
-              targetWorld: [targetX + overheadDx, headWorldY + overheadDy, currentPos[2]],
+              targetWorld: [targetX + overheadDx, shoulderWorldY + overheadDy, currentPos[2]],
               weight: 1.0,
               frame: lastF
             }
@@ -1826,7 +1841,7 @@ export class VerbCompiler {
           {
             frame: lastF,
             position: [targetX, baseY, currentPos[2]],
-            rotationZDegrees: faceRight ? VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X : -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X,
+            rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -1858,11 +1873,13 @@ export class VerbCompiler {
         }
         const socketId = VerbCompiler.resolvePropSocket(action, propPos, currentPos);
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
+        const crouchRootY = propPos[1] < baseY ? baseY - VERB_CONSTANTS.REACH_CROUCH_DROP_Y : baseY;
+        const facingSign = scaleXBase >= 0 ? 1 : -1;
 
-        // Reach distance verification derived directly from rig kinematics
+        // Reach distance verification derived directly from crouched rig kinematics
         const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
         const shoulderWorldX = currentX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * scaleXBase;
-        const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
+        const shoulderWorldY = crouchRootY + (armMetrics.shoulderOffset[1] - VERB_CONSTANTS.REACH_CROUCH_SHOULDER_DROP_Y) * scaleYBase;
         const distToProp = Math.hypot(propPos[0] - shoulderWorldX, propPos[1] - shoulderWorldY);
         const maxReach = armMetrics.maxReach * Math.abs(scaleXBase);
         if (distToProp > maxReach && reachClamps) {
@@ -1875,60 +1892,167 @@ export class VerbCompiler {
           });
         }
 
-        ikTargets.push(
-          {
-            hand,
-            targetWorld: propPos,
-            weight: 0.0,
-            frame: reachStartF
-          },
-          {
-            hand,
-            targetWorld: propPos,
-            weight: 1.0,
-            frame: graspFrame
-          },
-          {
-            hand,
-            targetWorld: propPos,
-            weight: 1.0,
-            frame: lastF
-          }
-        );
+        const liftF = Math.min(lastF, Math.max(graspFrame + 1, startF + Math.round(duration * VERB_CONSTANTS.CARRY_LIFT_START_RATIO)));
+        const carryHoldPos: [number, number, number] = [
+          currentX + facingSign * VERB_CONSTANTS.CARRY_HAND_FORWARD_OFFSET_X,
+          baseY + VERB_CONSTANTS.CARRY_HAND_HEIGHT_OFFSET_Y,
+          currentPos[2]
+        ];
+
+        if (releaseBeforeEnd && duration >= VERB_CONSTANTS.WALK_LOOP_FRAMES) {
+          const putBackF = Math.min(lastF - 1, Math.max(liftF + 1, startF + Math.round(duration * VERB_CONSTANTS.DEFAULT_EARLY_ARRIVAL_RATIO)));
+          ikTargets.push(
+            {
+              hand,
+              targetWorld: propPos,
+              weight: 0.0,
+              frame: reachStartF
+            },
+            {
+              hand,
+              targetWorld: propPos,
+              weight: 1.0,
+              frame: graspFrame
+            },
+            {
+              hand,
+              targetWorld: [propPos[0], propPos[1] + VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y, propPos[2]],
+              weight: 1.0,
+              frame: liftF
+            },
+            {
+              hand,
+              targetWorld: propPos,
+              weight: 1.0,
+              frame: putBackF
+            },
+            {
+              hand,
+              targetWorld: propPos,
+              weight: 0.0,
+              frame: lastF
+            }
+          );
+
+          keyframes.push(
+            {
+              frame: startF,
+              position: [currentX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: graspFrame,
+              position: [currentX, crouchRootY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: liftF,
+              position: [currentX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: putBackF,
+              position: [currentX, crouchRootY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: lastF,
+              position: [currentX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            }
+          );
+
+          morphKeyframes.open_rest = [
+            { frame: startF, weight: 1.0 },
+            { frame: graspFrame, weight: 0.0 },
+            { frame: putBackF, weight: 0.0 },
+            { frame: lastF, weight: 1.0 }
+          ];
+          morphKeyframes.grasp_fist = [
+            { frame: startF, weight: 0.0 },
+            { frame: graspFrame, weight: 1.0 },
+            { frame: putBackF, weight: 1.0 },
+            { frame: lastF, weight: 0.0 }
+          ];
+        } else {
+          ikTargets.push(
+            {
+              hand,
+              targetWorld: propPos,
+              weight: 0.0,
+              frame: reachStartF
+            },
+            {
+              hand,
+              targetWorld: propPos,
+              weight: 1.0,
+              frame: graspFrame
+            },
+            {
+              hand,
+              targetWorld: carryHoldPos,
+              weight: 1.0,
+              frame: lastF
+            }
+          );
+
+          keyframes.push(
+            {
+              frame: startF,
+              position: [currentX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: graspFrame,
+              position: [currentX, crouchRootY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: lastF,
+              position: [currentX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            }
+          );
+
+          morphKeyframes.open_rest = [
+            { frame: startF, weight: 1.0 },
+            { frame: graspFrame, weight: 0.0 },
+            { frame: lastF, weight: 0.0 }
+          ];
+          morphKeyframes.grasp_fist = [
+            { frame: startF, weight: 0.0 },
+            { frame: graspFrame, weight: 1.0 },
+            { frame: lastF, weight: 1.0 }
+          ];
+        }
 
         nextX = currentX;
         nextPos = [currentX, baseY, currentPos[2]];
         clipId = 'reach_and_grasp';
-
-        keyframes.push(
-          {
-            frame: startF,
-            position: [currentX, baseY, currentPos[2]],
-            rotationZDegrees: 0,
-            scale: [scaleXBase, scaleYBase],
-            opacity: 1,
-            easing: 'linear'
-          },
-          {
-            frame: lastF,
-            position: [currentX, baseY, currentPos[2]],
-            rotationZDegrees: 0,
-            scale: [scaleXBase, scaleYBase],
-            opacity: 1,
-            easing: 'linear'
-          }
-        );
-
-        morphKeyframes.open_rest = [
-          { frame: startF, weight: 1.0 },
-          { frame: graspFrame, weight: 0.0 },
-          { frame: lastF, weight: 0.0 }
-        ];
-        morphKeyframes.grasp_fist = [
-          { frame: startF, weight: 0.0 },
-          { frame: graspFrame, weight: 1.0 },
-          { frame: lastF, weight: 1.0 }
-        ];
         break;
       }
 
@@ -1939,6 +2063,36 @@ export class VerbCompiler {
         const duration = endF - startF;
         const turnOffset = Math.max(2, Math.min(Math.floor(duration * VERB_CONSTANTS.TURN_TIMING_RATIO), duration - VERB_CONSTANTS.TRANSITION_CROSS_FADE_FRAMES));
         const turnF0 = startF + turnOffset;
+        const facingSign = scaleXBase >= 0 ? 1 : -1;
+        const carryHeightY = baseY + VERB_CONSTANTS.CARRY_HAND_HEIGHT_OFFSET_Y;
+        const carryDx = VERB_CONSTANTS.CARRY_HAND_FORWARD_OFFSET_X;
+
+        ikTargets.push(
+          {
+            hand: 'hand_r',
+            targetWorld: [currentX + facingSign * carryDx, carryHeightY, currentPos[2]],
+            weight: 1.0,
+            frame: startF
+          },
+          {
+            hand: 'hand_r',
+            targetWorld: [currentX + facingSign * carryDx, carryHeightY, currentPos[2]],
+            weight: 1.0,
+            frame: turnF0
+          },
+          {
+            hand: 'hand_r',
+            targetWorld: [currentX - facingSign * carryDx, carryHeightY, currentPos[2]],
+            weight: 1.0,
+            frame: turnF0 + VERB_CONSTANTS.TURN_FRAME_OFFSET_5
+          },
+          {
+            hand: 'hand_r',
+            targetWorld: [currentX - facingSign * carryDx, carryHeightY, currentPos[2]],
+            weight: 1.0,
+            frame: lastF
+          }
+        );
 
         keyframes.push(
           {
@@ -2045,7 +2199,7 @@ export class VerbCompiler {
         nextX = charDestX;
         nextPos = [charDestX, baseY, currentPos[2]];
         clipId = 'carry_put_down';
-        const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * HALF), duration - VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X));
+        const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * HALF), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
         const walkEndF = startF + walkDeltaFrames;
         const releaseOffset = Math.max(walkDeltaFrames + 1, Math.min(Math.round(duration * VERB_CONSTANTS.CARRY_RELEASE_RATIO), duration - VERB_CONSTANTS.CANONICAL_ACT_COUNT));
         const releaseF = startF + releaseOffset;
@@ -2125,11 +2279,12 @@ export class VerbCompiler {
 
         const socketId = action.propSocket ?? 'hand_r';
         const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
+        const crouchRootY = destPos[1] < baseY ? baseY - VERB_CONSTANTS.REACH_CROUCH_DROP_Y : baseY;
 
-        // Reach distance check at put-down destination derived directly from rig kinematics
+        // Reach distance check at put-down destination derived directly from crouched rig kinematics
         const armMetrics = VerbCompiler.deriveRigArmMetrics(charRig, hand);
         const shoulderWorldX = charDestX + (hand === 'hand_r' ? armMetrics.shoulderOffset[0] : -armMetrics.shoulderOffset[0]) * sX;
-        const shoulderWorldY = baseY + armMetrics.shoulderOffset[1] * scaleYBase;
+        const shoulderWorldY = crouchRootY + (armMetrics.shoulderOffset[1] - VERB_CONSTANTS.REACH_CROUCH_SHOULDER_DROP_Y) * scaleYBase;
         const distToDest = Math.hypot(destPos[0] - shoulderWorldX, destPos[1] - shoulderWorldY);
         const maxReach = armMetrics.maxReach * Math.abs(scaleXBase);
         if (distToDest > maxReach && reachClamps) {
@@ -2142,19 +2297,19 @@ export class VerbCompiler {
           });
         }
 
-        const carryDx = VERB_CONSTANTS.RUN_FORWARD_TILT_DEG * Math.abs(scaleXBase);
-        const carryDy = VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y * scaleYBase;
+        const carryDx = VERB_CONSTANTS.CARRY_HAND_FORWARD_OFFSET_X;
+        const carryHeightY = baseY + VERB_CONSTANTS.CARRY_HAND_HEIGHT_OFFSET_Y;
 
         ikTargets.push(
           {
             hand,
-            targetWorld: [currentPos[0] + facingSign * carryDx, shoulderWorldY - carryDy, currentPos[2]],
+            targetWorld: [currentPos[0] + facingSign * carryDx, carryHeightY, currentPos[2]],
             weight: 1.0,
             frame: startF
           },
           {
             hand,
-            targetWorld: [charDestX + facingSign * carryDx, shoulderWorldY - carryDy, currentPos[2]],
+            targetWorld: [charDestX + facingSign * carryDx, carryHeightY, currentPos[2]],
             weight: 1.0,
             frame: walkEndF
           },
@@ -2196,6 +2351,26 @@ export class VerbCompiler {
           {
             frame: walkEndF,
             position: [charDestX, baseY, currentPos[2]],
+            rotationZDegrees: 0,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          }
+        );
+        if (releaseF - 1 > walkEndF) {
+          keyframes.push({
+            frame: releaseF - 1,
+            position: [charDestX, crouchRootY, currentPos[2]],
+            rotationZDegrees: 0,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          });
+        }
+        keyframes.push(
+          {
+            frame: releaseF,
+            position: [charDestX, crouchRootY, currentPos[2]],
             rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
@@ -2370,20 +2545,22 @@ export class VerbCompiler {
         const otherCharX = otherCharPos ? otherCharPos[0] : undefined;
         const isLeft = otherCharX !== undefined ? currentX <= otherCharX : true;
         const startX = currentX;
-        const contactX = isLeft ? -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : VERB_CONSTANTS.PROP_APPROACH_CLEARANCE;
+        const contactX = isLeft ? -VERB_CONSTANTS.EMBRACE_CONTACT_HALF_SEPARATION : VERB_CONSTANTS.EMBRACE_CONTACT_HALF_SEPARATION;
         const recoilDelta = VERB_CONSTANTS.RECOIL_SEPARATION_DISTANCE;
         const pushedX = isLeft ? contactX - recoilDelta : contactX + recoilDelta;
+        const zPos = isLeft ? currentPos[2] : VERB_CONSTANTS.EMBRACE_PARTNER_DEPTH_Z;
         nextX = pushedX;
         nextPos = [pushedX, baseY, currentPos[2]];
 
         const duration = endF - startF;
-        const fEmbrace = startF + Math.max(2, Math.min(Math.floor(duration * VERB_CONSTANTS.EMBRACE_CONTACT_RATIO), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
+        const fStepInArrive = startF + Math.max(1, Math.min(Math.floor(duration * VERB_CONSTANTS.EMBRACE_STEP_IN_RATIO), duration - VERB_CONSTANTS.TURN_FRAME_OFFSET_5));
+        const fEmbrace = startF + Math.max(fStepInArrive - startF + 1, Math.min(Math.floor(duration * VERB_CONSTANTS.EMBRACE_CONTACT_RATIO), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
         const fThrust = startF + Math.max(fEmbrace - startF + 1, Math.min(Math.floor(duration * VERB_CONSTANTS.EMBRACE_THRUST_RATIO), duration - 2));
         const sX = isLeft ? scaleXBase : -scaleXBase;
 
         // Step-in locomotion sub-span
         const stepDist = Math.abs(contactX - startX);
-        const stepFrames = fEmbrace - startF;
+        const stepFrames = fStepInArrive - startF;
         if (stepDist > 1.0 && stepFrames > 0) {
           const stepPlan = VerbCompiler.planLocomotionGait(
             stepDist,
@@ -2394,7 +2571,7 @@ export class VerbCompiler {
           );
           segments.push({
             startFrame: startF,
-            endFrame: fEmbrace,
+            endFrame: fStepInArrive,
             clipId: 'walk_to',
             timeScale: stepPlan.timeScale,
             startPoseFrame: 0
@@ -2403,7 +2580,7 @@ export class VerbCompiler {
 
         // Contact embrace/thrust sub-span
         segments.push({
-          startFrame: fEmbrace,
+          startFrame: fStepInArrive,
           endFrame: fThrust,
           clipId: 'embrace_push_away',
           timeScale: 1.0,
@@ -2418,15 +2595,15 @@ export class VerbCompiler {
           const recoilPlan = VerbCompiler.planLocomotionGait(
             recoilDist,
             recoilFrames,
-            action.speedNorm ?? VERB_CONSTANTS.RECOIL_SPEED_NORM,
+            VERB_CONSTANTS.MAX_GAIT_TIME_SCALE,
             -sX,
-            false
+            true
           );
           recoilArriveF = Math.min(lastF, fThrust + recoilPlan.tMove);
           segments.push({
             startFrame: fThrust,
             endFrame: recoilArriveF,
-            clipId: 'walk_to',
+            clipId: recoilPlan.chosenClipId,
             timeScale: recoilPlan.timeScale,
             startPoseFrame: 0
           });
@@ -2446,58 +2623,116 @@ export class VerbCompiler {
           lastClip: { clipId: 'walk_to', loopFrames: VERB_CONSTANTS.WALK_LOOP_FRAMES }
         };
 
-        const hand: 'hand_l' | 'hand_r' = isLeft ? 'hand_r' : 'hand_l';
-        const partnerContactX = isLeft ? -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y : VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
-        const contactTarget: [number, number, number] = [partnerContactX, baseY + VERB_CONSTANTS.CAM_TWO_SHOT_OFFSET_Y, currentPos[2]];
+        const otherContactX = -contactX;
+        const wrapTargetR: [number, number, number] = [
+          otherContactX + (isLeft ? VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X : -VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X),
+          baseY + VERB_CONSTANTS.EMBRACE_WRAP_SHOULDER_Y_OFFSET,
+          zPos
+        ];
+        const wrapTargetL: [number, number, number] = [
+          otherContactX + (isLeft ? VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X - VERB_CONSTANTS.PRECISION_DECIMALS : -(VERB_CONSTANTS.EMBRACE_WRAP_REACH_PAST_X - VERB_CONSTANTS.PRECISION_DECIMALS)),
+          baseY + VERB_CONSTANTS.EMBRACE_WRAP_LOWER_Y_OFFSET,
+          zPos
+        ];
+        const thrustTarget: [number, number, number] = [
+          otherContactX + (isLeft ? -VERB_CONSTANTS.PRECISION_DECIMALS : VERB_CONSTANTS.PRECISION_DECIMALS),
+          baseY + VERB_CONSTANTS.EMBRACE_WRAP_SHOULDER_Y_OFFSET,
+          zPos
+        ];
+        const ikReleaseF = Math.min(recoilArriveF, fThrust + VERB_CONSTANTS.TURN_FRAME_OFFSET_5);
 
         ikTargets.push(
           {
-            hand,
-            targetWorld: contactTarget,
+            hand: 'hand_r',
+            targetWorld: wrapTargetR,
             weight: 0.0,
             frame: startF
           },
           {
-            hand,
-            targetWorld: contactTarget,
+            hand: 'hand_r',
+            targetWorld: wrapTargetR,
+            weight: 1.0,
+            frame: fStepInArrive
+          },
+          {
+            hand: 'hand_r',
+            targetWorld: wrapTargetR,
             weight: 1.0,
             frame: fEmbrace
           },
           {
-            hand,
-            targetWorld: contactTarget,
+            hand: 'hand_r',
+            targetWorld: thrustTarget,
             weight: 1.0,
             frame: fThrust
           },
           {
-            hand,
-            targetWorld: contactTarget,
+            hand: 'hand_r',
+            targetWorld: thrustTarget,
             weight: 0.0,
-            frame: lastF
+            frame: ikReleaseF
+          },
+          {
+            hand: 'hand_l',
+            targetWorld: wrapTargetL,
+            weight: 0.0,
+            frame: startF
+          },
+          {
+            hand: 'hand_l',
+            targetWorld: wrapTargetL,
+            weight: 1.0,
+            frame: fStepInArrive
+          },
+          {
+            hand: 'hand_l',
+            targetWorld: wrapTargetL,
+            weight: 1.0,
+            frame: fEmbrace
+          },
+          {
+            hand: 'hand_l',
+            targetWorld: thrustTarget,
+            weight: 1.0,
+            frame: fThrust
+          },
+          {
+            hand: 'hand_l',
+            targetWorld: thrustTarget,
+            weight: 0.0,
+            frame: ikReleaseF
           }
         );
 
         keyframes.push(
           {
             frame: startF,
-            position: [startX, baseY, currentPos[2]],
+            position: [startX, baseY, zPos],
             rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
+            frame: fStepInArrive,
+            position: [contactX, baseY, zPos],
+            rotationZDegrees: isLeft ? -VERB_CONSTANTS.EMBRACE_TORSO_LEAN_DEG : VERB_CONSTANTS.EMBRACE_TORSO_LEAN_DEG,
+            scale: [sX, scaleYBase],
+            opacity: 1,
+            easing: 'linear'
+          },
+          {
             frame: fEmbrace,
-            position: [contactX, baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y : -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y,
+            position: [contactX, baseY, zPos],
+            rotationZDegrees: isLeft ? -VERB_CONSTANTS.EMBRACE_TORSO_LEAN_DEG : VERB_CONSTANTS.EMBRACE_TORSO_LEAN_DEG,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
           },
           {
             frame: fThrust,
-            position: [contactX + (isLeft ? -2 : 2), baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? VERB_CONSTANTS.TURN_TILT_DEG : -VERB_CONSTANTS.TURN_TILT_DEG,
+            position: [contactX, baseY, zPos],
+            rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2505,7 +2740,7 @@ export class VerbCompiler {
           {
             frame: recoilArriveF,
             position: [pushedX, baseY, currentPos[2]],
-            rotationZDegrees: isLeft ? -VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y : VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y,
+            rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2624,13 +2859,13 @@ export class VerbCompiler {
     const blinkStep = Math.max(VERB_CONSTANTS.IDLE_LOOP_FRAMES, Math.floor(blinkDuration * VERB_CONSTANTS.BLINK_INTERVAL_RATIO));
     for (
       let f = startF + Math.min(VERB_CONSTANTS.PROP_APPROACH_CLEARANCE, Math.floor(blinkDuration * VERB_CONSTANTS.FALL_DROP_RATIO));
-      f + VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X <= lastF;
+      f + VERB_CONSTANTS.BLINK_DURATION_FRAMES <= lastF;
       f += blinkStep
     ) {
       blinks.push(
         { frame: f, weight: 0 },
         { frame: f + 2, weight: 1 },
-        { frame: f + VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X, weight: 0 }
+        { frame: f + VERB_CONSTANTS.BLINK_DURATION_FRAMES, weight: 0 }
       );
     }
     morphKeyframes.blink = blinks;
@@ -2697,11 +2932,12 @@ export class VerbCompiler {
         gazeWorldPos = [currentX + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * Math.cos(rad), baseY + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * Math.sin(rad), currentPos[2]];
       }
     } else if (action.verb === 'look_at') {
+      const eyeWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y + VERB_CONSTANTS.DEFAULT_LOWER_ARM_LENGTH) * scaleYBase;
       if (otherCharPos !== undefined) {
-        gazeWorldPos = [otherCharPos[0], baseY + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y, otherCharPos[2]];
+        gazeWorldPos = [otherCharPos[0], eyeWorldY, otherCharPos[2]];
       } else {
         const facingSign = scaleXBase >= 0 ? 1 : -1;
-        gazeWorldPos = [currentX + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * facingSign, baseY + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y, currentPos[2]];
+        gazeWorldPos = [currentX + VERB_CONSTANTS.GAZE_DEFAULT_LOOK_DISTANCE * facingSign, eyeWorldY, currentPos[2]];
       }
     } else if (action.verb === 'gesture_point') {
       const facingSign = scaleXBase >= 0 ? 1 : -1;
@@ -2774,7 +3010,8 @@ export class VerbCompiler {
     propState: PropRuntimeState,
     ownerPos: [number, number, number],
     ownerTargetPos: [number, number, number],
-    _ownerRig?: AssetRigContract
+    _ownerRig?: AssetRigContract,
+    releaseBeforeEnd?: boolean
   ): {
     track: EntityTrack;
     nextState: PropRuntimeState;
@@ -2816,9 +3053,12 @@ export class VerbCompiler {
     } else if (action.verb === 'reach_and_grasp') {
       const graspOffset = Math.max(2, Math.min(Math.round(duration * HALF), duration - 2));
       const graspFrame = startF + graspOffset;
-      nextHeld = true;
-      nextHeldBy = actorId;
-      nextReleased = false;
+      const liftF = Math.min(lastF, Math.max(graspFrame + 1, startF + Math.round(duration * VERB_CONSTANTS.CARRY_LIFT_START_RATIO)));
+      const putBackF = Math.min(lastF - 1, Math.max(liftF + 1, startF + Math.round(duration * VERB_CONSTANTS.DEFAULT_EARLY_ARRIVAL_RATIO)));
+      const shouldPutBack = Boolean(releaseBeforeEnd && duration >= VERB_CONSTANTS.WALK_LOOP_FRAMES);
+      nextHeld = !shouldPutBack;
+      nextHeldBy = shouldPutBack ? null : actorId;
+      nextReleased = shouldPutBack;
 
       keyframes.push(
         {
@@ -2849,7 +3089,7 @@ export class VerbCompiler {
 
       attachmentSpans.push({
         startFrame: graspFrame,
-        endFrame: endF,
+        endFrame: shouldPutBack ? putBackF : endF,
         ownerRigId: actorId,
         socketId
       });
@@ -2866,7 +3106,7 @@ export class VerbCompiler {
           initialPos[2]
         ];
       }
-      const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * HALF), duration - VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X));
+      const walkDeltaFrames = Math.max(1, Math.min(Math.floor(duration * HALF), duration - VERB_CONSTANTS.PRECISION_DECIMALS));
       const releaseOffset = Math.max(walkDeltaFrames + 1, Math.min(Math.round(duration * VERB_CONSTANTS.CARRY_RELEASE_RATIO), duration - VERB_CONSTANTS.CANONICAL_ACT_COUNT));
       const releaseFrame = startF + releaseOffset;
       nextHeld = false;
@@ -2937,7 +3177,7 @@ export class VerbCompiler {
         ownerRigId: propState.heldBy ?? actorId,
         socketId
       });
-      nextPos = ownerTargetPos;
+      nextPos = [ownerTargetPos[0], initialPos[1], ownerTargetPos[2]];
     } else {
       keyframes.push(
         {

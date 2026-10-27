@@ -114,6 +114,11 @@ function resolveRigPaint(
     return { fillAttr: `url(#${gradId})`, isGradient: true };
   }
 
+  if (lit && preferSolid) {
+    const litHex = shadeHexColor(baseHex, 0.06 * Math.max(0.2, palette.ambientIntensity));
+    return { fillAttr: litHex, isGradient: false };
+  }
+
   return { fillAttr: baseHex, isGradient: false };
 }
 
@@ -865,13 +870,16 @@ export class SceneCompositor {
     const charScreenHeight = 100 * ctx.scaleFactor * Math.abs(ctx.entityScale[1]);
     const isDistantCharacter = charScreenHeight < 280;
 
+    // Use pre-computed lit solid fills on character/prop limbs to preserve rasterizer throughput
+    const preferSolidFill = rig.type === 'character' || rig.type === 'prop';
+
     const fillInfo = resolveRigPaint(
       part.style.fill,
       palette,
       part.style.lit,
       builder,
       gradientCache,
-      isDistantCharacter
+      preferSolidFill
     );
     if (fillInfo.isGradient) stats.gradientShapesCount++;
 
@@ -1077,13 +1085,14 @@ export class SceneCompositor {
     if (opacity <= 0.01) return;
     const rigCat = rig.type === 'character' ? 'characters' : rig.type === 'prop' ? 'props' : 'environment';
 
+    const preferSolidFill = rig.type === 'character' || rig.type === 'prop';
     const fillInfo = resolveRigPaint(
       part.style.fill,
       palette,
       part.style.lit,
       builder,
       gradientCache,
-      false
+      preferSolidFill
     );
     if (fillInfo.isGradient) stats.gradientShapesCount++;
 

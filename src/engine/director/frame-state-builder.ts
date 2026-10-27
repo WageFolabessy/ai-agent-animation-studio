@@ -11,7 +11,6 @@ import { ShotSequencer } from './shot-sequencer.js';
 import { CameraShakeSystem } from './camera-shake.js';
 import { ChoreographySystem, evaluateEntityTrack, type EvaluatedTrackState } from './choreography.js';
 import { samplePoseTrack, evaluateSecondaryMotion } from '../rigging/deformer.js';
-import { computeCameraBasis } from '../camera/camera-3d.js';
 import { computeSkeletonFK, applyAffine2D, getSkeletonJointMap } from '../rigging/kinematics.js';
 import { solveTwoBoneArmIK, worldToRigLocal } from '../rigging/ik-leg-solver.js';
 import { CANONICAL_BIPED_SOCKETS } from '../library/prop-factory.js';
@@ -560,11 +559,10 @@ export class FrameStateBuilder {
         const rotX = scaledX * cosR - scaledY * sinR;
         const rotY = scaledX * sinR + scaledY * cosR;
 
-        const basis = computeCameraBasis(camera);
         entity.worldPosition = [
-          ownerEntity.worldPosition[0] + rotX * basis.right[0] + rotY * basis.up[0] - 1e-3 * basis.forward[0],
-          ownerEntity.worldPosition[1] + rotX * basis.right[1] + rotY * basis.up[1] - 1e-3 * basis.forward[1],
-          ownerEntity.worldPosition[2] + rotX * basis.right[2] + rotY * basis.up[2] - 1e-3 * basis.forward[2]
+          ownerEntity.worldPosition[0] + rotX,
+          ownerEntity.worldPosition[1] + rotY,
+          ownerEntity.worldPosition[2] + 1e-3
         ];
         entity.scale = [
           Math.sign(ownerEntity.scale[0] || 1) * Math.abs(entity.scale[0]),

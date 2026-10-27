@@ -74,7 +74,32 @@ export const VERB_CONSTANTS = {
   /** Default character-to-character clearance distance. */
   CHARACTER_INTERACTION_CLEARANCE: 26,
   /** Recoil push separation delta distance. */
-  RECOIL_SEPARATION_DISTANCE: 28,
+  RECOIL_SEPARATION_DISTANCE: 38,
+  /** Half-distance between two characters during close embrace. */
+  EMBRACE_CONTACT_HALF_SEPARATION: 8,
+  /** Depth Z offset for partner rig during close embrace to prevent z-fighting. */
+  EMBRACE_PARTNER_DEPTH_Z: -3,
+  /** Inward torso lean in degrees during embrace. */
+  EMBRACE_TORSO_LEAN_DEG: 7,
+  /** Hand reach past partner center X during embrace wrap. */
+  EMBRACE_WRAP_REACH_PAST_X: 18,
+  /** Upper back Y offset for right-hand embrace wrap. */
+  EMBRACE_WRAP_SHOULDER_Y_OFFSET: 34,
+  /** Mid-back Y offset for left-hand embrace wrap. */
+  EMBRACE_WRAP_LOWER_Y_OFFSET: 30,
+
+  /** Pelvis vertical drop in world units when crouching to grasp or set down a low prop. */
+  REACH_CROUCH_DROP_Y: 10,
+  /** Local shoulder Y drop when leaning forward during crouch reach. */
+  REACH_CROUCH_SHOULDER_DROP_Y: 6,
+  /** Horizontal forward offset from torso center when carrying a handheld prop. */
+  CARRY_HAND_FORWARD_OFFSET_X: 14,
+  /** Vertical offset above character root Y when carrying a handheld prop at chest level. */
+  CARRY_HAND_HEIGHT_OFFSET_Y: 18,
+  /** Timing ratio inside reach_and_grasp when upward carry lift begins. */
+  CARRY_LIFT_START_RATIO: 0.6429,
+  /** Blink duration in frames. */
+  BLINK_DURATION_FRAMES: 4,
 
   /** Simulation traversal staging positions and thresholds. */
   SIM_HERO_INITIAL_X: -95,
@@ -103,7 +128,7 @@ export const VERB_CONSTANTS = {
     EXTREME_WIDE: 360,
     WIDE: 260,
     MEDIUM: 180,
-    CLOSE_UP: 125,
+    CLOSE_UP: 115,
     EXTREME_CLOSE_UP: 85
   },
 
@@ -124,11 +149,11 @@ export const VERB_CONSTANTS = {
   CAM_CLOSE_UP_REACH_FOCAL_X: -10,
   CAM_CLOSE_UP_REACH_TARGET_Y: 88,
   CAM_CLOSE_UP_REACH_CAM_Y: 98,
-  CAM_CLOSE_UP_OVERHEAD_DIST_Z: 142,
-  CAM_CLOSE_UP_OVERHEAD_TARGET_Y: 127,
-  CAM_CLOSE_UP_OVERHEAD_CAM_Y: 135,
-  CAM_CLOSE_UP_BASE_TARGET_Y: 117,
-  CAM_CLOSE_UP_BASE_CAM_Y: 127,
+  CAM_CLOSE_UP_OVERHEAD_DIST_Z: 158,
+  CAM_CLOSE_UP_OVERHEAD_TARGET_Y: 122,
+  CAM_CLOSE_UP_OVERHEAD_CAM_Y: 130,
+  CAM_CLOSE_UP_BASE_TARGET_Y: 132,
+  CAM_CLOSE_UP_BASE_CAM_Y: 136,
   CAM_EXTREME_CLOSE_UP_OVERHEAD_TARGET_Y: 115,
   CAM_EXTREME_CLOSE_UP_BASE_TARGET_Y: 103,
   CAM_HEADROOM_TARGET_Y: 80,
@@ -151,8 +176,9 @@ export const VERB_CONSTANTS = {
   GRASP_CONTACT_RATIO: 0.5,
   CARRY_RELEASE_RATIO: 0.7381,
   DEFAULT_EARLY_ARRIVAL_RATIO: 0.7857,
-  EMBRACE_CONTACT_RATIO: 0.4286,
-  EMBRACE_THRUST_RATIO: 0.5,
+  EMBRACE_STEP_IN_RATIO: 0.25,
+  EMBRACE_CONTACT_RATIO: 0.4571,
+  EMBRACE_THRUST_RATIO: 0.4857,
   EMBRACE_CONTACT_WEIGHT: 0.8,
   SIT_CONTACT_RATIO: 0.35,
   SIT_STAND_TRANSITION_RATIO: 0.75,
@@ -171,14 +197,14 @@ export const VERB_CONSTANTS = {
 
   /** Gaze and pointing directional reach factors. */
   DEG_TO_RAD: Math.PI / 180,
-  POINT_EXTEND_X_FACTOR: 0.9,
-  POINT_EXTEND_Y_FACTOR: 0.32,
+  POINT_EXTEND_X_FACTOR: 0.865,
+  POINT_EXTEND_Y_FACTOR: 0.46,
   GAZE_DEFAULT_LOOK_DISTANCE: 100,
 
-  /** Overhead prop hold socket local X displacement. */
-  OVERHEAD_PROP_OFFSET_X: 4,
-  /** Overhead prop hold socket local Y displacement above head. */
-  OVERHEAD_PROP_OFFSET_Y: 8
+  /** Overhead prop hold socket local X displacement in front of chest. */
+  OVERHEAD_PROP_OFFSET_X: 10,
+  /** Overhead prop hold socket local Y displacement above shoulder. */
+  OVERHEAD_PROP_OFFSET_Y: 6
 } as const;
 
 export type ValidFps = typeof VERB_CONSTANTS.FPS_30 | typeof VERB_CONSTANTS.FPS_60;

@@ -86,10 +86,10 @@ export class PropFactory {
           {
             id: 'prop_umbrella_shaft',
             jointId: 'arm_r_lower',
-            localOffset2D: [0, 16],
+            localOffset2D: [0, 19],
             shape: {
               kind: 'rect',
-              size: [2.0, 52]
+              size: [2.0, 38]
             },
             style: {
               fill: { kind: 'palette', role: 'secondary', shade: 0.3 },
@@ -100,7 +100,7 @@ export class PropFactory {
           {
             id: 'prop_umbrella_canopy',
             jointId: 'arm_r_lower',
-            localOffset2D: [0, 42],
+            localOffset2D: [0, 38],
             shape: {
               kind: 'polygon',
               points: [
@@ -366,8 +366,8 @@ export class PropFactory {
             {
               id: `${instanceId}_shaft`,
               jointId: null,
-              localOffset2D: [0, 16],
-              shape: { kind: 'rect', size: [2.0, 52] },
+              localOffset2D: [0, 19],
+              shape: { kind: 'rect', size: [2.0, 38] },
               style: {
                 fill: { kind: 'palette', role: 'secondary', shade: 0.25 },
                 opacity: 1,
@@ -377,7 +377,7 @@ export class PropFactory {
             {
               id: `${instanceId}_canopy`,
               jointId: null,
-              localOffset2D: [0, 42],
+              localOffset2D: [0, 38],
               shape: {
                 kind: 'polygon',
                 points: [

@@ -33,12 +33,12 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     torsoAmp: 1.0,
     headDeg0: -3,
     headAmp: 1.0,
-    armUpperMid: 0,
-    armUpperAmp: 15,
-    armLowerMid: 20,
-    armLowerAmp: 8,
-    coatDeg0: -16,
-    coatAmp: 4
+    armUpperMid: 4,
+    armUpperAmp: 24,
+    armLowerMid: 34,
+    armLowerAmp: 12,
+    coatDeg0: -6,
+    coatAmp: 2
   }),
   reach_and_grasp: {
     interpolationMode: 'linear',
@@ -49,49 +49,49 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: 0 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
           { jointId: 'arm_r_upper', rotationZDegrees: 15 },
           { jointId: 'arm_r_lower', rotationZDegrees: 25 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 105,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -10] },
-          { jointId: 'torso', rotationZDegrees: 14 },
-          { jointId: 'head', rotationZDegrees: 8 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
-          { jointId: 'arm_r_upper', rotationZDegrees: -6.0 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 38.6 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 18 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -28 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -14 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -32 },
-          { jointId: 'coat_tail', rotationZDegrees: -10 }
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [5, -13] },
+          { jointId: 'torso', rotationZDegrees: 20 },
+          { jointId: 'head', rotationZDegrees: -6 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 28 },
+          { jointId: 'arm_r_upper', rotationZDegrees: -29.4 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 68.5 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 28 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -52 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -48 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 210,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       }
     ]
@@ -103,34 +103,34 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
         frame: 0,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 210,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       }
     ]
@@ -142,85 +142,102 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
         frame: 0,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 20 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -45 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -20 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -15 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -18 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 28 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 18 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -32 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -14 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -12 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 52,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 2] },
-          { jointId: 'torso', rotationZDegrees: -6 },
+          { jointId: 'torso', rotationZDegrees: -4 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: 15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
-          { jointId: 'leg_l_upper', rotationZDegrees: -20 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: 20 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -45 },
-          { jointId: 'coat_tail', rotationZDegrees: -15 }
+          { jointId: 'arm_l_upper', rotationZDegrees: 22 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 38 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -14 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -12 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 18 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -32 },
+          { jointId: 'coat_tail', rotationZDegrees: -8 }
         ]
       },
       {
         frame: 105,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 45 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 75 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 24 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 32 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 62 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 155,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -10] },
-          { jointId: 'torso', rotationZDegrees: 14 },
-          { jointId: 'head', rotationZDegrees: 8 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 35 },
-          { jointId: 'arm_r_upper', rotationZDegrees: -6.0 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 38.6 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 18 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -28 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -14 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -32 },
-          { jointId: 'coat_tail', rotationZDegrees: -10 }
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [5, -13] },
+          { jointId: 'torso', rotationZDegrees: 20 },
+          { jointId: 'head', rotationZDegrees: -6 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 28 },
+          { jointId: 'arm_r_upper', rotationZDegrees: -29.4 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 68.5 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 28 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -52 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -48 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
+        ]
+      },
+      {
+        frame: 165,
+        jointTransforms: [
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [5, -13] },
+          { jointId: 'torso', rotationZDegrees: 20 },
+          { jointId: 'head', rotationZDegrees: -6 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 28 },
+          { jointId: 'arm_r_upper', rotationZDegrees: -29.4 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 68.5 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 28 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -52 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 22 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -48 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 210,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -4 },
+          { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
           { jointId: 'arm_r_upper', rotationZDegrees: 15 },
           { jointId: 'arm_r_lower', rotationZDegrees: 25 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       }
     ]
@@ -232,51 +249,51 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
         frame: 0,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: 6 },
+          { jointId: 'torso', rotationZDegrees: 4 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 30 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 24 },
           { jointId: 'arm_r_upper', rotationZDegrees: 30 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 40 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_r_lower', rotationZDegrees: 35 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 40,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: 6 },
-          { jointId: 'head', rotationZDegrees: 12 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 30 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 96.6 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 26.4 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'torso', rotationZDegrees: 4 },
+          { jointId: 'head', rotationZDegrees: 10 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 24 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 104 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 18 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 210,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: 6 },
-          { jointId: 'head', rotationZDegrees: 12 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 30 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 96.6 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 26.4 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'torso', rotationZDegrees: 4 },
+          { jointId: 'head', rotationZDegrees: 10 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 24 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 104 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 18 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       }
     ]
@@ -297,7 +314,7 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     armUpperAmp: 17.5,
     armLowerMid: 37.5,
     armLowerAmp: -2.5,
-    coatDeg0: -20,
+    coatDeg0: -10,
     coatAmp: -2
   }),
   sprint_frenzy: generateBipedLocomotionClip({
@@ -309,15 +326,15 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     pelvisY0: 2,
     pelvisBobAmp: 2.0,
     torsoDeg0: -14,
-    torsoAmp: 2.5,
+    torsoAmp: 2.0,
     headDeg0: 6,
     headAmp: 0,
-    armUpperMid: 2.5,
-    armUpperAmp: 28,
-    armLowerMid: 45,
-    armLowerAmp: 18,
-    coatDeg0: -45,
-    coatAmp: 5
+    armUpperMid: 10,
+    armUpperAmp: 22,
+    armLowerMid: 52,
+    armLowerAmp: 14,
+    coatDeg0: -8,
+    coatAmp: 2
   }),
   embrace_push_away: {
     interpolationMode: 'linear',
@@ -328,66 +345,66 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: 0 },
           { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 20 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 30 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 18 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 28 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 90,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -2] },
-          { jointId: 'torso', rotationZDegrees: 8 },
+          { jointId: 'torso', rotationZDegrees: 7 },
           { jointId: 'head', rotationZDegrees: 6 },
-          { jointId: 'arm_l_upper', rotationZDegrees: 65 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 55 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 70 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 50 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 14 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -20 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -8 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -15 },
-          { jointId: 'coat_tail', rotationZDegrees: -15 }
+          { jointId: 'arm_l_upper', rotationZDegrees: 68 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 48 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 72 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 45 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -12 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 105,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, -3] },
-          { jointId: 'torso', rotationZDegrees: 12 },
-          { jointId: 'head', rotationZDegrees: 10 },
-          { jointId: 'arm_l_upper', rotationZDegrees: 80 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 85 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 15 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 18 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -25 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -12 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -10 }
+          { jointId: 'torso', rotationZDegrees: 10 },
+          { jointId: 'head', rotationZDegrees: 8 },
+          { jointId: 'arm_l_upper', rotationZDegrees: 82 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 16 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 86 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 14 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 12 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -18 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -8 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -12 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 210,
         jointTransforms: [
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: -10 },
+          { jointId: 'torso', rotationZDegrees: -6 },
           { jointId: 'head', rotationZDegrees: -2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -30 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 50 },
-          { jointId: 'arm_r_upper', rotationZDegrees: -20 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 45 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -25 }
+          { jointId: 'arm_l_upper', rotationZDegrees: -18 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 38 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 24 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 42 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 6 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -10 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -6 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -10 },
+          { jointId: 'coat_tail', rotationZDegrees: -8 }
         ]
       }
     ]
@@ -612,15 +629,15 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
           { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_r_upper', rotationZDegrees: 14 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 24 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
@@ -629,15 +646,15 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 1] },
           { jointId: 'torso', rotationZDegrees: -3 },
           { jointId: 'head', rotationZDegrees: 3 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -14 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -11 },
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 16 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 26 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
@@ -646,15 +663,15 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -15 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
           { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 10 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -15 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -10 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -20 },
-          { jointId: 'coat_tail', rotationZDegrees: -20 }
+          { jointId: 'arm_r_upper', rotationZDegrees: 14 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 24 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       }
     ]
@@ -666,52 +683,52 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
       {
         frame: 0,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: -2, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: 4 },
-          { jointId: 'head', rotationZDegrees: -3 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 45 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 48 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 72 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -12 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -8 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
-          { jointId: 'coat_tail', rotationZDegrees: -12 }
+          { jointId: 'pelvis', rotationZDegrees: -1, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 2 },
+          { jointId: 'head', rotationZDegrees: -2 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 26 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 8 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 28 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
       {
         frame: 12,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: 2, localOffset2D: [0, 2] },
-          { jointId: 'torso', rotationZDegrees: -4 },
-          { jointId: 'head', rotationZDegrees: 4 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -10 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 60 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 54 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 78 },
-          { jointId: 'leg_l_upper', rotationZDegrees: -8 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -8 },
-          { jointId: 'leg_r_upper', rotationZDegrees: 8 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -12 },
-          { jointId: 'coat_tail', rotationZDegrees: -18 }
+          { jointId: 'pelvis', rotationZDegrees: 1, localOffset2D: [0, 1] },
+          { jointId: 'torso', rotationZDegrees: -2 },
+          { jointId: 'head', rotationZDegrees: 2 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -8 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 32 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 14 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 34 },
+          { jointId: 'leg_l_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -8 }
         ]
       },
       {
         frame: 24,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: -2, localOffset2D: [0, 0] },
-          { jointId: 'torso', rotationZDegrees: 4 },
-          { jointId: 'head', rotationZDegrees: -3 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -25 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 45 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 48 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 72 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 8 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -12 },
-          { jointId: 'leg_r_upper', rotationZDegrees: -8 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -8 },
-          { jointId: 'coat_tail', rotationZDegrees: -12 }
+          { jointId: 'pelvis', rotationZDegrees: -1, localOffset2D: [0, 0] },
+          { jointId: 'torso', rotationZDegrees: 2 },
+          { jointId: 'head', rotationZDegrees: -2 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 26 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 8 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 28 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
+          { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       }
     ]
@@ -1569,7 +1586,7 @@ export class ArchetypeFactory {
             id: 'coat_tail',
             parentId: 'torso',
             localOffset2D: [-10, 10],
-            rotationZDegrees: -28,
+            rotationZDegrees: -6,
             length: 26,
             constraintsDeg: [-85, 20]
           },
@@ -1577,7 +1594,7 @@ export class ArchetypeFactory {
             id: 'hair_tie',
             parentId: 'head',
             localOffset2D: [-10, 8],
-            rotationZDegrees: -22,
+            rotationZDegrees: -6,
             length: 18,
             constraintsDeg: [-75, 25]
           }
@@ -1593,10 +1610,10 @@ export class ArchetypeFactory {
             kind: 'polygon',
             points: [
               [0, 0],
-              [-32, -8],
-              [-28, -26],
-              [-12, -18],
-              [0, -4]
+              [-10, -14],
+              [-14, -34],
+              [-5, -32],
+              [2, -10]
             ]
           },
           style: {
@@ -1615,10 +1632,10 @@ export class ArchetypeFactory {
             kind: 'polygon',
             points: [
               [0, 0],
-              [-18, -12],
-              [-34, -20],
-              [-24, -30],
               [-8, -16],
+              [-12, -38],
+              [-3, -35],
+              [2, -12],
               [0, -6]
             ]
           },
@@ -1638,10 +1655,10 @@ export class ArchetypeFactory {
             kind: 'polygon',
             points: [
               [0, 0],
-              [-24, -6],
-              [-20, -16],
-              [-6, -10],
-              [0, -2]
+              [-8, -10],
+              [-11, -22],
+              [-4, -20],
+              [0, -5]
             ]
           },
           style: {
@@ -2004,15 +2021,15 @@ export class ArchetypeFactory {
           jointId: 'coat_tail',
           spring: { zeta: 0.35, omega: 17.59 },
           drive: 'audio.onsetStrength',
-          gainDegrees: 22,
-          maxDeflectionDeg: 35
+          gainDegrees: 10,
+          maxDeflectionDeg: 14
         },
         {
           jointId: 'hair_tie',
           spring: { zeta: 0.3, omega: 21.99 },
           drive: 'audio.bands.bass',
-          gainDegrees: 26,
-          maxDeflectionDeg: 40
+          gainDegrees: 10,
+          maxDeflectionDeg: 14
         }
       ],
       poseInterpolation: BipedPoseClips.sprint_frenzy,
@@ -2261,10 +2278,10 @@ export class ArchetypeFactory {
             kind: 'polygon' as const,
             points: [
               [0, 0],
-              [-26, -6],
-              [-32, -32],
-              [-10, -34],
-              [4, -12]
+              [-11, -14],
+              [-15, -36],
+              [-4, -38],
+              [4, -14]
             ]
           },
           style: {
@@ -2310,9 +2327,9 @@ export class ArchetypeFactory {
             kind: 'polygon' as const,
             points: [
               [0, 0],
-              [-14, -6],
-              [-12, -18],
-              [-2, -14]
+              [-7, -8],
+              [-9, -20],
+              [-2, -18]
             ]
           },
           style: {

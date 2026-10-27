@@ -186,10 +186,10 @@ export function samplePoseTrack(
   const isLocomotionClip = clipId === 'walk_to' || clipId === 'sprint_frenzy' || clipId === 'run_to';
   if (rootSpeed !== undefined && isLocomotionClip) {
     const STANDING_REST_LEG_ANGLES: Record<string, number> = {
-      leg_l_upper: 10,
-      leg_l_lower: -15,
-      leg_r_upper: -10,
-      leg_r_lower: -20
+      leg_l_upper: 4,
+      leg_l_lower: -6,
+      leg_r_upper: -4,
+      leg_r_lower: -6
     };
     if (rootSpeed < 0.05) {
       for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {

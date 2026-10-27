@@ -528,7 +528,7 @@ test('F3 Verb Engine Timing Clamps & Code Hygiene Suite', async (t) => {
           narrativeSubtext: 'act 2 boundary',
           presentCharacters: ['hero'],
           set: {
-            kitId: 'ARCHITECTURAL_INTERIOR',
+            kitId: 'EXTERIOR_URBAN_VISTA',
             variantId: 'moody_night',
             landmarkProps: [],
             atmosphericDensity: 0.5
@@ -545,7 +545,7 @@ test('F3 Verb Engine Timing Clamps & Code Hygiene Suite', async (t) => {
           narrativeSubtext: 'act 2 interior cut',
           presentCharacters: ['hero'],
           set: {
-            kitId: 'ARCHITECTURAL_INTERIOR',
+            kitId: 'EXTERIOR_URBAN_VISTA',
             variantId: 'moody_night',
             landmarkProps: [],
             atmosphericDensity: 0.5
