@@ -673,9 +673,7 @@ export class VerbCompiler {
           }
         } else if (a.verb === 'gesture_point') {
           const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
-          if (tPos !== undefined) nextSimX[a.instanceId] = tPos;
-          else if (cur < VERB_CONSTANTS.SIM_WALL_THRESHOLD) nextSimX[a.instanceId] = cur + VERB_CONSTANTS.SIM_RETREAT_STEP_DISTANCE;
-          else nextSimX[a.instanceId] = cur;
+          nextSimX[a.instanceId] = tPos !== undefined ? tPos : cur;
         } else if (a.verb === 'embrace_push_away') {
           if (otherCur !== undefined) {
             const isLeft = cur <= otherCur;
@@ -929,6 +927,7 @@ export class VerbCompiler {
     // 5. Compile Choreography Tracks
     const tracks: EntityTrack[] = [];
     const charCurrentPos: Record<string, [number, number, number]> = {};
+    const charCurrentFacingSign: Record<string, 1 | -1> = {};
     const charArchetypes: Record<string, string> = {};
     const charPoseClockState: Record<string, { clock: number; lastClip?: { clipId: string; loopFrames: number } }> = {};
     const unfulfilledTiming: UnfulfilledTimingEntry[] = [];
@@ -942,6 +941,7 @@ export class VerbCompiler {
         ? (cIdx === 0 ? VERB_CONSTANTS.SIM_TWO_CHAR_LEFT_X : VERB_CONSTANTS.SIM_TWO_CHAR_RIGHT_X) : VERB_CONSTANTS.SIM_HERO_INITIAL_X;
       const baseY = c.archetypeId === 'companion_silhouette' ? VERB_CONSTANTS.COMPANION_BASE_Y : VERB_CONSTANTS.HERO_BASE_Y;
       charCurrentPos[c.instanceId] = [startX, baseY, 0];
+      charCurrentFacingSign[c.instanceId] = 1;
       charArchetypes[c.instanceId] = c.archetypeId;
       charPoseClockState[c.instanceId] = { clock: 0 };
     }
@@ -961,8 +961,10 @@ export class VerbCompiler {
 
       if (i > 0 && beat.set.kitId !== beats[i - 1].set.kitId) {
         charCurrentPos[storyBeatContract.cast[0]?.instanceId ?? ''] = [VERB_CONSTANTS.SIM_HERO_INITIAL_X, VERB_CONSTANTS.HERO_BASE_Y, 0];
+        charCurrentFacingSign[storyBeatContract.cast[0]?.instanceId ?? ''] = 1;
         if (storyBeatContract.cast[1]) {
           charCurrentPos[storyBeatContract.cast[1].instanceId] = [VERB_CONSTANTS.SIM_COMPANION_INITIAL_X, VERB_CONSTANTS.COMPANION_BASE_Y, 0];
+          charCurrentFacingSign[storyBeatContract.cast[1].instanceId] = 1;
         }
       }
 
@@ -971,7 +973,9 @@ export class VerbCompiler {
       );
 
       const shotStartPositions = { ...charCurrentPos };
+      const shotStartFacingSigns = { ...charCurrentFacingSign };
       const nextPositions: Record<string, [number, number, number]> = {};
+      const nextFacingSigns: Record<string, 1 | -1> = {};
       const beatTracks: EntityTrack[] = [];
 
       // Overhead personal prop holder resolution:
@@ -1045,16 +1049,21 @@ export class VerbCompiler {
           rigs,
           reachClamps,
           unreachableTargets,
-          nextBeatHasEmbrace
+          nextBeatHasEmbrace,
+          shotStartFacingSigns[char.instanceId]
         );
 
         nextPositions[char.instanceId] = charTrack.nextPos;
+        nextFacingSigns[char.instanceId] = charTrack.nextFacingSign;
         charPoseClockState[char.instanceId] = charTrack.nextClockState;
         beatTracks.push(charTrack.track);
       }
 
       for (const [id, nPos] of Object.entries(nextPositions)) {
         charCurrentPos[id] = nPos;
+      }
+      for (const [id, nSign] of Object.entries(nextFacingSigns)) {
+        charCurrentFacingSign[id] = nSign;
       }
 
       // Compile active prop tracks for this shot
@@ -1540,11 +1549,13 @@ export class VerbCompiler {
       readonly maxReach: number;
     }>,
     unreachableTargets?: UnreachableTargetEntry[],
-    releaseBeforeEnd?: boolean
+    releaseBeforeEnd?: boolean,
+    prevFacingSign?: 1 | -1
   ): {
     track: EntityTrack;
     nextPos: [number, number, number];
     nextX: number;
+    nextFacingSign: 1 | -1;
     nextClockState: { clock: number; lastClip: { clipId: string; loopFrames: number } };
   } {
     const lastF = endF - 1;
@@ -1955,7 +1966,7 @@ export class VerbCompiler {
             },
             {
               hand,
-              targetWorld: [propPos[0], propPos[1] + VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y, propPos[2]],
+              targetWorld: [propPos[0], propPos[1] + VERB_CONSTANTS.REACH_INSPECT_LIFT_Y, propPos[2]],
               weight: 1.0,
               frame: liftF
             },
@@ -2020,8 +2031,53 @@ export class VerbCompiler {
               rotationZDegrees: 0,
               scale: [sXReach, scaleYBase],
               opacity: 1,
-              easing: 'easeOutQuad'
+              easing: 'linear'
             });
+            if (Math.sign(sXEnd) !== Math.sign(sXReach) && putBackSnapEndF + VERB_CONSTANTS.TURN_FRAME_OFFSET_5 < lastF) {
+              const turnBaseF = putBackSnapEndF;
+              keyframes.push(
+                {
+                  frame: turnBaseF + 1,
+                  position: [currentX, baseY, currentPos[2]],
+                  rotationZDegrees: 0,
+                  scale: [sXReach * VERB_CONSTANTS.TURN_SCALE_STEP_1, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_1],
+                  opacity: 1,
+                  easing: 'linear'
+                },
+                {
+                  frame: turnBaseF + 2,
+                  position: [currentX, baseY, currentPos[2]],
+                  rotationZDegrees: 0,
+                  scale: [sXReach * VERB_CONSTANTS.TURN_SCALE_STEP_2, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_2],
+                  opacity: 1,
+                  easing: 'linear'
+                },
+                {
+                  frame: turnBaseF + VERB_CONSTANTS.CANONICAL_ACT_COUNT,
+                  position: [endX, baseY, currentPos[2]],
+                  rotationZDegrees: 0,
+                  scale: [sXEnd * VERB_CONSTANTS.TURN_SCALE_STEP_2, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_2],
+                  opacity: 1,
+                  easing: 'linear'
+                },
+                {
+                  frame: turnBaseF + VERB_CONSTANTS.PRECISION_DECIMALS,
+                  position: [endX, baseY, currentPos[2]],
+                  rotationZDegrees: 0,
+                  scale: [sXEnd * VERB_CONSTANTS.TURN_SCALE_STEP_1, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_1],
+                  opacity: 1,
+                  easing: 'linear'
+                },
+                {
+                  frame: turnBaseF + VERB_CONSTANTS.TURN_FRAME_OFFSET_5,
+                  position: [endX, baseY, currentPos[2]],
+                  rotationZDegrees: 0,
+                  scale: [sXEnd, scaleYBase],
+                  opacity: 1,
+                  easing: 'linear'
+                }
+              );
+            }
           }
           keyframes.push({
             frame: lastF,
@@ -2533,12 +2589,7 @@ export class VerbCompiler {
 
       case 'gesture_point': {
         const targetPosDirective = action.target?.kind === 'position' ? action.target.pos[0] : undefined;
-        let targetX = currentX;
-        if (targetPosDirective !== undefined) {
-          targetX = targetPosDirective;
-        } else if (currentX < VERB_CONSTANTS.SIM_WALL_THRESHOLD) {
-          targetX = currentX + VERB_CONSTANTS.SIM_RETREAT_STEP_DISTANCE;
-        }
+        const targetX = targetPosDirective !== undefined ? targetPosDirective : currentX;
         nextX = targetX;
         nextPos = [targetX, baseY, currentPos[2]];
         clipId = 'gesture_point';
@@ -2578,12 +2629,15 @@ export class VerbCompiler {
           });
         }
 
+        const needsTurnBeforePoint = prevFacingSign !== undefined && prevFacingSign !== facingSign && duration >= VERB_CONSTANTS.MIN_BEAT_LENGTH_FRAMES;
+        const turnEndF = needsTurnBeforePoint ? Math.min(pointF - 1, startF + VERB_CONSTANTS.POINT_TURN_FRAMES) : startF;
+
         ikTargets.push(
           {
             hand,
             targetWorld: pointTarget,
             weight: 0.0,
-            frame: startF
+            frame: turnEndF
           },
           {
             hand,
@@ -2599,24 +2653,95 @@ export class VerbCompiler {
           }
         );
 
-        keyframes.push(
-          {
-            frame: startF,
-            position: [targetX, baseY, currentPos[2]],
-            rotationZDegrees: 0,
-            scale: [scaleXBase, scaleYBase],
-            opacity: 1,
-            easing: 'linear'
-          },
-          {
-            frame: lastF,
-            position: [targetX, baseY, currentPos[2]],
-            rotationZDegrees: 0,
-            scale: [scaleXBase, scaleYBase],
-            opacity: 1,
-            easing: 'linear'
-          }
-        );
+        if (needsTurnBeforePoint) {
+          const sXStart = prevFacingSign * Math.abs(scaleXBase);
+          const turnBaseF = startF + VERB_CONSTANTS.CANONICAL_ACT_COUNT;
+          keyframes.push(
+            {
+              frame: startF,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [sXStart, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: turnBaseF,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [sXStart, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: turnBaseF + 1,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [sXStart * VERB_CONSTANTS.TURN_SCALE_STEP_1, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_1],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: turnBaseF + 2,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [sXStart * VERB_CONSTANTS.TURN_SCALE_STEP_2, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_2],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: turnBaseF + VERB_CONSTANTS.CANONICAL_ACT_COUNT,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase * VERB_CONSTANTS.TURN_SCALE_STEP_2, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_2],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: turnBaseF + VERB_CONSTANTS.PRECISION_DECIMALS,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase * VERB_CONSTANTS.TURN_SCALE_STEP_1, scaleYBase * VERB_CONSTANTS.TURN_SCALE_Y_STEP_1],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: turnBaseF + VERB_CONSTANTS.TURN_FRAME_OFFSET_5,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: lastF,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            }
+          );
+        } else {
+          keyframes.push(
+            {
+              frame: startF,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: lastF,
+              position: [targetX, baseY, currentPos[2]],
+              rotationZDegrees: 0,
+              scale: [scaleXBase, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            }
+          );
+        }
 
         const pointSnapStartF = Math.max(startF, pointF - VERB_CONSTANTS.HAND_MORPH_SNAP_FRAMES);
         morphKeyframes.open_rest = [
@@ -2800,6 +2925,7 @@ export class VerbCompiler {
           }
         );
 
+        const embraceRotZ = isLeft ? -VERB_CONSTANTS.EMBRACE_TORSO_LEAN_DEG : VERB_CONSTANTS.EMBRACE_TORSO_LEAN_DEG;
         keyframes.push(
           {
             frame: startF,
@@ -2807,12 +2933,12 @@ export class VerbCompiler {
             rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
-            easing: 'easeOutQuad'
+            easing: 'linear'
           },
           {
             frame: fStepInArrive,
             position: [contactX, baseY, zPos],
-            rotationZDegrees: 0,
+            rotationZDegrees: embraceRotZ,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2820,7 +2946,7 @@ export class VerbCompiler {
           {
             frame: fEmbrace,
             position: [contactX, baseY, zPos],
-            rotationZDegrees: 0,
+            rotationZDegrees: embraceRotZ,
             scale: [sX, scaleYBase],
             opacity: 1,
             easing: 'linear'
@@ -2831,7 +2957,7 @@ export class VerbCompiler {
             rotationZDegrees: 0,
             scale: [sX, scaleYBase],
             opacity: 1,
-            easing: 'easeOutQuad'
+            easing: 'linear'
           },
           {
             frame: recoilArriveF,
@@ -3062,6 +3188,9 @@ export class VerbCompiler {
       });
     }
 
+    const lastKfScaleX = keyframes.length > 0 ? keyframes[keyframes.length - 1].scale[0] : scaleXBase;
+    const nextFacingSign: 1 | -1 = lastKfScaleX < 0 ? -1 : 1;
+
     return {
       track: {
         rigId: instanceId,
@@ -3081,6 +3210,7 @@ export class VerbCompiler {
       },
       nextPos,
       nextX,
+      nextFacingSign,
       nextClockState
     };
   }

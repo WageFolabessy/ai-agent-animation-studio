@@ -86,13 +86,13 @@ export class PropFactory {
           {
             id: 'prop_umbrella_shaft',
             jointId: 'arm_r_lower',
-            localOffset2D: [0, 19],
+            localOffset2D: [0, 24],
             shape: {
               kind: 'rect',
-              size: [2.0, 38]
+              size: [2.2, 48]
             },
             style: {
-              fill: { kind: 'palette', role: 'secondary', shade: 0.3 },
+              fill: { kind: 'solid', color: '#cbd5e1' },
               opacity: 1,
               lit: false
             }
@@ -100,7 +100,7 @@ export class PropFactory {
           {
             id: 'prop_umbrella_canopy',
             jointId: 'arm_r_lower',
-            localOffset2D: [0, 38],
+            localOffset2D: [-10, 48],
             shape: {
               kind: 'polygon',
               points: [
@@ -119,9 +119,9 @@ export class PropFactory {
               ]
             },
             style: {
-              fill: { kind: 'palette', role: 'primary', shade: -0.15 },
+              fill: { kind: 'solid', color: '#d97706' },
               stroke: {
-                paint: { kind: 'palette', role: 'accent', shade: 0.2 },
+                paint: { kind: 'solid', color: '#92400e' },
                 width: 1.4
               },
               opacity: 0.96,
@@ -146,7 +146,11 @@ export class PropFactory {
               ]
             },
             style: {
-              fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+              fill: { kind: 'solid', color: '#f43f5e' },
+              stroke: {
+                paint: { kind: 'solid', color: '#fda4af' },
+                width: 1.0
+              },
               opacity: 1,
               lit: true
             }
@@ -359,17 +363,17 @@ export class PropFactory {
     basePosition?: [number, number, number]
   ): AssetRigContract {
     const defaultBasePos: [number, number, number] =
-      basePosition ?? (propId === 'coffee_cup' ? [0, 68, 0] : [0, 35, 0]);
+      basePosition ?? (propId === 'coffee_cup' ? [0, 72, 0] : [0, 35, 0]);
     const parts: RigPart[] =
       propId === 'umbrella'
         ? [
             {
               id: `${instanceId}_shaft`,
               jointId: null,
-              localOffset2D: [0, 19],
-              shape: { kind: 'rect', size: [2.0, 38] },
+              localOffset2D: [0, 24],
+              shape: { kind: 'rect', size: [2.2, 48] },
               style: {
-                fill: { kind: 'palette', role: 'secondary', shade: 0.25 },
+                fill: { kind: 'solid', color: '#cbd5e1' },
                 opacity: 1,
                 lit: false
               }
@@ -377,7 +381,7 @@ export class PropFactory {
             {
               id: `${instanceId}_canopy`,
               jointId: null,
-              localOffset2D: [0, 38],
+              localOffset2D: [-10, 48],
               shape: {
                 kind: 'polygon',
                 points: [
@@ -396,8 +400,8 @@ export class PropFactory {
                 ]
               },
               style: {
-                fill: { kind: 'palette', role: 'primary', shade: -0.3 },
-                stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.2 }, width: 1.4 },
+                fill: { kind: 'solid', color: '#d97706' },
+                stroke: { paint: { kind: 'solid', color: '#92400e' }, width: 1.4 },
                 opacity: 1,
                 lit: true
               }
@@ -418,8 +422,8 @@ export class PropFactory {
                 ]
               },
               style: {
-                fill: { kind: 'palette', role: 'accent', shade: 0.2 },
-                stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
+                fill: { kind: 'solid', color: '#f43f5e' },
+                stroke: { paint: { kind: 'solid', color: '#fda4af' }, width: 1.0 },
                 opacity: 1,
                 lit: true
               }
@@ -441,8 +445,8 @@ export class PropFactory {
                 closed: false
               },
               style: {
-                fill: { kind: 'palette', role: 'accent', shade: 0.1 },
-                stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.3 }, width: 1.2 },
+                fill: { kind: 'solid', color: '#fda4af' },
+                stroke: { paint: { kind: 'solid', color: '#fda4af' }, width: 1.2 },
                 opacity: 1,
                 lit: true
               }

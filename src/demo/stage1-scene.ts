@@ -40,7 +40,7 @@ export const STAGE1_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'moody_night',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [0, 68, 0]
+          coffee_cup: [0, 72, 0]
         },
         atmosphericDensity: 0.5
       },
@@ -73,7 +73,7 @@ export const STAGE1_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'moody_night',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [0, 68, 0]
+          coffee_cup: [0, 72, 0]
         },
         atmosphericDensity: 0.5
       },
@@ -107,7 +107,7 @@ export const STAGE1_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'dramatic_twilight',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [0, 68, 0]
+          coffee_cup: [0, 72, 0]
         },
         atmosphericDensity: 0.6
       },
@@ -140,7 +140,7 @@ export const STAGE1_STORY_BEAT_CONTRACT: StoryBeatContract = {
         variantId: 'dramatic_twilight',
         landmarkProps: ['desk', 'coffee_cup'],
         landmarkPlacements: {
-          coffee_cup: [0, 68, 0]
+          coffee_cup: [0, 72, 0]
         },
         atmosphericDensity: 0.5
       },

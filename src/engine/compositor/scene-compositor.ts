@@ -644,6 +644,43 @@ export class SceneCompositor {
           worldVertices: hazeVerts
         });
       }
+
+      // Deterministic per-frame falling rain streaks for exterior rain/umbrella shots
+      const hasRainOrUmbrella =
+        frameState.shotId.includes('exterior') ||
+        frameState.shotId.includes('rain') ||
+        frameState.entities.some((e) => e.rigId === 'umbrella' && e.opacity > 0.1);
+      if (hasRainOrUmbrella) {
+        const rainCount = 14;
+        const rainSpanH = 220;
+        for (let r = 0; r < rainCount; r++) {
+          const seedX = ((r * 73) % 320) - 160;
+          const seedY = (r * 47) % rainSpanH;
+          const dropYTop = 20 + ((((seedY - frameState.frameIndex * 11) % rainSpanH) + rainSpanH) % rainSpanH);
+          const dropYBot = Math.max(2, dropYTop - 22);
+          const dropXTop = centerX + seedX;
+          const dropXBot = dropXTop - 5;
+          const dropZ = (r % 2 === 0) ? -25 : 15;
+          const p0Cam = worldToCameraSpace([dropXTop, dropYTop, dropZ], camera, basis);
+          const p1Cam = worldToCameraSpace([dropXBot, dropYBot, dropZ], camera, basis);
+          if (p0Cam[2] >= camera.nearPlane && p1Cam[2] >= camera.nearPlane) {
+            sortables.push({
+              kind: 'env_line',
+              p0: p0Cam,
+              p1: p1Cam,
+              depthKey: dropZ,
+              tier: 2,
+              layerPass: 1,
+              index: submitIndex++,
+              stroke: '#93c5fd',
+              strokeWidth: 1.4,
+              opacity: 0.55,
+              worldP0: [dropXTop, dropYTop, dropZ],
+              worldP1: [dropXBot, dropYBot, dropZ]
+            });
+          }
+        }
+      }
     }
 
     // 3. Strict Back-to-Front Sorting (Painter's Algorithm)

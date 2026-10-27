@@ -70,23 +70,23 @@ export const VERB_CONSTANTS = {
   RECOIL_SPEED_NORM: 1.1,
 
   /** Default approach clearance distance to a prop. */
-  PROP_APPROACH_CLEARANCE: 15,
+  PROP_APPROACH_CLEARANCE: 21,
   /** Default character-to-character clearance distance. */
   CHARACTER_INTERACTION_CLEARANCE: 26,
   /** Recoil push separation delta distance. */
-  RECOIL_SEPARATION_DISTANCE: 32,
+  RECOIL_SEPARATION_DISTANCE: 28,
   /** Half-distance between two characters during close embrace. */
-  EMBRACE_CONTACT_HALF_SEPARATION: 10,
+  EMBRACE_CONTACT_HALF_SEPARATION: 14,
   /** Depth Z offset for partner rig during close embrace to prevent z-fighting. */
   EMBRACE_PARTNER_DEPTH_Z: -3,
   /** Inward torso lean in degrees during embrace. */
   EMBRACE_TORSO_LEAN_DEG: 7,
   /** Hand reach past partner center X during embrace wrap. */
-  EMBRACE_WRAP_REACH_PAST_X: 14,
+  EMBRACE_WRAP_REACH_PAST_X: 4,
   /** Upper back Y offset for right-hand embrace wrap. */
-  EMBRACE_WRAP_SHOULDER_Y_OFFSET: 34,
+  EMBRACE_WRAP_SHOULDER_Y_OFFSET: 35,
   /** Mid-back Y offset for left-hand embrace wrap. */
-  EMBRACE_WRAP_LOWER_Y_OFFSET: 28,
+  EMBRACE_WRAP_LOWER_Y_OFFSET: 30,
   /** Frames before embrace contact when open arms begin raising. */
   EMBRACE_ARM_RAISE_LEAD_FRAMES: 18,
 
@@ -113,9 +113,11 @@ export const VERB_CONSTANTS = {
   /** Body tilt angle in degrees during fall recovery. */
   FALL_TILT_DEG: 22,
   /** Horizontal forward offset from torso center when carrying a handheld prop. */
-  CARRY_HAND_FORWARD_OFFSET_X: 14,
+  CARRY_HAND_FORWARD_OFFSET_X: 16,
   /** Vertical offset above character root Y when carrying a handheld prop at chest level. */
   CARRY_HAND_HEIGHT_OFFSET_Y: 18,
+  /** Vertical lift offset above tabletop when inspecting and placing back a prop. */
+  REACH_INSPECT_LIFT_Y: 8,
   /** Timing ratio inside reach_and_grasp when upward carry lift begins. */
   CARRY_LIFT_START_RATIO: 0.6429,
   /** Timing ratio inside reach_and_grasp when prop is placed back before confrontation turn. */
@@ -125,16 +127,16 @@ export const VERB_CONSTANTS = {
 
   /** Simulation traversal staging positions and thresholds. */
   SIM_HERO_INITIAL_X: -95,
-  SIM_COMPANION_INITIAL_X: -125,
-  SIM_TWO_CHAR_LEFT_X: -96,
-  SIM_TWO_CHAR_RIGHT_X: 92,
-  SIM_CONFRONT_END_X: -38,
+  SIM_COMPANION_INITIAL_X: -143,
+  SIM_TWO_CHAR_LEFT_X: -2,
+  SIM_TWO_CHAR_RIGHT_X: 96,
+  SIM_CONFRONT_END_X: -49,
   SIM_DEEP_ROOM_THRESHOLD: -60,
   SIM_DEEP_ROOM_FORWARD_LEFT: 35,
   SIM_DEEP_ROOM_FORWARD_RIGHT: 65,
   SIM_CROSS_ROOM_POS_A: -34,
   SIM_CROSS_ROOM_POS_B: 34,
-  SIM_DEFAULT_STEP_DISTANCE: 53,
+  SIM_DEFAULT_STEP_DISTANCE: 47,
   SIM_RETREAT_STEP_DISTANCE: 23,
   SIM_WALL_THRESHOLD: -50,
   SIM_WALL_TARGET_X: 42,
@@ -202,7 +204,7 @@ export const VERB_CONSTANTS = {
   EMBRACE_STEP_IN_RATIO: 0.2571,
   EMBRACE_CONTACT_RATIO: 0.4857,
   EMBRACE_THRUST_RATIO: 0.5143,
-  EMBRACE_RECOIL_ARRIVE_RATIO: 0.7571,
+  EMBRACE_RECOIL_ARRIVE_RATIO: 0.8,
   EMBRACE_CONTACT_WEIGHT: 0.8,
   SIT_CONTACT_RATIO: 0.35,
   SIT_STAND_TRANSITION_RATIO: 0.75,
@@ -215,6 +217,8 @@ export const VERB_CONSTANTS = {
   TURN_SCALE_Y_STEP_1: 0.98,
   TURN_SCALE_Y_STEP_2: 0.96,
   TURN_FRAME_OFFSET_5: 5,
+  /** Frames allotted to the on-camera facing turnaround before a gesture begins. */
+  POINT_TURN_FRAMES: 8,
 
   /** Sit posture squash scale. */
   SIT_SQUASH_SCALE_Y: 0.85,
@@ -226,9 +230,9 @@ export const VERB_CONSTANTS = {
   GAZE_DEFAULT_LOOK_DISTANCE: 100,
 
   /** Overhead prop hold socket local X displacement in front of chest. */
-  OVERHEAD_PROP_OFFSET_X: 10,
-  /** Overhead prop hold socket local Y displacement above shoulder. */
-  OVERHEAD_PROP_OFFSET_Y: 6
+  OVERHEAD_PROP_OFFSET_X: 26,
+  /** Overhead prop hold socket local Y displacement relative to shoulder. */
+  OVERHEAD_PROP_OFFSET_Y: -12
 } as const;
 
 export type ValidFps = typeof VERB_CONSTANTS.FPS_30 | typeof VERB_CONSTANTS.FPS_60;

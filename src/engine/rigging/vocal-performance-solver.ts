@@ -32,8 +32,8 @@ export function computeVocalBandActivity(feat: AudioFrameFeature): number {
 }
 
 export const BASE_MOUTH_REST_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.2, 0.0], p1: [-1.5, 0.15], p2: [1.5, 0.15], p3: [3.2, 0.0] },
-  { p0: [3.2, 0.0], p1: [1.5, -0.15], p2: [-1.5, -0.15], p3: [-3.2, 0.0] }
+  { p0: [-3.2, 0.0], p1: [-1.5, 0.07], p2: [1.5, 0.07], p3: [3.2, 0.0] },
+  { p0: [3.2, 0.0], p1: [1.5, -0.07], p2: [-1.5, -0.07], p3: [-3.2, 0.0] }
 ];
 
 export const MOUTH_OPEN_SEGMENTS: NormalizedCubicBezierSegment[] = [
@@ -52,8 +52,8 @@ export const MOUTH_WIDE_A_SEGMENTS: NormalizedCubicBezierSegment[] = [
 ];
 
 export const MOUTH_SMILE_SEGMENTS: NormalizedCubicBezierSegment[] = [
-  { p0: [-3.8, 1.0], p1: [-1.5, 0.4], p2: [1.5, 0.4], p3: [3.8, 1.0] },
-  { p0: [3.8, 1.0], p1: [1.5, -0.4], p2: [-1.5, -0.4], p3: [-3.8, 1.0] }
+  { p0: [-3.6, 0.22], p1: [-1.5, 0.10], p2: [1.5, 0.10], p3: [3.6, 0.22] },
+  { p0: [3.6, 0.22], p1: [1.5, -0.10], p2: [-1.5, -0.10], p3: [-3.6, 0.22] }
 ];
 
 export const BROW_RAISE_SEGMENTS: NormalizedCubicBezierSegment[] = [
@@ -151,16 +151,16 @@ export function synthesizeVocalPerformanceKeyframes(
   const smileKeys: MorphKeyframeItem[] = [];
   const furrowKeys: MorphKeyframeItem[] = [];
 
-  // 1. Emotional baseline expression across the shot
+  // 1. Emotional baseline expression across the shot (capped <= 0.12 so silent frames stay closed)
   if (
     (emotionalTone === 'tender' || emotionalTone === 'euphoric') &&
     availableTargets.has('mouth_smile')
   ) {
-    appendStrictlyAscendingKeyframes(smileKeys, shotStartFrame, 0.45, shotStartFrame, shotEndFrame);
+    appendStrictlyAscendingKeyframes(smileKeys, shotStartFrame, 0.12, shotStartFrame, shotEndFrame);
     appendStrictlyAscendingKeyframes(
       smileKeys,
       shotEndFrame - 1,
-      0.45,
+      0.12,
       shotStartFrame,
       shotEndFrame
     );
@@ -206,14 +206,17 @@ export function synthesizeVocalPerformanceKeyframes(
     const syllables = extractSyllables(line.text);
     if (syllables.length === 0) continue;
 
-    // Natural syllable cadence: each syllable spans 4 to 9 frames at 30 fps (~130ms to 300ms)
-    // The sung phrase does not artificially stretch over trailing instrumental gaps
-    const framesPerSyllable = Math.max(4, Math.min(9, Math.floor(spanFrames / syllables.length)));
+    // Natural syllable cadence: spread phrase syllables across ~70% of the beat while leaving a clear >= 25-frame rest gap at phrase end
+    const maxSyllableFrames = getAudioFeatureAtFrame || syllables.length <= 3 ? 9 : 14;
+    const targetPhraseFrames = getAudioFeatureAtFrame || syllables.length <= 3
+      ? spanFrames
+      : Math.max(24, Math.min(spanFrames - 30, Math.floor(spanFrames * 0.72)));
+    const framesPerSyllable = Math.max(4, Math.min(maxSyllableFrames, Math.floor(targetPhraseFrames / syllables.length)));
     const sungDuration = Math.min(spanFrames, syllables.length * framesPerSyllable);
     const sungEndFrame = lStart + sungDuration;
 
     const emphasis = line.emphasis ?? 0.7;
-    const basePeakWeight = Math.min(0.95, 0.70 + 0.25 * emphasis);
+    const basePeakWeight = Math.min(0.95, 0.75 + 0.20 * emphasis);
 
     // Closed mouth before lyric line starts
     appendStrictlyAscendingKeyframes(wideAKeys, lStart, 0, shotStartFrame, shotEndFrame);
@@ -251,15 +254,17 @@ export function synthesizeVocalPerformanceKeyframes(
       }
 
       if (isGatedOpen && peakWeight > 0) {
+        appendStrictlyAscendingKeyframes(wideAKeys, sylStart, 0.02, shotStartFrame, shotEndFrame);
+        appendStrictlyAscendingKeyframes(openOKeys, sylStart, 0.02, shotStartFrame, shotEndFrame);
         if (syl.isRoundedVowel) {
           appendStrictlyAscendingKeyframes(openOKeys, sylPeak, peakWeight, shotStartFrame, shotEndFrame);
-          appendStrictlyAscendingKeyframes(openOKeys, sylClose, 0.04, shotStartFrame, shotEndFrame);
-          appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, 0.08, shotStartFrame, shotEndFrame);
+          appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, 0.06, shotStartFrame, shotEndFrame);
         } else {
           appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, peakWeight, shotStartFrame, shotEndFrame);
-          appendStrictlyAscendingKeyframes(wideAKeys, sylClose, 0.04, shotStartFrame, shotEndFrame);
-          appendStrictlyAscendingKeyframes(openOKeys, sylPeak, 0.08, shotStartFrame, shotEndFrame);
+          appendStrictlyAscendingKeyframes(openOKeys, sylPeak, 0.06, shotStartFrame, shotEndFrame);
         }
+        appendStrictlyAscendingKeyframes(wideAKeys, sylClose, 0.02, shotStartFrame, shotEndFrame);
+        appendStrictlyAscendingKeyframes(openOKeys, sylClose, 0.02, shotStartFrame, shotEndFrame);
       } else {
         appendStrictlyAscendingKeyframes(wideAKeys, sylPeak, 0, shotStartFrame, shotEndFrame);
         appendStrictlyAscendingKeyframes(openOKeys, sylPeak, 0, shotStartFrame, shotEndFrame);

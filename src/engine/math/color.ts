@@ -58,11 +58,11 @@ export function computeLitShadedColors(
   baseColor: string,
   palette: ColorLightingPalette
 ): { litColor: string; shadedColor: string } {
-  // Lit color: subtle tint towards ambient light color
-  const litColor = mixHexColors(baseColor, palette.ambientLightColor, palette.ambientIntensity * 0.35);
+  // Lit color: subtle <= 12% tint towards ambient light color to preserve character/prop identity
+  const litColor = mixHexColors(baseColor, palette.ambientLightColor, palette.ambientIntensity * 0.12);
 
-  // Shaded color: reduced luminance based on ambient intensity factor
-  const shadeFactor = 1 - (palette.ambientIntensity + (1 - palette.ambientIntensity) * 0.55);
+  // Shaded color: gentle luminance modulation without washing out base identity
+  const shadeFactor = (1 - palette.ambientIntensity) * 0.18;
   const shadedColor = mixHexColors(baseColor, '#000000', shadeFactor);
 
   return { litColor, shadedColor };

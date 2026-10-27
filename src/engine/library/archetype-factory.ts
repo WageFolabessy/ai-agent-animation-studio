@@ -33,10 +33,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
     torsoAmp: 1.0,
     headDeg0: -3,
     headAmp: 1.0,
-    armUpperMid: 4,
-    armUpperAmp: 24,
-    armLowerMid: 34,
-    armLowerAmp: 12,
+    armUpperMid: 0,
+    armUpperAmp: 14,
+    armLowerMid: 16,
+    armLowerAmp: 6,
     coatDeg0: -6,
     coatAmp: 2
   }),
@@ -63,13 +63,13 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
       {
         frame: 105,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [3, -3.5] },
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [3, -2.0] },
           { jointId: 'torso', rotationZDegrees: -5 },
           { jointId: 'head', rotationZDegrees: -4 },
           { jointId: 'arm_l_upper', rotationZDegrees: -12 },
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 0 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 13.7 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 0.55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 29.1 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -192,13 +192,13 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
       {
         frame: 155,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [3, -3.5] },
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [3, -2.0] },
           { jointId: 'torso', rotationZDegrees: -5 },
           { jointId: 'head', rotationZDegrees: -4 },
           { jointId: 'arm_l_upper', rotationZDegrees: -12 },
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 0 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 13.7 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 0.55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 29.1 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -209,13 +209,13 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
       {
         frame: 165,
         jointTransforms: [
-          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [3, -3.5] },
+          { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [3, -2.0] },
           { jointId: 'torso', rotationZDegrees: -5 },
           { jointId: 'head', rotationZDegrees: -4 },
           { jointId: 'arm_l_upper', rotationZDegrees: -12 },
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 0 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 13.7 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 0.55 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 29.1 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -646,10 +646,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 14 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 24 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -6 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 14 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 6 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 16 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -663,10 +663,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 1] },
           { jointId: 'torso', rotationZDegrees: -3 },
           { jointId: 'head', rotationZDegrees: 3 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -11 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 22 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 15 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 25 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -5 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 15 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 7 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 17 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -680,10 +680,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: -2 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 20 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 14 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 24 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -6 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 14 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 6 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 16 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -703,10 +703,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: 0 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 24 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 10 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 26 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -6 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 14 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 5 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 16 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -720,10 +720,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: -1.5 },
           { jointId: 'head', rotationZDegrees: 3 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -10 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 26 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 12 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 28 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -5 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 16 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 6 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 18 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -737,10 +737,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'pelvis', rotationZDegrees: 0, localOffset2D: [0, 0] },
           { jointId: 'torso', rotationZDegrees: 0 },
           { jointId: 'head', rotationZDegrees: 2 },
-          { jointId: 'arm_l_upper', rotationZDegrees: -12 },
-          { jointId: 'arm_l_lower', rotationZDegrees: 24 },
-          { jointId: 'arm_r_upper', rotationZDegrees: 10 },
-          { jointId: 'arm_r_lower', rotationZDegrees: 26 },
+          { jointId: 'arm_l_upper', rotationZDegrees: -6 },
+          { jointId: 'arm_l_lower', rotationZDegrees: 14 },
+          { jointId: 'arm_r_upper', rotationZDegrees: 5 },
+          { jointId: 'arm_r_lower', rotationZDegrees: 16 },
           { jointId: 'leg_l_upper', rotationZDegrees: 4 },
           { jointId: 'leg_l_lower', rotationZDegrees: -6 },
           { jointId: 'leg_r_upper', rotationZDegrees: -4 },
@@ -1350,7 +1350,11 @@ function resolveOverridePaint(
 ): RigPaintValue {
   if (paint.kind !== 'palette') return paint;
   const hex =
-    paint.role === 'primary' ? overrides.primary : paint.role === 'accent' ? overrides.accent : undefined;
+    paint.role === 'primary' || paint.role === 'secondary'
+      ? overrides.primary
+      : paint.role === 'accent'
+        ? overrides.accent
+        : undefined;
   if (!hex) return paint;
   return { kind: 'solid', color: shadeHexColor(hex, paint.shade) };
 }
@@ -1539,7 +1543,7 @@ export class ArchetypeFactory {
             id: 'arm_l_upper',
             parentId: 'torso',
             localOffset2D: [-6, 15],
-            rotationZDegrees: -25,
+            rotationZDegrees: -6,
             length: 18,
             constraintsDeg: [-150, 150]
           },
@@ -1547,7 +1551,7 @@ export class ArchetypeFactory {
             id: 'arm_l_lower',
             parentId: 'arm_l_upper',
             localOffset2D: [0, -18],
-            rotationZDegrees: 35,
+            rotationZDegrees: 14,
             length: 16,
             constraintsDeg: [0, 135]
           },
@@ -1555,7 +1559,7 @@ export class ArchetypeFactory {
             id: 'arm_r_upper',
             parentId: 'torso',
             localOffset2D: [6, 15],
-            rotationZDegrees: 25,
+            rotationZDegrees: 6,
             length: 18,
             constraintsDeg: [-150, 150]
           },
@@ -1563,7 +1567,7 @@ export class ArchetypeFactory {
             id: 'arm_r_lower',
             parentId: 'arm_r_upper',
             localOffset2D: [0, -18],
-            rotationZDegrees: 40,
+            rotationZDegrees: 16,
             length: 16,
             constraintsDeg: [0, 135]
           },
@@ -1684,7 +1688,97 @@ export class ArchetypeFactory {
             lit: false
           }
         },
-        // 4. Cohesive Close-Up Silhouette: Abdomen Connector (bridges pelvis and torso across all lean angles)
+        // 4. Back-side Left Thigh (rendered strictly behind abdomen/torso)
+        {
+          id: 'leg_l_thigh',
+          jointId: 'leg_l_upper',
+          localOffset2D: [0, -11],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [-4, 11],
+              [4, 11],
+              [3, -11],
+              [-3, -11]
+            ]
+          },
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.2 }, opacity: 1, lit: true }
+        },
+        // 5. Back-side Left Shin
+        {
+          id: 'leg_l_shin',
+          jointId: 'leg_l_lower',
+          localOffset2D: [0, -11],
+          shape: { kind: 'rect', size: [6, 22], rx: 3, ry: 3 },
+          style: { fill: { kind: 'palette', role: 'secondary', shade: 0 }, opacity: 1, lit: true }
+        },
+        // Boot: sole sits exactly at the lower-leg joint tip (ankle) used by the contact analysis.
+        {
+          id: 'leg_l_foot',
+          jointId: 'leg_l_lower',
+          localOffset2D: [0, -22],
+          shape: BIPED_BOOT_SHAPE,
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.35 }, opacity: 1, lit: true }
+        },
+        // 6. Back-side Left Knee Greave
+        {
+          id: 'leg_l_greave',
+          jointId: 'leg_l_lower',
+          localOffset2D: [2, -6],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [0, 6],
+              [4, 0],
+              [0, -8],
+              [-3, -2]
+            ]
+          },
+          style: {
+            fill: { kind: 'palette', role: 'primary', shade: 0.1 },
+            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.2 }, width: 1.0 },
+            opacity: 0.95,
+            lit: true
+          }
+        },
+        // 7. Back-side Left Arm Bicep (rendered strictly behind torso/head)
+        {
+          id: 'arm_l_bicep',
+          jointId: 'arm_l_upper',
+          localOffset2D: [0, -9],
+          shape: { kind: 'rect', size: [6, 18], rx: 3, ry: 3 },
+          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.1 }, opacity: 1, lit: true }
+        },
+        // 8. Back-side Left Arm Forearm (Tapered from elbow to wrist)
+        {
+          id: 'arm_l_forearm',
+          jointId: 'arm_l_lower',
+          localOffset2D: [0, -8],
+          shape: {
+            kind: 'polygon',
+            points: [
+              [-2.8, 8],
+              [2.8, 8],
+              [2.0, -8],
+              [-2.0, -8]
+            ]
+          },
+          style: { fill: { kind: 'palette', role: 'primary', shade: -0.2 }, opacity: 1, lit: true }
+        },
+        // 9. Back-side Left Hand Morph (open_rest, grasp_fist, point)
+        {
+          id: 'arm_l_hand_morph',
+          jointId: 'arm_l_lower',
+          localOffset2D: [0, -16],
+          shape: { kind: 'morph' },
+          style: {
+            fill: { kind: 'palette', role: 'accent', shade: 0.2 },
+            stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
+            opacity: 1,
+            lit: true
+          }
+        },
+        // 10. Cohesive Close-Up Silhouette: Abdomen Connector (bridges pelvis and torso across all lean angles)
         {
           id: 'abdomen_connector',
           jointId: 'pelvis',
@@ -1699,25 +1793,24 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette', role: 'secondary', shade: -0.35 },
-            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.1 }, width: 1.0 },
+            fill: { kind: 'palette', role: 'primary', shade: -0.1 },
             opacity: 1,
             lit: true
           }
         },
-        // 5. Cohesive Close-Up Silhouette: Neck Collar (torso-head bridge)
+        // 11. Cohesive Close-Up Silhouette: Neck Collar (torso-head bridge)
         {
           id: 'neck_collar',
           jointId: 'head',
           localOffset2D: [0, -8],
           shape: { kind: 'rect', size: [10, 12], rx: 3, ry: 3 },
           style: {
-            fill: { kind: 'palette', role: 'secondary', shade: -0.3 },
+            fill: { kind: 'palette', role: 'primary', shade: -0.1 },
             opacity: 1,
             lit: true
           }
         },
-        // 6. Torso / Chassis (extends down to y = -20 in local torso space to overlap abdomen_connector)
+        // 12. Torso / Chassis (extends down to y = -20 in local torso space to overlap abdomen_connector)
         {
           id: 'torso_body',
           jointId: 'torso',
@@ -1740,7 +1833,7 @@ export class ArchetypeFactory {
             lit: true
           }
         },
-        // 7. Angular Shoulder Pauldron Left
+        // 13. Angular Shoulder Pauldron Left
         {
           id: 'pauldron_l',
           jointId: 'torso',
@@ -1761,7 +1854,7 @@ export class ArchetypeFactory {
             lit: true
           }
         },
-        // 8. Angular Shoulder Pauldron Right
+        // 14. Angular Shoulder Pauldron Right
         {
           id: 'pauldron_r',
           jointId: 'torso',
@@ -1782,7 +1875,7 @@ export class ArchetypeFactory {
             lit: true
           }
         },
-        // 9. Head / Cranium
+        // 15. Head / Cranium
         {
           id: 'head_cranium',
           jointId: 'head',
@@ -1803,7 +1896,7 @@ export class ArchetypeFactory {
             lit: true
           }
         },
-        // 10. Visor / Optics (Sharp visor slit optics with ambient illumination glow)
+        // 16. Visor / Optics (Sharp visor slit optics with ambient illumination glow)
         {
           id: 'head_visor',
           jointId: 'head',
@@ -1824,7 +1917,7 @@ export class ArchetypeFactory {
             lit: true
           }
         },
-        // 10b. Eye Optic Core (Blinks via SceneCompositor ellipse ry scaling when id includes 'eye')
+        // 16b. Eye Optic Core (Blinks via SceneCompositor ellipse ry scaling when id includes 'eye')
         {
           id: 'eye_optic_core',
           jointId: 'head',
@@ -1837,7 +1930,7 @@ export class ArchetypeFactory {
             lit: false
           }
         },
-        // 10c. Facial Expression Morph (Driven by rig.morphTopology: mouthOpen, browRaise, blink)
+        // 16c. Facial Expression Morph (Driven by rig.morphTopology: mouthOpen, browRaise, blink)
         {
           id: 'facial_expression_morph',
           jointId: 'head',
@@ -1850,97 +1943,7 @@ export class ArchetypeFactory {
             lit: false
           }
         },
-        // 11. Left Thigh
-        {
-          id: 'leg_l_thigh',
-          jointId: 'leg_l_upper',
-          localOffset2D: [0, -11],
-          shape: {
-            kind: 'polygon',
-            points: [
-              [-4, 11],
-              [4, 11],
-              [3, -11],
-              [-3, -11]
-            ]
-          },
-          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.2 }, opacity: 1, lit: true }
-        },
-        // 12. Left Shin
-        {
-          id: 'leg_l_shin',
-          jointId: 'leg_l_lower',
-          localOffset2D: [0, -11],
-          shape: { kind: 'rect', size: [6, 22], rx: 3, ry: 3 },
-          style: { fill: { kind: 'palette', role: 'secondary', shade: 0 }, opacity: 1, lit: true }
-        },
-        // Boot: sole sits exactly at the lower-leg joint tip (ankle) used by the contact analysis.
-        {
-          id: 'leg_l_foot',
-          jointId: 'leg_l_lower',
-          localOffset2D: [0, -22],
-          shape: BIPED_BOOT_SHAPE,
-          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.35 }, opacity: 1, lit: true }
-        },
-        // 13. Left Knee Greave
-        {
-          id: 'leg_l_greave',
-          jointId: 'leg_l_lower',
-          localOffset2D: [2, -6],
-          shape: {
-            kind: 'polygon',
-            points: [
-              [0, 6],
-              [4, 0],
-              [0, -8],
-              [-3, -2]
-            ]
-          },
-          style: {
-            fill: { kind: 'palette', role: 'primary', shade: 0.1 },
-            stroke: { paint: { kind: 'palette', role: 'accent', shade: 0.2 }, width: 1.0 },
-            opacity: 0.95,
-            lit: true
-          }
-        },
-        // 14. Left Arm Bicep
-        {
-          id: 'arm_l_bicep',
-          jointId: 'arm_l_upper',
-          localOffset2D: [0, -9],
-          shape: { kind: 'rect', size: [6, 18], rx: 3, ry: 3 },
-          style: { fill: { kind: 'palette', role: 'secondary', shade: -0.1 }, opacity: 1, lit: true }
-        },
-        // 15. Left Arm Forearm (Tapered from elbow to wrist)
-        {
-          id: 'arm_l_forearm',
-          jointId: 'arm_l_lower',
-          localOffset2D: [0, -8],
-          shape: {
-            kind: 'polygon',
-            points: [
-              [-2.8, 8],
-              [2.8, 8],
-              [2.0, -8],
-              [-2.0, -8]
-            ]
-          },
-          style: { fill: { kind: 'palette', role: 'primary', shade: -0.2 }, opacity: 1, lit: true }
-        },
-        // 16. Left Hand Morph (open_rest, grasp_fist, point)
-        {
-          id: 'arm_l_hand_morph',
-          jointId: 'arm_l_lower',
-          localOffset2D: [0, -16],
-          shape: { kind: 'morph' },
-          style: {
-            fill: { kind: 'palette', role: 'accent', shade: 0.2 },
-            stroke: { paint: { kind: 'palette', role: 'primary', shade: -0.2 }, width: 1.0 },
-            opacity: 1,
-            lit: true
-          }
-        },
-        // 17. Right Thigh
+        // 17. Front-side Right Thigh (rendered in front of torso)
         {
           id: 'leg_r_thigh',
           jointId: 'leg_r_upper',
@@ -2251,6 +2254,51 @@ export class ArchetypeFactory {
     const base = ArchetypeFactory.buildBipedRunner(options);
     const s = options.spec.scale ?? 1.0;
 
+    const heroColorMap: Record<string, { fill: string; stroke: string; strokeWidth?: number }> = {
+      coat_wing: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.4 },
+      coat_tatter: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      hair_ribbon: { fill: '#38e8ff', stroke: '#38e8ff', strokeWidth: 1.0 },
+      leg_l_thigh: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      leg_l_shin: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      leg_l_foot: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      leg_l_greave: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
+      arm_l_bicep: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      arm_l_forearm: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      arm_l_hand_morph: { fill: '#38e8ff', stroke: '#243048', strokeWidth: 1.0 },
+      abdomen_connector: { fill: '#1a2234', stroke: '#1a2234', strokeWidth: 0.8 },
+      neck_collar: { fill: '#1a2234', stroke: '#243048', strokeWidth: 0.8 },
+      torso_body: { fill: '#1a2234', stroke: '#38e8ff', strokeWidth: 1.2 },
+      pauldron_l: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.4 },
+      pauldron_r: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.4 },
+      head_cranium: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.2 },
+      head_visor: { fill: '#38e8ff', stroke: '#7dd3fc', strokeWidth: 1.4 },
+      eye_optic_core: { fill: '#38e8ff', stroke: '#e0f2fe', strokeWidth: 1.0 },
+      facial_expression_morph: { fill: '#38e8ff', stroke: '#7dd3fc', strokeWidth: 1.4 },
+      leg_r_thigh: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
+      leg_r_shin: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
+      leg_r_foot: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
+      leg_r_greave: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
+      arm_r_bicep: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
+      arm_r_forearm: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
+      arm_r_hand_morph: { fill: '#38e8ff', stroke: '#243048', strokeWidth: 1.0 }
+    };
+
+    const heroParts: RigPart[] = base.parts.map((p) => {
+      const c = heroColorMap[p.id];
+      if (!c) return p;
+      return {
+        ...p,
+        style: {
+          ...p.style,
+          fill: { kind: 'solid' as const, color: c.fill },
+          stroke: {
+            paint: { kind: 'solid' as const, color: c.stroke },
+            width: c.strokeWidth ?? p.style.stroke?.width ?? 1.0
+          }
+        }
+      };
+    });
+
     return {
       ...base,
       name: `Hero Silhouette (${options.instanceId})`,
@@ -2260,6 +2308,7 @@ export class ArchetypeFactory {
         scale: [1.35 * s, 1.45 * s]
       },
       sockets: [...CANONICAL_BIPED_SOCKETS],
+      parts: heroParts,
       morphTopology: {
         baseSegments: baseMouthSegments,
         targets: [
@@ -2286,7 +2335,7 @@ export class ArchetypeFactory {
     const s = options.spec.scale ?? 1.0;
 
     const companionParts: RigPart[] = base.parts
-      .filter((p) => p.id !== 'eye_optic_core' && p.id !== 'facial_expression_morph')
+      .filter((p) => p.id !== 'facial_expression_morph')
       .map((p) => {
       // 1. Heavy draped cloak replacing coat_wing
       if (p.id === 'coat_wing') {
@@ -2304,8 +2353,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.3 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: -0.2 }, width: 1.5 },
+            fill: { kind: 'solid' as const, color: '#211610' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.5 },
             opacity: 0.96,
             lit: true
           }
@@ -2330,8 +2379,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.1 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.4 },
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.4 },
             opacity: 0.98,
             lit: true
           }
@@ -2354,7 +2403,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.2 },
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#211610' }, width: 1.0 },
             opacity: 0.95,
             lit: true
           }
@@ -2376,8 +2426,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.15 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.1 }, width: 1.2 },
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
@@ -2398,8 +2448,24 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.5 },
+            fill: { kind: 'solid' as const, color: '#211610' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.0 },
             opacity: 0.85,
+            lit: false
+          }
+        };
+      }
+      if (p.id === 'eye_optic_core') {
+        return {
+          ...p,
+          id: 'companion_iris_optic',
+          jointId: 'head',
+          localOffset2D: [7.0, 5.5],
+          shape: { kind: 'ellipse' as const, radius: [2.2, 2.2] },
+          style: {
+            fill: { kind: 'solid' as const, color: '#f59e0b' },
+            stroke: { paint: { kind: 'solid' as const, color: '#fef3c7' }, width: 0.9 },
+            opacity: 1.0,
             lit: false
           }
         };
@@ -2412,8 +2478,8 @@ export class ArchetypeFactory {
           localOffset2D: [-12, 16],
           shape: { kind: 'ellipse' as const, radius: [10, 8] },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: 0.1 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.5 },
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.5 },
             opacity: 1,
             lit: true
           }
@@ -2426,8 +2492,8 @@ export class ArchetypeFactory {
           localOffset2D: [12, 16],
           shape: { kind: 'ellipse' as const, radius: [10, 8] },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: 0.1 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.5 },
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.5 },
             opacity: 1,
             lit: true
           }
@@ -2448,8 +2514,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.3 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.2 },
+            fill: { kind: 'solid' as const, color: '#211610' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
@@ -2469,8 +2535,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.3 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.2 }, width: 1.2 },
+            fill: { kind: 'solid' as const, color: '#2d1f18' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
@@ -2482,8 +2548,8 @@ export class ArchetypeFactory {
           id: 'hand_l_gauntlet_clamp',
           shape: { kind: 'morph' as const },
           style: {
-            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.4 },
+            fill: { kind: 'solid' as const, color: '#f59e0b' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.4 },
             opacity: 1,
             lit: true
           }
@@ -2495,8 +2561,8 @@ export class ArchetypeFactory {
           id: 'hand_r_gauntlet_clamp',
           shape: { kind: 'morph' as const },
           style: {
-            fill: { kind: 'palette' as const, role: 'secondary' as const, shade: -0.2 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: 0.3 }, width: 1.4 },
+            fill: { kind: 'solid' as const, color: '#f59e0b' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.4 },
             opacity: 1,
             lit: true
           }
@@ -2510,8 +2576,8 @@ export class ArchetypeFactory {
           localOffset2D: [0, -22],
           shape: { kind: 'rect' as const, size: [18, 7], rx: 2, ry: 1 },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.4 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: -0.2 }, width: 1.2 },
+            fill: { kind: 'solid' as const, color: '#211610' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
@@ -2524,26 +2590,64 @@ export class ArchetypeFactory {
           localOffset2D: [0, -22],
           shape: { kind: 'rect' as const, size: [18, 7], rx: 2, ry: 1 },
           style: {
-            fill: { kind: 'palette' as const, role: 'primary' as const, shade: -0.4 },
-            stroke: { paint: { kind: 'palette' as const, role: 'accent' as const, shade: -0.2 }, width: 1.2 },
+            fill: { kind: 'solid' as const, color: '#211610' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
         };
       }
-      return p;
-    });
-
-    companionParts.push({
-      id: 'companion_iris_optic',
-      jointId: 'head',
-      localOffset2D: [7.0, 5.5],
-      shape: { kind: 'ellipse' as const, radius: [2.2, 2.2] },
-      style: {
-        fill: { kind: 'palette' as const, role: 'accent' as const, shade: 0.6 },
-        opacity: 1.0,
-        lit: false
+      if (p.id === 'abdomen_connector') {
+        return {
+          ...p,
+          style: {
+            ...p.style,
+            fill: { kind: 'solid' as const, color: '#2d1f18' },
+            stroke: { paint: { kind: 'solid' as const, color: '#2d1f18' }, width: 0.8 }
+          }
+        };
       }
+      if (p.id === 'torso_body') {
+        return {
+          ...p,
+          style: {
+            ...p.style,
+            fill: { kind: 'solid' as const, color: '#2d1f18' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 }
+          }
+        };
+      }
+      if (p.id === 'neck_collar' || p.id === 'leg_r_thigh' || p.id === 'leg_r_shin' || p.id === 'arm_r_bicep') {
+        return {
+          ...p,
+          style: {
+            ...p.style,
+            fill: { kind: 'solid' as const, color: '#2d1f18' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.0 }
+          }
+        };
+      }
+      if (p.id === 'leg_l_thigh' || p.id === 'leg_l_shin' || p.id === 'arm_l_bicep') {
+        return {
+          ...p,
+          style: {
+            ...p.style,
+            fill: { kind: 'solid' as const, color: '#211610' },
+            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.0 }
+          }
+        };
+      }
+      if (p.id === 'leg_l_greave' || p.id === 'leg_r_greave') {
+        return {
+          ...p,
+          style: {
+            ...p.style,
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.0 }
+          }
+        };
+      }
+      return p;
     });
 
     return {

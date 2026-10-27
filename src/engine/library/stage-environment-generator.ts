@@ -681,226 +681,71 @@ export class StageEnvironmentGenerator {
         }
 
         case 'ARCHITECTURAL_INTERIOR': {
-          // Interactive Study Desks at Waist Height (Stage Space Z = 0, top at Y = 68)
+          // Compact Pedestal Tables at Waist Height (Stage Space Z = 0, top at Y = 72)
           if (k === 0) {
             const sideTableCenterX =
               typeof options.kitParams?.sideTableCenterX === 'number'
                 ? options.kitParams.sideTableCenterX
                 : undefined;
 
-            if (sideTableCenterX !== undefined) {
-              // Side-table configuration (e.g., X = -62, Z = -12) leaving center floor X ∈ [-44, +44] completely open
-              const sxL = sideTableCenterX - 12;
-              const sxR = sideTableCenterX + 12;
-              const stZ = -12;
+            const addPedestalTable = (centerX: number): void => {
+              const sxL = centerX - 8;
+              const sxR = centerX + 8;
               polygons.push(
                 {
-                  // Side-table top
+                  // Pedestal tabletop [Y = 69..72, Z = 0]
                   vertices: [
-                    [sxL, 65, stZ],
-                    [sxR, 65, stZ],
-                    [sxR, 68, stZ],
-                    [sxL, 68, stZ]
+                    [sxL, 69, 0],
+                    [sxR, 69, 0],
+                    [sxR, 72, 0],
+                    [sxL, 72, 0]
                   ],
                   fill: shadeHexColor(palette.secondary, 0.25),
                   opacity: 1.0,
                   tier: 2
                 },
                 {
-                  // Side-table left pedestal
+                  // Central pedestal column [Y = 3..69, Z = 0]
                   vertices: [
-                    [sxL + 2, 0, stZ],
-                    [sxL + 8, 0, stZ],
-                    [sxL + 8, 65, stZ],
-                    [sxL + 2, 65, stZ]
+                    [centerX - 3, 3, 0],
+                    [centerX + 3, 3, 0],
+                    [centerX + 3, 69, 0],
+                    [centerX - 3, 69, 0]
                   ],
-                  fill: shadeHexColor(palette.background, 0.1),
+                  fill: shadeHexColor(palette.background, 0.12),
                   opacity: 1.0,
                   tier: 2
                 },
                 {
-                  // Side-table right leg
+                  // Pedestal base plate [Y = 0..3, Z = 0]
                   vertices: [
-                    [sxR - 6, 0, stZ],
-                    [sxR - 2, 0, stZ],
-                    [sxR - 2, 65, stZ],
-                    [sxR - 6, 65, stZ]
+                    [centerX - 6, 0, 0],
+                    [centerX + 6, 0, 0],
+                    [centerX + 6, 3, 0],
+                    [centerX - 6, 3, 0]
                   ],
-                  fill: shadeHexColor(palette.background, 0.1),
+                  fill: shadeHexColor(palette.secondary, 0.1),
                   opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Side-table middle shelf
-                  vertices: [
-                    [sxL + 8, 32, stZ],
-                    [sxR - 6, 32, stZ],
-                    [sxR - 6, 35, stZ],
-                    [sxL + 8, 35, stZ]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.15),
-                  opacity: 0.95,
                   tier: 2
                 }
               );
-              lines.push(
-                {
-                  p0: [sxL, 68, stZ + 1],
-                  p1: [sxR, 68, stZ + 1],
-                  stroke: palette.primary,
-                  strokeWidth: 2.0,
-                  opacity: 0.95,
-                  tier: 2
-                },
-                {
-                  p0: [sxL + 8, 35, stZ + 1],
-                  p1: [sxR - 6, 35, stZ + 1],
-                  stroke: palette.primary,
-                  strokeWidth: 1.5,
-                  opacity: 0.9,
-                  tier: 2
-                }
-              );
-            } else {
-              // Desk 1: centered at X = +17 (cup pickup [0, 68, 0])
-              polygons.push(
-                {
-                  // Desk 1 top
-                  vertices: [
-                    [-16, 65, 0],
-                    [50, 65, 0],
-                    [50, 68, 0],
-                    [-16, 68, 0]
-                  ],
-                  fill: shadeHexColor(palette.secondary, 0.25),
-                  opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Desk 1 left leg
-                  vertices: [
-                    [-14, 0, 0],
-                    [-10, 0, 0],
-                    [-10, 65, 0],
-                    [-14, 65, 0]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.1),
-                  opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Desk 1 right pedestal cabinet
-                  vertices: [
-                    [22, 0, 0],
-                    [48, 0, 0],
-                    [48, 65, 0],
-                    [22, 65, 0]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.1),
-                  opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Desk 1 middle shelf
-                  vertices: [
-                    [-10, 32, 0],
-                    [22, 32, 0],
-                    [22, 35, 0],
-                    [-10, 35, 0]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.15),
-                  opacity: 0.95,
-                  tier: 2
-                }
-              );
-              lines.push(
-                {
-                  p0: [-16, 68, 1],
-                  p1: [50, 68, 1],
-                  stroke: palette.primary,
-                  strokeWidth: 2.0,
-                  opacity: 0.95,
-                  tier: 2
-                },
-                {
-                  p0: [-10, 35, 1],
-                  p1: [22, 35, 1],
-                  stroke: palette.primary,
-                  strokeWidth: 1.5,
-                  opacity: 0.9,
-                  tier: 2
-                }
-              );
+              lines.push({
+                p0: [sxL, 72, 0.5],
+                p1: [sxR, 72, 0.5],
+                stroke: palette.primary,
+                strokeWidth: 2.0,
+                opacity: 0.95,
+                tier: 2
+              });
+            };
 
-              // Desk 2: centered at X = -96 (cup placement [-90, 68, 0])
-              polygons.push(
-                {
-                  // Desk 2 top
-                  vertices: [
-                    [-126, 65, 0],
-                    [-66, 65, 0],
-                    [-66, 68, 0],
-                    [-126, 68, 0]
-                  ],
-                  fill: shadeHexColor(palette.secondary, 0.25),
-                  opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Desk 2 left pedestal cabinet
-                  vertices: [
-                    [-126, 0, 0],
-                    [-104, 0, 0],
-                    [-104, 65, 0],
-                    [-126, 65, 0]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.1),
-                  opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Desk 2 right leg
-                  vertices: [
-                    [-72, 0, 0],
-                    [-68, 0, 0],
-                    [-68, 65, 0],
-                    [-72, 65, 0]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.1),
-                  opacity: 1.0,
-                  tier: 2
-                },
-                {
-                  // Desk 2 middle shelf
-                  vertices: [
-                    [-104, 32, 0],
-                    [-72, 32, 0],
-                    [-72, 35, 0],
-                    [-104, 35, 0]
-                  ],
-                  fill: shadeHexColor(palette.background, 0.15),
-                  opacity: 0.95,
-                  tier: 2
-                }
-              );
-              lines.push(
-                {
-                  p0: [-126, 68, 1],
-                  p1: [-66, 68, 1],
-                  stroke: palette.primary,
-                  strokeWidth: 2.0,
-                  opacity: 0.95,
-                  tier: 2
-                },
-                {
-                  p0: [-94, 35, 1],
-                  p1: [-66, 35, 1],
-                  stroke: palette.primary,
-                  strokeWidth: 1.5,
-                  opacity: 0.9,
-                  tier: 2
-                }
-              );
+            if (sideTableCenterX !== undefined) {
+              // Single compact side pedestal table (e.g., X = -70, Y = 72, Z = 0) leaving center hall open
+              addPedestalTable(sideTableCenterX);
+            } else {
+              // Solo study configuration: Desk 1 at X = 0 ([0, 72, 0]) and Desk 2 at X = -89 ([-89, 72, 0])
+              addPedestalTable(0);
+              addPedestalTable(-89);
             }
           } else {
             // Study desks in adjacent bays
