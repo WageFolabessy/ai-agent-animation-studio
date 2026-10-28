@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Vec3Schema, HexColorSchema, FrameRangeSchema, CameraTransformSchema } from './primitives.schema.js';
 import { TheatricalSetIdSchema, ShotTransitionSpecSchema } from './stage.contract.js';
+import { PrecipitationSpecSchema } from './story-beat.contract.js';
 
 export const CameraFramingEnum = z.enum([
   'EXTREME_WIDE', 'WIDE', 'MEDIUM', 'CLOSE_UP', 'EXTREME_CLOSE_UP'
@@ -59,6 +60,7 @@ export const CinematicShotSchema = z.object({
   activeRigIds: z.array(z.string().min(1)).min(1),
   environmentZone: EnvironmentZoneTypeEnum.optional(),
   theatricalSetId: TheatricalSetIdSchema.optional(),
+  precipitation: PrecipitationSpecSchema.optional(),
   transitionIn: ShotTransitionSpecSchema.optional(),
   transitionOut: ShotTransitionSpecSchema.optional()
 }).strict().refine(

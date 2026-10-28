@@ -848,7 +848,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------------
     // 7. 07_motion_strip.jpg
     // -------------------------------------------------------------------------
-    console.log('[7/9] Generating 07_motion_strip.jpg...');
+    console.log('[7/11] Generating 07_motion_strip.jpg...');
     const motionShot = shotPool.find(s => {
       const tr = choreography.tracks.find(t => t.shotId === s.id && t.rigId === 'protagonist_lead');
       const clip = tr?.pose?.clipId || '';
@@ -924,7 +924,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------------
     // 8. 08_lipsync_strip.jpg
     // -------------------------------------------------------------------------
-    console.log('[8/9] Generating 08_lipsync_strip.jpg...');
+    console.log('[8/11] Generating 08_lipsync_strip.jpg...');
     const candidateLyrics = (audioManifest.lyrics || []).filter(
       l => l.frameRange.endFrameExclusive > startOffset && l.frameRange.startFrameInclusive < endOffset
     );
@@ -1026,7 +1026,7 @@ async function main(): Promise<void> {
     // -------------------------------------------------------------------------
     // 9. 09_cuts.jpg
     // -------------------------------------------------------------------------
-    console.log('[9/9] Generating 09_cuts.jpg...');
+    console.log('[9/11] Generating 09_cuts.jpg...');
     const cutsCount = Math.min(6, Math.max(1, shotPool.length - 1));
     const cutStartShotIdx = Math.max(0, Math.floor((shotPool.length - 1 - cutsCount) / 2));
     const cutCells: CellData[] = [];
@@ -1115,6 +1115,171 @@ async function main(): Promise<void> {
     });
 
     // -------------------------------------------------------------------------
+    // 10. 10_stop_put_down_strip.jpg (First stop/deceleration/put-down window)
+    // -------------------------------------------------------------------------
+    console.log('[10/11] Generating 10_stop_put_down_strip.jpg...');
+    let stopFrame = Math.floor((startOffset + endOffset) / 2);
+    const storyBeatPath = path.join(artifactsDir, 'story-beat.json');
+    if (fs.existsSync(storyBeatPath)) {
+      try {
+        const sb = JSON.parse(fs.readFileSync(storyBeatPath, 'utf8'));
+        const putDownBeat = sb.beats?.find((b: any) =>
+          b.actions?.some((a: any) => a.verb === 'carry_put_down' || a.verb === 'put_down')
+        );
+        if (putDownBeat) {
+          stopFrame = Math.floor((putDownBeat.startFrame + putDownBeat.endFrame) / 2);
+        } else {
+          const firstMoveBeat = sb.beats?.find((b: any) =>
+            b.actions?.some((a: any) => a.verb === 'walk_to' || a.verb === 'run_to')
+          );
+          if (firstMoveBeat) {
+            stopFrame = firstMoveBeat.endFrame;
+          }
+        }
+      } catch {}
+    }
+
+    const stopStartFrame = Math.max(startOffset, Math.min(endOffset - 15, stopFrame - 7));
+    const cellW10 = 480;
+    const cellH10 = 270;
+    const stopCells: CellData[] = [];
+    const stopInputs: string[] = [];
+    const filterParts10: string[] = [];
+
+    for (let i = 0; i < 8; i++) {
+      const fSong = stopStartFrame + i * 2;
+      const fVideo = Math.max(0, Math.min(meta.frameCount - 1, fSong - startOffset));
+      const cellRaw = buildCellData(fSong, meta.fps, storyboard, storySpec, choreography, audioManifest, `Stop/Put-Down ${i + 1}`);
+      const rawImg = path.join(tempDir, `stop_raw_${i}.jpg`);
+      const { yavg, lowLuminance } = await extractFrame(videoPath, fVideo, meta.fps, rawImg);
+      if (lowLuminance) lowLuminanceLog.push(`10_stop_put_down_strip.jpg frame ${fSong} low luminance`);
+
+      const cData: CellData = { ...cellRaw, yavg, flaggedLowLuminance: lowLuminance };
+      stopCells.push(cData);
+
+      const lbl = path.join(tempDir, `stop_lbl_${i}.txt`);
+      fs.writeFileSync(lbl, `F: ${fSong} (${cData.timestamp}) | ${cData.leadClip}`);
+
+      stopInputs.push('-i', rawImg);
+      filterParts10.push(
+        `[${i}:v]scale=${cellW10}:${cellH10},drawtext=fontfile=${fontPath}:textfile=${lbl}:fontcolor=white:fontsize=14:box=1:boxcolor=black@0.75:x=8:y=8[v${i}]`
+      );
+    }
+
+    const stopLayout = [
+      '0_0', '480_0', '960_0', '1440_0',
+      '0_270', '480_270', '960_270', '1440_270'
+    ];
+    const vInputs10 = stopCells.map((_, i) => `[v${i}]`).join('');
+    const filterComplex10 = `${filterParts10.join(';')};${vInputs10}xstack=inputs=8:layout=${stopLayout.join('|')}`;
+    const out10 = path.join(outDir, '10_stop_put_down_strip.jpg');
+
+    await execFileAsync('ffmpeg', [
+      '-y',
+      ...stopInputs,
+      '-filter_complex', filterComplex10,
+      '-frames:v', '1',
+      '-q:v', '4',
+      out10
+    ]);
+
+    let size10 = fs.statSync(out10).size;
+    if (await enforceImageLimit(out10, 1.5 * 1024 * 1024)) {
+      downscalingLog.push('10_stop_put_down_strip.jpg exceeded 1.5 MB and was re-encoded');
+      size10 = fs.statSync(out10).size;
+    }
+    deliverables.push({
+      filename: '10_stop_put_down_strip.jpg',
+      title: 'Stop / Put-Down Deceleration Window (8 frames, step 2)',
+      width: 4 * cellW10,
+      height: 2 * cellH10,
+      sizeBytes: size10,
+      cells: stopCells
+    });
+
+    // -------------------------------------------------------------------------
+    // 11. 11_embrace_contact_strip.jpg (Embrace / Contact window)
+    // -------------------------------------------------------------------------
+    console.log('[11/11] Generating 11_embrace_contact_strip.jpg...');
+    let contactFrame = Math.floor((startOffset + endOffset) / 2);
+    if (fs.existsSync(storyBeatPath)) {
+      try {
+        const sb = JSON.parse(fs.readFileSync(storyBeatPath, 'utf8'));
+        const embraceBeat = sb.beats?.find((b: any) =>
+          b.actions?.some((a: any) => a.verb === 'embrace_push_away')
+        );
+        if (embraceBeat) {
+          contactFrame = Math.floor((embraceBeat.startFrame + embraceBeat.endFrame) / 2);
+        } else {
+          const reachBeat = sb.beats?.find((b: any) =>
+            b.actions?.some((a: any) => a.verb === 'reach_and_grasp')
+          );
+          if (reachBeat) {
+            contactFrame = Math.floor((reachBeat.startFrame + reachBeat.endFrame) / 2);
+          }
+        }
+      } catch {}
+    }
+
+    const contactStartFrame = Math.max(startOffset, Math.min(endOffset - 15, contactFrame - 7));
+    const cellW11 = 480;
+    const cellH11 = 270;
+    const contactCells: CellData[] = [];
+    const contactInputs: string[] = [];
+    const filterParts11: string[] = [];
+
+    for (let i = 0; i < 8; i++) {
+      const fSong = contactStartFrame + i * 2;
+      const fVideo = Math.max(0, Math.min(meta.frameCount - 1, fSong - startOffset));
+      const cellRaw = buildCellData(fSong, meta.fps, storyboard, storySpec, choreography, audioManifest, `Contact Frame ${i + 1}`);
+      const rawImg = path.join(tempDir, `contact_raw_${i}.jpg`);
+      const { yavg, lowLuminance } = await extractFrame(videoPath, fVideo, meta.fps, rawImg);
+      if (lowLuminance) lowLuminanceLog.push(`11_embrace_contact_strip.jpg frame ${fSong} low luminance`);
+
+      const cData: CellData = { ...cellRaw, yavg, flaggedLowLuminance: lowLuminance };
+      contactCells.push(cData);
+
+      const lbl = path.join(tempDir, `contact_lbl_${i}.txt`);
+      fs.writeFileSync(lbl, `F: ${fSong} (${cData.timestamp}) | ${cData.leadClip}`);
+
+      contactInputs.push('-i', rawImg);
+      filterParts11.push(
+        `[${i}:v]scale=${cellW11}:${cellH11},drawtext=fontfile=${fontPath}:textfile=${lbl}:fontcolor=white:fontsize=14:box=1:boxcolor=black@0.75:x=8:y=8[v${i}]`
+      );
+    }
+
+    const contactLayout = [
+      '0_0', '480_0', '960_0', '1440_0',
+      '0_270', '480_270', '960_270', '1440_270'
+    ];
+    const vInputs11 = contactCells.map((_, i) => `[v${i}]`).join('');
+    const filterComplex11 = `${filterParts11.join(';')};${vInputs11}xstack=inputs=8:layout=${contactLayout.join('|')}`;
+    const out11 = path.join(outDir, '11_embrace_contact_strip.jpg');
+
+    await execFileAsync('ffmpeg', [
+      '-y',
+      ...contactInputs,
+      '-filter_complex', filterComplex11,
+      '-frames:v', '1',
+      '-q:v', '4',
+      out11
+    ]);
+
+    let size11 = fs.statSync(out11).size;
+    if (await enforceImageLimit(out11, 1.5 * 1024 * 1024)) {
+      downscalingLog.push('11_embrace_contact_strip.jpg exceeded 1.5 MB and was re-encoded');
+      size11 = fs.statSync(out11).size;
+    }
+    deliverables.push({
+      filename: '11_embrace_contact_strip.jpg',
+      title: 'Embrace / Contact Window (8 frames, step 2)',
+      width: 4 * cellW11,
+      height: 2 * cellH11,
+      sizeBytes: size11,
+      cells: contactCells
+    });
+
+    // -------------------------------------------------------------------------
     // Global Size Budget Enforcement
     // -------------------------------------------------------------------------
     const maxTotalBytes = cli.maxTotalMb * 1024 * 1024;
@@ -1188,7 +1353,7 @@ async function main(): Promise<void> {
       md += `| \`${d.filename}\` | ${d.title} | ${d.width}x${d.height} | ${d.cells.length} | ${kb} KB | ${mb} MB |\n`;
     }
     const totalMb = (totalBytes / (1024 * 1024)).toFixed(2);
-    md += `| **TOTAL** | **All 9 Review Deliverables** | — | **${deliverables.reduce((a, d) => a + d.cells.length, 0)}** | **${(totalBytes / 1024).toFixed(1)} KB** | **${totalMb} MB** |\n\n`;
+    md += `| **TOTAL** | **All ${deliverables.length} Review Deliverables** | — | **${deliverables.reduce((a, d) => a + d.cells.length, 0)}** | **${(totalBytes / 1024).toFixed(1)} KB** | **${totalMb} MB** |\n\n`;
     md += `- **Hard Size Limits:** Each deliverable <= 1.50 MB; total deliverables <= ${cli.maxTotalMb}.00 MB.\n`;
     md += `- **Limit Compliance:** ${totalBytes <= maxTotalBytes ? 'PASS (all files within limits)' : 'FAIL'}\n\n`;
 

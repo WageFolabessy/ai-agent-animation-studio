@@ -23,6 +23,17 @@ export interface EvaluatedTrackState {
   activeAttachmentSpan?: PropAttachmentSpan;
   vRoot?: number;
   shotStartFrame?: number;
+  horizontalDisplacement?: number;
+  activeMoveFrames?: number;
+  locomotionBlendFactor?: number;
+  previousSegment?: {
+    clipId: string;
+    startPoseFrame: number;
+    timeScale: number;
+    startFrame: number;
+    endFrame: number;
+  };
+  transitionProgress?: number;
 }
 
 export function evaluateTrackTransform(
@@ -172,27 +183,99 @@ export function evaluateEntityTrack(
   const lastKfFrame = track.transform.keyframes[track.transform.keyframes.length - 1]?.frame ?? frameIndex;
   if (frameIndex < lastKfFrame) {
     const pNext = evaluateTrackTransform(track.transform.keyframes, frameIndex + 1).position;
-    vRoot = Math.hypot(pNext[0] - transform.position[0], pNext[1] - transform.position[1]);
+    vRoot = Math.hypot(pNext[0] - transform.position[0], pNext[2] - transform.position[2]);
   } else if (frameIndex > (track.transform.keyframes[0]?.frame ?? frameIndex)) {
     const pPrev = evaluateTrackTransform(track.transform.keyframes, frameIndex - 1).position;
-    vRoot = Math.hypot(transform.position[0] - pPrev[0], transform.position[1] - pPrev[1]);
+    vRoot = Math.hypot(transform.position[0] - pPrev[0], transform.position[2] - pPrev[2]);
   }
 
   let timeScale = track.pose?.timeScale ?? 1.0;
   let startPoseFrame = track.pose?.startPoseFrame ?? 0;
   let clipId = track.pose?.clipId;
   let shotStartFrame: number | undefined;
+  let previousSegment: EvaluatedTrackState['previousSegment'];
+  let transitionProgress: number | undefined;
+
+  const TRANSITION_BLEND_FRAMES = 8;
 
   if (track.pose?.segments && track.pose.segments.length > 0) {
-    const seg = track.pose.segments.find(
+    const segIdx = track.pose.segments.findIndex(
       (s) => frameIndex >= s.startFrame && frameIndex < s.endFrame
-    ) ?? track.pose.segments[track.pose.segments.length - 1];
+    );
+    const activeIdx = segIdx >= 0 ? segIdx : track.pose.segments.length - 1;
+    const seg = track.pose.segments[activeIdx];
     if (seg) {
       timeScale = seg.timeScale;
       startPoseFrame = seg.startPoseFrame;
       clipId = seg.clipId;
       shotStartFrame = seg.startFrame;
+
+      if (activeIdx > 0 && frameIndex < seg.startFrame + TRANSITION_BLEND_FRAMES) {
+        const prevSeg = track.pose.segments[activeIdx - 1];
+        previousSegment = {
+          clipId: prevSeg.clipId,
+          startPoseFrame: prevSeg.startPoseFrame,
+          timeScale: prevSeg.timeScale,
+          startFrame: prevSeg.startFrame,
+          endFrame: prevSeg.endFrame
+        };
+        transitionProgress = Math.max(0, Math.min(1, (frameIndex - seg.startFrame) / TRANSITION_BLEND_FRAMES));
+      }
     }
+  }
+
+  // Cumulative horizontal displacement and active move frames since segment start
+  const segmentStart = shotStartFrame ?? track.transform.keyframes[0]?.frame ?? 0;
+  let horizontalDisplacement = 0;
+  let activeMoveFrames = Math.max(0, frameIndex - segmentStart);
+
+  if (frameIndex > segmentStart && track.transform.keyframes.length > 0) {
+    let pPrev = evaluateTrackTransform(track.transform.keyframes, segmentStart).position;
+    const intermediateKfs = track.transform.keyframes.filter(
+      (kf) => kf.frame > segmentStart && kf.frame < frameIndex
+    );
+    for (const kf of intermediateKfs) {
+      horizontalDisplacement += Math.hypot(kf.position[0] - pPrev[0], kf.position[2] - pPrev[2]);
+      pPrev = kf.position;
+    }
+    horizontalDisplacement += Math.hypot(transform.position[0] - pPrev[0], transform.position[2] - pPrev[2]);
+
+    // Check if character arrived and became stationary before frameIndex
+    for (let f = segmentStart; f < frameIndex; f++) {
+      const pA = evaluateTrackTransform(track.transform.keyframes, f).position;
+      const pB = evaluateTrackTransform(track.transform.keyframes, f + 1).position;
+      if (Math.hypot(pB[0] - pA[0], pB[2] - pA[2]) < 1e-4) {
+        if (Math.hypot(transform.position[0] - pA[0], transform.position[2] - pA[2]) < 1e-4) {
+          activeMoveFrames = f - segmentStart;
+          break;
+        }
+      }
+    }
+  }
+
+  // Locomotion blend factor with minimum-frame hysteresis
+  let locomotionBlendFactor = 1.0;
+  const LOCOMOTION_STOP_SPEED = 0.03;
+  const LOCOMOTION_FULL_SPEED = 0.18;
+  const SETTLE_WINDOW_FRAMES = 6;
+
+  if (vRoot < LOCOMOTION_STOP_SPEED) {
+    let stopDuration = 0;
+    while (stopDuration < SETTLE_WINDOW_FRAMES && frameIndex - stopDuration > 0) {
+      const pastFrame = frameIndex - stopDuration - 1;
+      const p1 = evaluateTrackTransform(track.transform.keyframes, pastFrame).position;
+      const p2 = evaluateTrackTransform(track.transform.keyframes, pastFrame + 1).position;
+      const pastV = Math.hypot(p2[0] - p1[0], p2[2] - p1[2]);
+      if (pastV >= LOCOMOTION_STOP_SPEED) {
+        break;
+      }
+      stopDuration++;
+    }
+    locomotionBlendFactor = Math.max(0, 1.0 - (stopDuration + 1) / SETTLE_WINDOW_FRAMES);
+  } else if (vRoot < LOCOMOTION_FULL_SPEED) {
+    locomotionBlendFactor = (vRoot - LOCOMOTION_STOP_SPEED) / (LOCOMOTION_FULL_SPEED - LOCOMOTION_STOP_SPEED);
+  } else {
+    locomotionBlendFactor = 1.0;
   }
 
   return {
@@ -207,7 +290,12 @@ export function evaluateEntityTrack(
     morphWeights,
     ...(activeAttachmentSpan ? { activeAttachmentSpan } : {}),
     vRoot,
-    ...(shotStartFrame !== undefined ? { shotStartFrame } : {})
+    ...(shotStartFrame !== undefined ? { shotStartFrame } : {}),
+    horizontalDisplacement,
+    activeMoveFrames,
+    locomotionBlendFactor,
+    ...(previousSegment ? { previousSegment } : {}),
+    ...(transitionProgress !== undefined ? { transitionProgress } : {})
   };
 }
 

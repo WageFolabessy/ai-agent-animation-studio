@@ -24,7 +24,7 @@ import {
   type GazeTarget
 } from '../../../schemas/choreography.contract.js';
 import type { EmotionalTone } from '../../../schemas/story-spec.contract.js';
-import type { NarrativePropId, RigSocketSlot } from '../../../schemas/prop.contract.js';
+import type { NarrativePropId, RigSocketSlot, LandmarkFootprint } from '../../../schemas/prop.contract.js';
 import { ArchetypeFactory } from '../../library/archetype-factory.js';
 import { PropFactory } from '../../library/prop-factory.js';
 import { VERB_CONSTANTS, type ValidFps, type CanonicalActNumber } from './verb-constants.js';
@@ -46,6 +46,14 @@ import {
 const CANONICAL_BIPED_TARGET_NAMES = new Set(
   CANONICAL_BIPED_MORPH_TARGETS.map((t) => t.name)
 );
+
+export const LOCOMOTION_CLIPS = new Set([
+  'walk_to',
+  'sprint_frenzy',
+  'stalk_crouch',
+  'exhausted_walk',
+  'rain_umbrella_walk'
+]);
 
 export interface UnfulfilledTimingEntry {
   readonly beatId: string;
@@ -94,6 +102,23 @@ export interface InvisibleCutEntry {
   readonly reason: string;
 }
 
+export interface ObstacleAdjustmentEntry {
+  readonly beatId: string;
+  readonly instanceId: string;
+  readonly obstacleId: string;
+  readonly reason: string;
+  readonly originalPosition?: [number, number, number];
+  readonly adjustedPosition: [number, number, number];
+}
+
+export interface ObstacleViolationEntry {
+  readonly frame: number;
+  readonly instanceId: string;
+  readonly obstacleId: string;
+  readonly characterPosition: [number, number, number];
+  readonly obstaclePosition: [number, number, number];
+}
+
 export interface VerbCompileReport {
   readonly unfulfilledTiming: UnfulfilledTimingEntry[];
   readonly unreachableTargets: UnreachableTargetEntry[];
@@ -106,6 +131,9 @@ export interface VerbCompileReport {
     readonly maxReach: number;
   }>;
   readonly invisibleCuts: InvisibleCutEntry[];
+  readonly landmarkFootprints?: Record<string, LandmarkFootprint>;
+  readonly obstacleAdjustments?: ObstacleAdjustmentEntry[];
+  readonly obstacleViolations?: ObstacleViolationEntry[];
 }
 
 export interface CompiledStoryBeatProduction {
@@ -377,15 +405,44 @@ export class VerbCompiler {
     }
   }
 
+  public static getBeatObstacles(
+    beat: StoryBeatContract['beats'][number]
+  ): Array<{ id: string; position: [number, number, number]; footprint: LandmarkFootprint }> {
+    const obstacles: Array<{ id: string; position: [number, number, number]; footprint: LandmarkFootprint }> = [];
+    for (const p of beat.set.landmarkProps ?? []) {
+      const fp = PropFactory.getLandmarkFootprint(p);
+      if (fp.classification === 'blocked') {
+        const cupPos = beat.set.landmarkPlacements?.coffee_cup;
+        const rawPos =
+          beat.set.landmarkPlacements?.[p] ??
+          (cupPos && (p === 'desk' || p === 'table') ? [cupPos[0], 0, cupPos[2]] : [0, 0, 0]);
+        obstacles.push({
+          id: p,
+          position: [rawPos[0], rawPos[1], rawPos[2]],
+          footprint: fp
+        });
+      }
+    }
+    return obstacles;
+  }
+
   public static compile(
     storyBeatContract: StoryBeatContract,
-    audioManifest?: AudioAnalysisManifest
+    audioManifest?: AudioAnalysisManifest,
+    options?: { strict?: boolean }
   ): CompiledStoryBeatProduction {
     VerbCompiler.validateStoryBeatContract(storyBeatContract);
 
     const fps: ValidFps = storyBeatContract.fps === VERB_CONSTANTS.FPS_60 ? VERB_CONSTANTS.FPS_60 : VERB_CONSTANTS.FPS_30;
     const totalFrames = storyBeatContract.sliceFrameRange.endFrame;
     const beats = storyBeatContract.beats;
+    const obstacleAdjustments: ObstacleAdjustmentEntry[] = [];
+    const landmarkFootprints: Record<string, LandmarkFootprint> = {};
+    for (const b of beats) {
+      for (const p of b.set.landmarkProps ?? []) {
+        landmarkFootprints[p] = PropFactory.getLandmarkFootprint(p);
+      }
+    }
 
     // 1. Build Rigs
     const rigs = new Map<string, AssetRigContract>();
@@ -665,7 +722,11 @@ export class VerbCompiler {
           }
         } else if (a.verb === 'carry_put_down') {
           const tPos = a.target?.kind === 'position' ? a.target.pos[0] : undefined;
-          nextSimX[a.instanceId] = tPos !== undefined ? tPos : (cur <= 0 ? cur - VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE : cur + VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE);
+          if (tPos !== undefined) {
+            nextSimX[a.instanceId] = tPos + (cur >= tPos ? VERB_CONSTANTS.PROP_APPROACH_CLEARANCE : -VERB_CONSTANTS.PROP_APPROACH_CLEARANCE);
+          } else {
+            nextSimX[a.instanceId] = cur <= 0 ? cur - VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE : cur + VERB_CONSTANTS.SIM_DEFAULT_STEP_DISTANCE;
+          }
         } else if (a.verb === 'reach_and_grasp') {
           const nextHasEmbrace = i + 1 < beats.length && beats[i + 1].actions.some((act) => act.verb === 'embrace_push_away');
           if (nextHasEmbrace && cur < VERB_CONSTANTS.SIM_CONFRONT_END_X) {
@@ -889,6 +950,7 @@ export class VerbCompiler {
         cameraStart: camStart,
         cameraEnd: camEnd,
         cameraEasing: 'linear',
+        ...(beat.set.precipitation ? { precipitation: beat.set.precipitation } : {}),
         transitionIn: { type: transType, durationFrames: transDuration },
         ...(transOutType ? { transitionOut: { type: transOutType, durationFrames: transOutDuration } } : {})
       });
@@ -1033,6 +1095,7 @@ export class VerbCompiler {
           };
         }
 
+        const beatObstacles = VerbCompiler.getBeatObstacles(beat);
         const charTrack = VerbCompiler.compileCharacterAction(
           char.instanceId,
           beat.beatId,
@@ -1050,7 +1113,9 @@ export class VerbCompiler {
           reachClamps,
           unreachableTargets,
           nextBeatHasEmbrace,
-          shotStartFacingSigns[char.instanceId]
+          shotStartFacingSigns[char.instanceId],
+          beatObstacles,
+          obstacleAdjustments
         );
 
         nextPositions[char.instanceId] = charTrack.nextPos;
@@ -1114,6 +1179,7 @@ export class VerbCompiler {
         const charNextPos = nextPositions[actorId] ?? charPos;
         const charRig = rigs.get(actorId);
 
+        const charFacing = nextFacingSigns[actorId] ?? shotStartFacingSigns[actorId] ?? 1;
         const propResult = VerbCompiler.compilePropAction(
           propId,
           beat.beatId,
@@ -1125,7 +1191,8 @@ export class VerbCompiler {
           charPos,
           charNextPos,
           charRig,
-          nextBeatHasEmbrace
+          nextBeatHasEmbrace,
+          charFacing
         );
 
         propStates.set(propId, propResult.nextState);
@@ -1164,6 +1231,47 @@ export class VerbCompiler {
       tracks
     };
 
+    // 5. Post-compilation invariant check: zero trunk overlaps with blocked obstacles
+    const obstacleViolations: ObstacleViolationEntry[] = [];
+    const TRUNK_HALF_WIDTH = VERB_CONSTANTS.CHAR_TRUNK_HALF_WIDTH;
+    for (const track of tracks) {
+      const rig = rigs.get(track.rigId);
+      if (rig?.type !== 'character') continue;
+
+      for (let f = 0; f < totalFrames; f++) {
+        const activeBeat = beats.find((b) => f >= b.startFrame && f < b.endFrame);
+        if (!activeBeat) continue;
+        const obstacles = VerbCompiler.getBeatObstacles(activeBeat);
+        if (obstacles.length === 0) continue;
+
+        const tf = evaluateTrackTransform(track.transform.keyframes, f);
+        const cx = tf.position[0];
+        const cz = tf.position[2];
+
+        for (const obs of obstacles) {
+          const halfW = obs.footprint.width / 2;
+          const halfD = obs.footprint.depth / 2;
+          const overlapX = cx + TRUNK_HALF_WIDTH > obs.position[0] - halfW && cx - TRUNK_HALF_WIDTH < obs.position[0] + halfW;
+          const overlapZ = Math.abs(cz - obs.position[2]) < halfD + VERB_CONSTANTS.OBSTACLE_COLLISION_Z_TOLERANCE;
+          if (overlapX && overlapZ) {
+            obstacleViolations.push({
+              frame: f,
+              instanceId: track.rigId,
+              obstacleId: obs.id,
+              characterPosition: [cx, tf.position[1], cz],
+              obstaclePosition: obs.position
+            });
+          }
+        }
+      }
+    }
+
+    if (options?.strict && obstacleViolations.length > 0) {
+      throw new Error(
+        `Obstacle invariant violated: ${obstacleViolations.length} frame overlaps detected with blocked landmarks`
+      );
+    }
+
     return {
       storyboard,
       rigs,
@@ -1173,7 +1281,10 @@ export class VerbCompiler {
         unreachableTargets,
         shotSubdivisions,
         reachClamps,
-        invisibleCuts
+        invisibleCuts,
+        landmarkFootprints,
+        obstacleAdjustments,
+        obstacleViolations
       }
     };
   }
@@ -1550,7 +1661,9 @@ export class VerbCompiler {
     }>,
     unreachableTargets?: UnreachableTargetEntry[],
     releaseBeforeEnd?: boolean,
-    prevFacingSign?: 1 | -1
+    prevFacingSign?: 1 | -1,
+    beatObstacles?: Array<{ id: string; position: [number, number, number]; footprint: LandmarkFootprint }>,
+    obstacleAdjustments?: ObstacleAdjustmentEntry[]
   ): {
     track: EntityTrack;
     nextPos: [number, number, number];
@@ -1618,12 +1731,85 @@ export class VerbCompiler {
           }
         }
 
+        // Check obstacle interactions
+        let bypassWaypoints: [number, number, number][] | undefined;
+        let routeTotalDist = 0;
+        let d1 = 0;
+        let d2 = 0;
+
+        if (beatObstacles && beatObstacles.length > 0) {
+          for (const obs of beatObstacles) {
+            const obsX = obs.position[0];
+            const obsZ = obs.position[2];
+            const halfW = obs.footprint.width / 2;
+            const halfD = obs.footprint.depth / 2;
+            const charTrunkHalfWidth = Math.max(VERB_CONSTANTS.CHAR_BASE_HALF_WIDTH * Math.abs(scaleXBase), VERB_CONSTANTS.CHAR_TRUNK_HALF_WIDTH);
+            const clearanceX = halfW + charTrunkHalfWidth + VERB_CONSTANTS.OBSTACLE_CLEARANCE_X_MARGIN;
+            const clearanceZ = halfD + VERB_CONSTANTS.OBSTACLE_CLEARANCE_Z_MARGIN;
+            const obsMinX = obsX - halfW - charTrunkHalfWidth;
+            const obsMaxX = obsX + halfW + charTrunkHalfWidth;
+
+            // 1. If start position is inside obstacle bounds
+            if (currentPos[0] > obsMinX && currentPos[0] < obsMaxX && Math.abs(currentPos[2] - obsZ) < clearanceZ) {
+              const adjustX = targetPos[0] >= currentPos[0] ? obsMaxX + 1.0 : obsMinX - 1.0;
+              obstacleAdjustments?.push({
+                beatId: shotId,
+                instanceId,
+                obstacleId: obs.id,
+                reason: 'initial_spawn_inside_obstacle',
+                originalPosition: [...currentPos],
+                adjustedPosition: [adjustX, baseY, currentPos[2]]
+              });
+              currentPos = [adjustX, baseY, currentPos[2]];
+              currentX = adjustX;
+            }
+
+            // 2. If target position is inside obstacle bounds
+            if (targetPos[0] > obsMinX && targetPos[0] < obsMaxX && Math.abs(targetPos[2] - obsZ) < clearanceZ) {
+              const dir = Math.sign(targetPos[0] - currentPos[0]) || 1;
+              const adjustX = obsX - dir * clearanceX;
+              obstacleAdjustments?.push({
+                beatId: shotId,
+                instanceId,
+                obstacleId: obs.id,
+                reason: 'target_inside_obstacle',
+                originalPosition: [...targetPos],
+                adjustedPosition: [adjustX, baseY, targetPos[2]]
+              });
+              targetPos = [adjustX, baseY, targetPos[2]];
+            }
+
+            // 3. If path crosses the obstacle
+            const minX = Math.min(currentPos[0], targetPos[0]);
+            const maxX = Math.max(currentPos[0], targetPos[0]);
+            if (minX < obsMinX && maxX > obsMaxX && Math.abs(currentPos[2] - obsZ) < clearanceZ && Math.abs(targetPos[2] - obsZ) < clearanceZ) {
+              const frontZ = obsZ + clearanceZ;
+              const wp1: [number, number, number] = [currentPos[0], baseY, frontZ];
+              const wp2: [number, number, number] = [targetPos[0], baseY, frontZ];
+              bypassWaypoints = [wp1, wp2];
+              d1 = Math.hypot(wp1[0] - currentPos[0], wp1[2] - currentPos[2]);
+              d2 = Math.hypot(wp2[0] - wp1[0], wp2[2] - wp1[2]);
+              const d3 = Math.hypot(targetPos[0] - wp2[0], targetPos[2] - wp2[2]);
+              routeTotalDist = d1 + d2 + d3;
+              obstacleAdjustments?.push({
+                beatId: shotId,
+                instanceId,
+                obstacleId: obs.id,
+                reason: 'path_crosses_obstacle_routed_front',
+                originalPosition: [...currentPos],
+                adjustedPosition: [...targetPos]
+              });
+              break;
+            }
+          }
+        }
+
         nextPos = targetPos;
         nextX = targetPos[0];
 
         const dx = targetPos[0] - currentPos[0];
         const dz = targetPos[2] - currentPos[2];
-        const totalDist = Math.hypot(dx, dz);
+        const totalDist = bypassWaypoints ? routeTotalDist : Math.hypot(dx, dz);
         const deltaFrames = endF - startF;
         const moveFrames = deltaFrames > 1 ? deltaFrames - 1 : deltaFrames;
         const sX = targetPos[0] >= currentPos[0] ? scaleXBase : -scaleXBase;
@@ -1672,24 +1858,68 @@ export class VerbCompiler {
         }
 
         const rotZ = 0;
-        keyframes.push(
-          {
-            frame: startF,
-            position: [currentPos[0], baseY, currentPos[2]],
-            rotationZDegrees: rotZ,
-            scale: [sX, scaleYBase],
-            opacity: 1,
-            easing: 'linear'
-          },
-          {
-            frame: arriveF,
-            position: [actualTargetPos[0], baseY, actualTargetPos[2]],
-            rotationZDegrees: rotZ,
-            scale: [sX, scaleYBase],
-            opacity: 1,
-            easing: 'linear'
-          }
-        );
+        if (bypassWaypoints) {
+          const wp1 = bypassWaypoints[0];
+          const wp2 = bypassWaypoints[1];
+          const t1 = Math.max(1, Math.round((d1 / totalDist) * plan.tMove));
+          const t2 = Math.max(t1 + 1, Math.round(((d1 + d2) / totalDist) * plan.tMove));
+          const fWp1 = Math.min(arriveF - 2, startF + t1);
+          const fWp2 = Math.min(arriveF - 1, Math.max(fWp1 + 1, startF + t2));
+
+          keyframes.push(
+            {
+              frame: startF,
+              position: [currentPos[0], baseY, currentPos[2]],
+              rotationZDegrees: rotZ,
+              scale: [sX, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: fWp1,
+              position: [wp1[0], baseY, wp1[2]],
+              rotationZDegrees: rotZ,
+              scale: [sX, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: fWp2,
+              position: [wp2[0], baseY, wp2[2]],
+              rotationZDegrees: rotZ,
+              scale: [sX, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: arriveF,
+              position: [actualTargetPos[0], baseY, actualTargetPos[2]],
+              rotationZDegrees: rotZ,
+              scale: [sX, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            }
+          );
+        } else {
+          keyframes.push(
+            {
+              frame: startF,
+              position: [currentPos[0], baseY, currentPos[2]],
+              rotationZDegrees: rotZ,
+              scale: [sX, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            },
+            {
+              frame: arriveF,
+              position: [actualTargetPos[0], baseY, actualTargetPos[2]],
+              rotationZDegrees: rotZ,
+              scale: [sX, scaleYBase],
+              opacity: 1,
+              easing: 'linear'
+            }
+          );
+        }
 
         if (arriveF < lastF) {
           keyframes.push({
@@ -1703,7 +1933,8 @@ export class VerbCompiler {
         }
 
         if (action.associatedPropId) {
-          const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+          const socketId = VerbCompiler.resolvePropSocket(action, currentPos, currentPos, sX >= 0 ? 1 : -1);
+          const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
           const shoulderWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y) * scaleYBase;
           const overheadDx = (sX >= 0 ? 1 : -1) * VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X;
           const overheadDy = VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
@@ -1729,18 +1960,26 @@ export class VerbCompiler {
               frame: lastF
             });
           }
+          morphKeyframes.grasp_fist = [
+            { frame: startF, weight: 1.0 },
+            { frame: lastF, weight: 1.0 }
+          ];
+          morphKeyframes.open_rest = [
+            { frame: startF, weight: 0.0 },
+            { frame: lastF, weight: 0.0 }
+          ];
+        } else {
+          morphKeyframes.open_rest = [
+            { frame: startF, weight: 1.0 },
+            { frame: lastF, weight: 1.0 }
+          ];
         }
-
-        morphKeyframes.open_rest = [
-          { frame: startF, weight: 1.0 },
-          { frame: lastF, weight: 1.0 }
-        ];
 
         // Carry normalized clip phase across clip changes
         const prevClock = charPoseClockState?.clock ?? 0;
         const prevClip = charPoseClockState?.lastClip;
         let startPose0 = 0;
-        if (prevClip && prevClip.loopFrames > 0) {
+        if (prevClip && prevClip.loopFrames > 0 && LOCOMOTION_CLIPS.has(prevClip.clipId)) {
           const normPhase = (((prevClock % prevClip.loopFrames) + prevClip.loopFrames) % prevClip.loopFrames) / prevClip.loopFrames;
           startPose0 = Number((normPhase * plan.loopFrames).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
         }
@@ -1828,7 +2067,8 @@ export class VerbCompiler {
         clipId = 'pop_vocal_sway';
 
         if (action.associatedPropId) {
-          const hand: 'hand_l' | 'hand_r' = action.propSocket === 'hand_l' ? 'hand_l' : 'hand_r';
+          const socketId = VerbCompiler.resolvePropSocket(action, currentPos, currentPos, sX >= 0 ? 1 : -1);
+          const hand: 'hand_l' | 'hand_r' = socketId === 'hand_l' ? 'hand_l' : 'hand_r';
           const shoulderWorldY = baseY + (VERB_CONSTANTS.DEFAULT_TORSO_OFFSET_Y + VERB_CONSTANTS.DEFAULT_SHOULDER_OFFSET_Y) * scaleYBase;
           const overheadDx = (sX >= 0 ? 1 : -1) * VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_X;
           const overheadDy = VERB_CONSTANTS.OVERHEAD_PROP_OFFSET_Y;
@@ -1846,6 +2086,14 @@ export class VerbCompiler {
               frame: lastF
             }
           );
+          morphKeyframes.grasp_fist = [
+            { frame: startF, weight: 1.0 },
+            { frame: lastF, weight: 1.0 }
+          ];
+          morphKeyframes.open_rest = [
+            { frame: startF, weight: 0.0 },
+            { frame: lastF, weight: 0.0 }
+          ];
         }
 
         keyframes.push(
@@ -2370,7 +2618,7 @@ export class VerbCompiler {
           const prevClock = charPoseClockState?.clock ?? 0;
           const prevClip = charPoseClockState?.lastClip;
           let startPose0 = 0;
-          if (prevClip && prevClip.loopFrames > 0) {
+          if (prevClip && prevClip.loopFrames > 0 && LOCOMOTION_CLIPS.has(prevClip.clipId)) {
             const normPhase = (((prevClock % prevClip.loopFrames) + prevClip.loopFrames) % prevClip.loopFrames) / prevClip.loopFrames;
             startPose0 = Number((normPhase * walkPlan.loopFrames).toFixed(VERB_CONSTANTS.PRECISION_DECIMALS));
           }
@@ -2867,13 +3115,13 @@ export class VerbCompiler {
 
         const wrapTargetR: [number, number, number] = isLeft
           ? [otherContactX + VERB_CONSTANTS.EMBRACE_WRAP_OFFSET_X, companionShoulderY + 2, 0]
-          : [otherContactX - VERB_CONSTANTS.EMBRACE_WRAP_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_HERO_BACK_OFFSET_Y, -2];
+          : [otherContactX - VERB_CONSTANTS.EMBRACE_WRAP_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_HERO_BACK_OFFSET_Y, 0];
         const wrapTargetL: [number, number, number] = isLeft
           ? [otherContactX + VERB_CONSTANTS.EMBRACE_WRAP_L_OFFSET_X, companionShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, 0]
-          : [otherContactX - VERB_CONSTANTS.EMBRACE_WRAP_L_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_HERO_WRAP_L_OFFSET_Y, -2];
+          : [otherContactX - VERB_CONSTANTS.EMBRACE_WRAP_L_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_HERO_WRAP_L_OFFSET_Y, 0];
         const thrustTarget: [number, number, number] = isLeft
           ? [otherContactX + VERB_CONSTANTS.EMBRACE_PUSH_THRUST_OFFSET_X, companionShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, 0]
-          : [otherContactX + VERB_CONSTANTS.EMBRACE_HERO_PUSH_THRUST_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, -2];
+          : [otherContactX + VERB_CONSTANTS.EMBRACE_HERO_PUSH_THRUST_OFFSET_X, heroShoulderY + VERB_CONSTANTS.EMBRACE_COMPANION_WRAP_L_OFFSET_Y, 0];
         const fArmRaise = Math.max(startF, fStepInArrive - VERB_CONSTANTS.EMBRACE_ARM_RAISE_LEAD_FRAMES);
         const ikReleaseF = Math.min(recoilArriveF, fThrust + VERB_CONSTANTS.HAND_MORPH_SNAP_FRAMES);
 
@@ -3206,6 +3454,19 @@ export class VerbCompiler {
     const lastKfScaleX = keyframes.length > 0 ? keyframes[keyframes.length - 1].scale[0] : scaleXBase;
     const nextFacingSign: 1 | -1 = lastKfScaleX < 0 ? -1 : 1;
 
+    if (action.associatedPropId) {
+      if (!morphKeyframes.grasp_fist) {
+        morphKeyframes.grasp_fist = [
+          { frame: startF, weight: 1.0 },
+          { frame: lastF, weight: 1.0 }
+        ];
+      }
+      morphKeyframes.open_rest = [
+        { frame: startF, weight: 0.0 },
+        { frame: lastF, weight: 0.0 }
+      ];
+    }
+
     return {
       track: {
         rigId: instanceId,
@@ -3233,12 +3494,16 @@ export class VerbCompiler {
   private static resolvePropSocket(
     action: CharacterActionDirective,
     propPos: [number, number, number],
-    ownerPos: [number, number, number]
+    ownerPos: [number, number, number],
+    facingSign: number = 1
   ): RigSocketSlot {
     if (action.propSocket) {
       return action.propSocket;
     }
     if (action.associatedPropId) {
+      if (action.associatedPropId === 'umbrella') {
+        return facingSign >= 0 ? 'hand_r' : 'hand_l';
+      }
       return 'hand_r';
     }
     return propPos[0] < ownerPos[0] ? 'hand_l' : 'hand_r';
@@ -3255,7 +3520,8 @@ export class VerbCompiler {
     ownerPos: [number, number, number],
     ownerTargetPos: [number, number, number],
     _ownerRig?: AssetRigContract,
-    releaseBeforeEnd?: boolean
+    releaseBeforeEnd?: boolean,
+    facingSign: number = 1
   ): {
     track: EntityTrack;
     nextState: PropRuntimeState;
@@ -3270,7 +3536,7 @@ export class VerbCompiler {
     let nextReleased = propState.released;
     let nextPos: [number, number, number] = [...initialPos];
 
-    const socketId = VerbCompiler.resolvePropSocket(action, initialPos, ownerPos);
+    const socketId = VerbCompiler.resolvePropSocket(action, initialPos, ownerPos, facingSign);
 
     if (action.verb === 'embrace_push_away') {
       nextHeld = false;

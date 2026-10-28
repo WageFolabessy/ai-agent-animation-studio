@@ -6,6 +6,8 @@ import { computeSkeletonFK, applyAffine2D } from '../src/engine/rigging/kinemati
 import { NON_LOCOMOTION_CLIPS } from '../src/engine/director/trajectory-solver.js';
 import type { AudioAnalysisManifest, AudioFrameFeature } from '../src/schemas/audio.contract.js';
 import type { StoryBeatContract } from '../src/schemas/story-beat.contract.js';
+import { STAGE1_STORY_BEAT_CONTRACT } from '../src/demo/stage1-scene.js';
+import { STAGE2_STORY_BEAT_CONTRACT } from '../src/demo/stage2-scene.js';
 
 test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
   const dummyAudio = (f: number): AudioFrameFeature => ({
@@ -670,5 +672,145 @@ test('F1 Locomotion Anti-Slip & Multi-Beat Continuity Suite', async (t) => {
       const ef1 = sf1.entities.find((e) => e.rigId === 'hero')!;
       assert.equal(Math.abs(ef1.worldPosition[0] - ef0.worldPosition[0]), 0, `Beat 2 frame ${f} must have root speed 0`);
     }
+  });
+
+  await t.test('D1 Leg flicker diagnostic & smoothness gate across Stage 1 and Stage 2 scenarios', () => {
+    const legJoints = ['leg_l_upper', 'leg_l_lower', 'leg_r_upper', 'leg_r_lower'];
+    const MAX_LEG_DELTA_DEG = 8.0; // Max 8.0 deg/frame during smooth deceleration blend; catches 40-50 deg snap-cuts
+    const REVERSAL_TOLERANCE_DEG = 1.0; // Direction reversal tolerance
+
+    const runScenarioCheck = (scenarioName: string, contract: any) => {
+      const totalFrames = contract.sliceFrameRange.endFrame;
+      const manifest = createSyntheticManifest(totalFrames);
+      const prod = VerbCompiler.compile(contract, manifest);
+      const builder = new FrameStateBuilder({
+        storyboard: prod.storyboard,
+        choreography: prod.choreography,
+        rigs: prod.rigs,
+        audioManifest: manifest,
+        getAudioFeatureAtFrame: dummyAudio
+      });
+
+      interface Violation {
+        frame: number;
+        rigId: string;
+        joint: string;
+        delta: number;
+        prevDelta: number;
+        isReversal: boolean;
+        footTipDisp: number;
+      }
+
+      const violations: Violation[] = [];
+
+      for (const castMember of contract.cast) {
+        const instId = castMember.instanceId;
+        const rig = prod.rigs.get(instId);
+        if (!rig?.skeleton) continue;
+
+        const footJoints = rig.skeleton.joints.filter((j: any) => j.id.includes('lower') || j.id.includes('foot'));
+
+        let prevAngles: Record<string, number> | null = null;
+        let prevFootTips: Map<string, [number, number]> | null = null;
+        let prevDeltas: Record<string, number> = {};
+        let prevShotId: string | null = null;
+
+        for (let f = 0; f < totalFrames; f++) {
+          const state = builder.buildFrameState(f);
+          const entity = state.entities.find((e: any) => e.rigId === instId);
+          if (!entity || (prevShotId !== null && state.shotId !== prevShotId)) {
+            prevAngles = null;
+            prevFootTips = null;
+            prevDeltas = {};
+            prevShotId = state.shotId;
+            if (!entity) continue;
+          }
+          prevShotId = state.shotId;
+
+          const fk = computeSkeletonFK(rig.skeleton, entity.jointAngles, entity.jointOffsets);
+          const footTips = new Map<string, [number, number]>();
+          for (const foot of footJoints) {
+            const aff = fk.get(foot.id);
+            const tipLocal = aff ? applyAffine2D(aff, [0, -foot.length]) : [0, 0];
+            const wx = entity.worldPosition[0] + tipLocal[0] * entity.scale[0];
+            const wy = entity.worldPosition[1] + tipLocal[1] * entity.scale[1];
+            footTips.set(foot.id, [wx, wy]);
+          }
+
+          if (prevAngles && prevFootTips) {
+            let maxFootDisp = 0;
+            for (const [footId, currTip] of footTips.entries()) {
+              const pt = prevFootTips.get(footId);
+              if (pt) {
+                const d = Math.hypot(currTip[0] - pt[0], currTip[1] - pt[1]);
+                if (d > maxFootDisp) maxFootDisp = d;
+              }
+            }
+
+            // Outside intentional gait phases: check stopping, put-down, turn, and stationary windows
+            // When vRoot < 0.05, character is stopped, placing, turning, or stationary
+            const isOutsideFastGait = entity.worldPosition ? (
+              // Compute horizontal root speed vRoot
+              f === 0 ? true : (() => {
+                const prevEntity = builder.buildFrameState(f - 1).entities.find((e: any) => e.rigId === instId);
+                const dx = prevEntity ? Math.abs(entity.worldPosition[0] - prevEntity.worldPosition[0]) : 0;
+                const dz = prevEntity ? Math.abs(entity.worldPosition[2] - prevEntity.worldPosition[2]) : 0;
+                return Math.hypot(dx, dz) < 0.05;
+              })()
+            ) : true;
+
+            for (const jId of legJoints) {
+              const currA = entity.jointAngles[jId] ?? 0;
+              const prevA = prevAngles[jId] ?? 0;
+              const delta = currA - prevA;
+              const absDelta = Math.abs(delta);
+
+              const lastDelta = prevDeltas[jId] ?? 0;
+              const isReversal =
+                Math.abs(lastDelta) > REVERSAL_TOLERANCE_DEG &&
+                Math.abs(delta) > REVERSAL_TOLERANCE_DEG &&
+                Math.sign(lastDelta) !== Math.sign(delta);
+
+              if (isOutsideFastGait && (absDelta > MAX_LEG_DELTA_DEG || isReversal)) {
+                violations.push({
+                  frame: f,
+                  rigId: instId,
+                  joint: jId,
+                  delta: Number(absDelta.toFixed(2)),
+                  prevDelta: Number(lastDelta.toFixed(2)),
+                  isReversal,
+                  footTipDisp: Number(maxFootDisp.toFixed(2))
+                });
+              }
+
+              prevDeltas[jId] = delta;
+            }
+          }
+
+          prevAngles = { ...entity.jointAngles };
+          prevFootTips = footTips;
+        }
+      }
+
+      if (violations.length > 0) {
+        violations.sort((a, b) => b.delta - a.delta);
+        const worst = violations.slice(0, 10);
+        console.log(`\n[D1 Reproduction] ${scenarioName} baseline violations: ${violations.length} frames`);
+        for (const v of worst) {
+          console.log(
+            `  Frame ${v.frame} (${(v.frame / 30).toFixed(2)}s) ${v.rigId} ${v.joint}: delta=${v.delta} deg, reversal=${v.isReversal} (prev=${v.prevDelta}), footTipDisp=${v.footTipDisp}u`
+          );
+        }
+      }
+
+      assert.equal(
+        violations.length,
+        0,
+        `${scenarioName} must have zero leg joint angle deltas > ${MAX_LEG_DELTA_DEG} deg/frame or direction reversals > ${REVERSAL_TOLERANCE_DEG} deg (found ${violations.length})`
+      );
+    };
+
+    runScenarioCheck('Stage 1 Solo Acting', STAGE1_STORY_BEAT_CONTRACT);
+    runScenarioCheck('Stage 2 Two Characters', STAGE2_STORY_BEAT_CONTRACT);
   });
 });

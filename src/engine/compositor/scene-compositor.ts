@@ -3,6 +3,7 @@ import type { AudioFrameFeature } from '../../schemas/audio.contract.js';
 import type { AssetRigContract, RigPart, RigPaint } from '../../schemas/rig.contract.js';
 import type { Vec2, Vec3 } from '../../schemas/primitives.schema.js';
 import { BUNDLED_FONT_FAMILY } from '../../config/fonts.js';
+import { CANONICAL_LANDMARK_FOOTPRINTS } from '../library/prop-factory.js';
 import { SvgBuilder, type PathCommand } from './svg-builder.js';
 import { computeCameraBasis, worldToCameraSpace, type CameraBasis } from '../camera/camera-3d.js';
 import {
@@ -46,6 +47,13 @@ export interface EnvironmentPolygon {
   tier?: DepthTier;
   layerPass?: number;
   isTwoSided?: boolean;
+}
+
+export interface DrawOrderEntry {
+  readonly id: string;
+  readonly kind: string;
+  readonly depthKey: number;
+  readonly partGroup?: 'back_limbs' | 'body' | 'front_arm';
 }
 
 export interface EnvironmentLine {
@@ -181,11 +189,16 @@ export class SceneCompositor {
   private readonly width: number;
   private readonly height: number;
   private readonly fps: number;
+  private lastDrawOrder: DrawOrderEntry[] = [];
 
   constructor(options: { width?: number; height?: number; fps?: number } = {}) {
     this.width = options.width ?? 1920;
     this.height = options.height ?? 1080;
     this.fps = options.fps ?? 30;
+  }
+
+  public getLastDrawOrder(): readonly DrawOrderEntry[] {
+    return this.lastDrawOrder;
   }
 
   public renderFrame(
@@ -253,7 +266,7 @@ export class SceneCompositor {
       ]
     });
 
-    builder.addRect(0, 0, this.width, this.height, 'url(#backdrop_linear)');
+    builder.addRect(0, 0, this.width, this.height, 'url(#backdrop_linear)', 1, 'optimizeSpeed');
     stats.gradientShapesCount++;
     stats.drawablesCount++;
     categories.lighting++;
@@ -514,34 +527,153 @@ export class SceneCompositor {
         );
         if (!ctx) continue;
 
-        const isCoffeeCup = rig.id === 'coffee_cup' || (rig.type === 'prop' && /cup/.test(rig.id));
-        sortables.push({
-          kind: 'billboard_entity',
-          depthKey: isCoffeeCup ? ctx.depthZ - 4.0 : ctx.depthZ,
-          tier,
-          layerPass: 1,
-          index: submitIndex++,
-          rig,
-          entity,
-          fkTransforms,
-          ctx
-        });
+        const isAttachedToHand = Boolean(
+          entity.isAttached && entity.socketAttachment?.socketId.includes('hand')
+        );
+        const depthBias = isAttachedToHand ? -4.0 : 0.0;
+
+        if (rig.type === 'character') {
+          const isBackLimb = (p: RigPart) =>
+            Boolean(p.jointId?.startsWith('arm_l') || p.jointId?.startsWith('leg_l') || p.id.startsWith('arm_l') || p.id.startsWith('leg_l'));
+          const isFrontArm = (p: RigPart) =>
+            Boolean(p.jointId?.startsWith('arm_r') || p.id.startsWith('arm_r'));
+
+          const backParts = rig.parts.filter(isBackLimb);
+          const frontArmParts = rig.parts.filter(isFrontArm);
+          const bodyParts = rig.parts.filter((p) => !isBackLimb(p) && !isFrontArm(p));
+
+          if (backParts.length > 0) {
+            sortables.push({
+              kind: 'billboard_entity',
+              depthKey: ctx.depthZ + depthBias + 2.0,
+              tier,
+              layerPass: 1,
+              index: submitIndex++,
+              rig,
+              entity,
+              fkTransforms,
+              ctx,
+              customParts: backParts,
+              partGroup: 'back_limbs'
+            });
+          }
+          if (bodyParts.length > 0) {
+            sortables.push({
+              kind: 'billboard_entity',
+              depthKey: ctx.depthZ + depthBias,
+              tier,
+              layerPass: 1,
+              index: submitIndex++,
+              rig,
+              entity,
+              fkTransforms,
+              ctx,
+              customParts: bodyParts,
+              partGroup: 'body'
+            });
+          }
+          if (frontArmParts.length > 0) {
+            sortables.push({
+              kind: 'billboard_entity',
+              depthKey: ctx.depthZ + depthBias - 2.0,
+              tier,
+              layerPass: 1,
+              index: submitIndex++,
+              rig,
+              entity,
+              fkTransforms,
+              ctx,
+              customParts: frontArmParts,
+              partGroup: 'front_arm'
+            });
+          }
+        } else {
+          sortables.push({
+            kind: 'billboard_entity',
+            depthKey: ctx.depthZ + depthBias,
+            tier,
+            layerPass: 1,
+            index: submitIndex++,
+            rig,
+            entity,
+            fkTransforms,
+            ctx
+          });
+        }
       } else {
         // Planar rig
         const camPoint = worldToCameraSpace(entity.worldPosition, camera, basis);
         if (camPoint[2] < camera.nearPlane || camPoint[2] > camera.farPlane) continue;
 
-        const isCoffeeCup = rig.id === 'coffee_cup' || (rig.type === 'prop' && /cup/.test(rig.id));
-        sortables.push({
-          kind: 'planar_entity',
-          depthKey: isCoffeeCup ? camPoint[2] - 4.0 : camPoint[2],
-          tier,
-          layerPass: 1,
-          index: submitIndex++,
-          rig,
-          entity,
-          fkTransforms
-        });
+        const isAttachedToHand = Boolean(
+          entity.isAttached && entity.socketAttachment?.socketId.includes('hand')
+        );
+        const depthBias = isAttachedToHand ? -4.0 : 0.0;
+
+        if (rig.type === 'character') {
+          const isBackLimb = (p: RigPart) =>
+            Boolean(p.jointId?.startsWith('arm_l') || p.jointId?.startsWith('leg_l') || p.id.startsWith('arm_l') || p.id.startsWith('leg_l'));
+          const isFrontArm = (p: RigPart) =>
+            Boolean(p.jointId?.startsWith('arm_r') || p.id.startsWith('arm_r'));
+
+          const backParts = rig.parts.filter(isBackLimb);
+          const frontArmParts = rig.parts.filter(isFrontArm);
+          const bodyParts = rig.parts.filter((p) => !isBackLimb(p) && !isFrontArm(p));
+
+          if (backParts.length > 0) {
+            sortables.push({
+              kind: 'planar_entity',
+              depthKey: camPoint[2] + depthBias + 2.0,
+              tier,
+              layerPass: 1,
+              index: submitIndex++,
+              rig,
+              entity,
+              fkTransforms,
+              customParts: backParts,
+              partGroup: 'back_limbs'
+            });
+          }
+          if (bodyParts.length > 0) {
+            sortables.push({
+              kind: 'planar_entity',
+              depthKey: camPoint[2] + depthBias,
+              tier,
+              layerPass: 1,
+              index: submitIndex++,
+              rig,
+              entity,
+              fkTransforms,
+              customParts: bodyParts,
+              partGroup: 'body'
+            });
+          }
+          if (frontArmParts.length > 0) {
+            sortables.push({
+              kind: 'planar_entity',
+              depthKey: camPoint[2] + depthBias - 2.0,
+              tier,
+              layerPass: 1,
+              index: submitIndex++,
+              rig,
+              entity,
+              fkTransforms,
+              customParts: frontArmParts,
+              partGroup: 'front_arm'
+            });
+          }
+        } else {
+          sortables.push({
+            kind: 'planar_entity',
+            depthKey: camPoint[2] + depthBias,
+            tier,
+            layerPass: 1,
+            index: submitIndex++,
+            rig,
+            entity,
+            fkTransforms
+          });
+        }
       }
 
       // Floor contact shadow for ground characters
@@ -580,8 +712,9 @@ export class SceneCompositor {
         }
       }
 
-      // Floor contact shadow for table / desk bases
-      if (rig.type === 'prop' && /table|desk/.test(rig.id) && entity.opacity > 0.05) {
+      // Floor contact shadow for landmark obstacle bases
+      const landmarkFp = CANONICAL_LANDMARK_FOOTPRINTS[rig.id];
+      if (rig.type === 'prop' && landmarkFp?.classification === 'blocked' && entity.opacity > 0.05) {
         const tableX = entity.worldPosition[0];
         const tableZ = entity.worldPosition[2];
         const rx = 16;
@@ -680,47 +813,54 @@ export class SceneCompositor {
           worldVertices: hazeVerts
         });
       }
+    }
 
-      // Deterministic per-frame falling rain streaks for exterior rain/umbrella shots
-      const hasRainOrUmbrella =
-        frameState.shotId.includes('exterior') ||
-        frameState.shotId.includes('rain') ||
-        frameState.entities.some((e) => e.rigId === 'umbrella' && e.opacity > 0.1);
-      if (hasRainOrUmbrella) {
-        const rainCount = 14;
-        const rainSpanH = 220;
-        for (let r = 0; r < rainCount; r++) {
-          const seedX = ((r * 73) % 320) - 160;
-          const seedY = (r * 47) % rainSpanH;
-          const dropYTop = 20 + ((((seedY - frameState.frameIndex * 11) % rainSpanH) + rainSpanH) % rainSpanH);
-          const dropYBot = Math.max(2, dropYTop - 22);
-          const dropXTop = centerX + seedX;
-          const dropXBot = dropXTop - 5;
-          const dropZ = (r % 2 === 0) ? -25 : 15;
-          const p0Cam = worldToCameraSpace([dropXTop, dropYTop, dropZ], camera, basis);
-          const p1Cam = worldToCameraSpace([dropXBot, dropYBot, dropZ], camera, basis);
-          if (p0Cam[2] >= camera.nearPlane && p1Cam[2] >= camera.nearPlane) {
-            sortables.push({
-              kind: 'env_line',
-              p0: p0Cam,
-              p1: p1Cam,
-              depthKey: dropZ,
-              tier: 2,
-              layerPass: 1,
-              index: submitIndex++,
-              stroke: '#93c5fd',
-              strokeWidth: 1.4,
-              opacity: 0.55,
-              worldP0: [dropXTop, dropYTop, dropZ],
-              worldP1: [dropXBot, dropYBot, dropZ]
-            });
-          }
+    // 2e. Deterministic per-frame falling precipitation streaks
+    const precip = frameState.precipitation;
+    if (precip && precip.kind === 'rain' && precip.density > 0.01) {
+      const activeChar = frameState.entities.find((e) => rigs.get(e.rigId)?.type === 'character' && e.opacity > 0.1);
+      const rainCenterX = activeChar ? activeChar.worldPosition[0] : camera.target[0];
+      const rainCount = Math.max(1, Math.round(14 * Math.min(2.0, precip.density)));
+      const rainSpeed = precip.speed > 0 ? precip.speed : 11;
+      const rainSlant = precip.slant ?? -5;
+      const rainSpanH = 220;
+      for (let r = 0; r < rainCount; r++) {
+        const seedX = ((r * 73) % 320) - 160;
+        const seedY = (r * 47) % rainSpanH;
+        const dropYTop = 20 + ((((seedY - frameState.frameIndex * rainSpeed) % rainSpanH) + rainSpanH) % rainSpanH);
+        const dropYBot = Math.max(2, dropYTop - 22);
+        const dropXTop = rainCenterX + seedX;
+        const dropXBot = dropXTop + rainSlant;
+        const dropZ = (r % 2 === 0) ? -25 : 15;
+        const p0Cam = worldToCameraSpace([dropXTop, dropYTop, dropZ], camera, basis);
+        const p1Cam = worldToCameraSpace([dropXBot, dropYBot, dropZ], camera, basis);
+        if (p0Cam[2] >= camera.nearPlane && p1Cam[2] >= camera.nearPlane) {
+          sortables.push({
+            kind: 'env_line',
+            p0: p0Cam,
+            p1: p1Cam,
+            depthKey: dropZ,
+            tier: 2,
+            layerPass: 1,
+            index: submitIndex++,
+            stroke: '#93c5fd',
+            strokeWidth: 1.4,
+            opacity: 0.55,
+            worldP0: [dropXTop, dropYTop, dropZ],
+            worldP1: [dropXBot, dropYBot, dropZ]
+          });
         }
       }
     }
 
     // 3. Strict Back-to-Front Sorting (Painter's Algorithm)
     sortDrawables(sortables);
+    this.lastDrawOrder = sortables.map((s) => ({
+      id: ((s.rig as AssetRigContract | undefined)?.id ?? (s.entity as ActiveEntityState | undefined)?.rigId ?? s.kind) as string,
+      kind: s.kind,
+      depthKey: s.depthKey,
+      partGroup: s.partGroup as 'back_limbs' | 'body' | 'front_arm' | undefined
+    }));
 
     // 4. Emit sorted primitives into SvgBuilder
     for (const item of sortables) {
@@ -743,7 +883,8 @@ export class SceneCompositor {
             const rawOpacity = item.opacity as number;
             // For static opaque architecture / ground (category !== 'lighting'), clamp near-opaque (>= 0.94) to 1.0 to eliminate offscreen transparency group allocations
             const polyOpacity = item.category === 'lighting' ? rawOpacity : (rawOpacity >= 0.94 ? 1.0 : rawOpacity);
-            builder.addPolygon(pts, item.fill as string, stroke, strokeWidth, polyOpacity);
+            const shapeRendering = item.category !== 'lighting' ? 'optimizeSpeed' : undefined;
+            builder.addPolygon(pts, item.fill as string, stroke, strokeWidth, polyOpacity, shapeRendering);
           }
           break;
         }
@@ -799,8 +940,9 @@ export class SceneCompositor {
           const entity = item.entity as ActiveEntityState;
           const fk = item.fkTransforms as Map<string, Affine2D>;
           const ctx = item.ctx as BillboardProjectionContext;
+          const partsToRender = (item.customParts as RigPart[] | undefined) ?? rig.parts;
 
-          for (const part of rig.parts) {
+          for (const part of partsToRender) {
             this.emitBillboardPart(
               part,
               rig,
@@ -820,8 +962,9 @@ export class SceneCompositor {
           const rig = item.rig as AssetRigContract;
           const entity = item.entity as ActiveEntityState;
           const fk = item.fkTransforms as Map<string, Affine2D>;
+          const partsToRender = (item.customParts as RigPart[] | undefined) ?? rig.parts;
 
-          for (const part of rig.parts) {
+          for (const part of partsToRender) {
             this.emitPlanarPart(
               part,
               rig,
@@ -853,7 +996,8 @@ export class SceneCompositor {
         this.width,
         this.height,
         frameState.palette.background,
-        Math.min(1, frameState.transitionOverlayOpacity)
+        Math.min(1, frameState.transitionOverlayOpacity),
+        'optimizeSpeed'
       );
     }
 
@@ -867,7 +1011,8 @@ export class SceneCompositor {
         this.width,
         this.height,
         frameState.palette.accent,
-        Number((pulseResult.strobeFlash * 0.22).toFixed(3))
+        Number((pulseResult.strobeFlash * 0.22).toFixed(3)),
+        'optimizeSpeed'
       );
     }
 

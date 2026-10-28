@@ -56,11 +56,12 @@ export function computeCameraBasis(camera: CameraTransform): CameraBasis {
   const baseRight = normalizeVec3(rawRight);
   const baseUp = crossVec3(baseRight, forward);
 
-  if (camera.rollDegrees === 0) {
+  const rollDegrees = camera.rollDegrees ?? 0;
+  if (rollDegrees === 0) {
     return { forward, right: baseRight, up: baseUp };
   }
 
-  const rollRad = (camera.rollDegrees * Math.PI) / 180;
+  const rollRad = (rollDegrees * Math.PI) / 180;
   const cosR = Math.cos(rollRad);
   const sinR = Math.sin(rollRad);
 

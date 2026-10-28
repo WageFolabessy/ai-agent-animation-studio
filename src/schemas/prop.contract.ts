@@ -25,3 +25,12 @@ export const RigSocketSchema = z
   })
   .strict();
 export type RigSocket = z.infer<typeof RigSocketSchema>;
+
+export const LandmarkFootprintSchema = z.object({
+  width: z.number().positive(),
+  depth: z.number().positive(),
+  height: z.number().positive(),
+  classification: z.enum(['walkable', 'blocked'])
+}).strict();
+export type LandmarkFootprint = z.infer<typeof LandmarkFootprintSchema>;
+

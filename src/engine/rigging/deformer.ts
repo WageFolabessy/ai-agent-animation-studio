@@ -32,7 +32,9 @@ export function samplePoseTrack(
   timeScale = 1.0,
   startPoseFrame = 0,
   clipId?: string,
-  rootSpeed?: number
+  rootSpeed?: number,
+  locomotionBlendFactor?: number,
+  activeMoveFrames?: number
 ): SampledPoseResult {
   const jointAngles: Record<string, number> = {};
   const jointOffsets: Record<string, Vec2> = {};
@@ -54,7 +56,23 @@ export function samplePoseTrack(
   const { loopFrames, interpolationMode } = poseContract;
 
   // Compute pose clock
-  let clock = startPoseFrame + (frameIndex - shotStartFrame) * timeScale;
+  // For locomotion clips, advance phase with active horizontal movement so legs decelerate and freeze upon stop
+  const isLocomotionClip =
+    clipId !== undefined &&
+    (clipId === 'walk_to' ||
+      clipId === 'sprint_frenzy' ||
+      clipId === 'stalk_crouch' ||
+      clipId === 'exhausted_walk' ||
+      clipId === 'rain_umbrella_walk') &&
+    (poseContract.strideLengthUnits ?? 0) > 0;
+
+  let clock: number;
+  if (isLocomotionClip && activeMoveFrames !== undefined) {
+    clock = startPoseFrame + activeMoveFrames * timeScale;
+  } else {
+    clock = startPoseFrame + (frameIndex - shotStartFrame) * timeScale;
+  }
+
   if (loopFrames !== undefined && loopFrames > 0) {
     clock = ((clock % loopFrames) + loopFrames) % loopFrames;
   } else {
@@ -67,119 +85,114 @@ export function samplePoseTrack(
       jointAngles[jt.jointId] = jt.rotationZDegrees;
       if (jt.localOffset2D) jointOffsets[jt.jointId] = jt.localOffset2D;
     }
-    return { jointAngles, jointOffsets };
-  }
-
-  // Find keyframe interval
-  let idx = 0;
-  while (idx < keyframes.length - 1 && keyframes[idx + 1].frame <= clock) {
-    idx++;
-  }
-
-  const kf0 = keyframes[idx];
-  const kf1 = keyframes[Math.min(keyframes.length - 1, idx + 1)];
-
-  if (kf0.frame === kf1.frame || clock <= kf0.frame) {
-    for (const jt of kf0.jointTransforms) {
-      jointAngles[jt.jointId] = jt.rotationZDegrees;
-      if (jt.localOffset2D) jointOffsets[jt.jointId] = jt.localOffset2D;
-    }
-    return { jointAngles, jointOffsets };
-  }
-
-  const deltaF = kf1.frame - kf0.frame;
-  const u = (clock - kf0.frame) / deltaF;
-
-  if (interpolationMode === 'step') {
-    for (const jt of kf0.jointTransforms) {
-      jointAngles[jt.jointId] = jt.rotationZDegrees;
-      if (jt.localOffset2D) jointOffsets[jt.jointId] = jt.localOffset2D;
-    }
-    return { jointAngles, jointOffsets };
-  }
-
-  const map0 = new Map(kf0.jointTransforms.map((jt) => [jt.jointId, jt]));
-  const map1 = new Map(kf1.jointTransforms.map((jt) => [jt.jointId, jt]));
-
-  // Collect all affected joints
-  const allJointIds = new Set([...map0.keys(), ...map1.keys()]);
-
-  if (interpolationMode === 'linear') {
-    const easedU = interpolatePoseEasing(kf0.easing, u);
-
-    for (const jointId of allJointIds) {
-      const restAngle = jointAngles[jointId] ?? 0;
-      const a0 = map0.get(jointId)?.rotationZDegrees ?? restAngle;
-      const a1 = map1.get(jointId)?.rotationZDegrees ?? restAngle;
-      jointAngles[jointId] = lerp(a0, a1, easedU);
-
-      const restOffset = jointOffsets[jointId] ?? [0, 0];
-      const o0 = map0.get(jointId)?.localOffset2D ?? restOffset;
-      const o1 = map1.get(jointId)?.localOffset2D ?? restOffset;
-      jointOffsets[jointId] = lerpVec2(o0, o1, easedU);
-    }
-  } else if (interpolationMode === 'cubic_spline') {
-    // Hermite cubic spline interpolation with periodic loop unwrapping
-    const N = keyframes.length;
-    const isLooping = loopFrames !== undefined && loopFrames > 0;
-    const hasClosureKeyframe =
-      isLooping &&
-      N >= 2 &&
-      keyframes[0].frame === 0 &&
-      keyframes[N - 1].frame === loopFrames;
-    const periodCount = hasClosureKeyframe ? N - 1 : N;
-
-    const prevIdx = isLooping ? (idx - 1 + periodCount) % periodCount : Math.max(0, idx - 1);
-    const nextIdx = isLooping ? (idx + 2) % periodCount : Math.min(N - 1, idx + 2);
-
-    const prevKf = keyframes[prevIdx];
-    const nextKf = keyframes[nextIdx];
-
-    let prevFrame = prevKf.frame;
-    if (isLooping && idx === 0) {
-      prevFrame -= loopFrames;
+  } else {
+    // Find keyframe interval
+    let idx = 0;
+    while (idx < keyframes.length - 1 && keyframes[idx + 1].frame <= clock) {
+      idx++;
     }
 
-    let nextFrame = nextKf.frame;
-    if (isLooping && idx + 2 >= periodCount) {
-      nextFrame += loopFrames;
-    }
+    const kf0 = keyframes[idx];
+    const kf1 = keyframes[Math.min(keyframes.length - 1, idx + 1)];
 
-    const dt0 = Math.max(1, kf1.frame - prevFrame);
-    const dt1 = Math.max(1, nextFrame - kf0.frame);
+    if (kf0.frame === kf1.frame || clock <= kf0.frame) {
+      for (const jt of kf0.jointTransforms) {
+        jointAngles[jt.jointId] = jt.rotationZDegrees;
+        if (jt.localOffset2D) jointOffsets[jt.jointId] = jt.localOffset2D;
+      }
+    } else if (interpolationMode === 'step') {
+      for (const jt of kf0.jointTransforms) {
+        jointAngles[jt.jointId] = jt.rotationZDegrees;
+        if (jt.localOffset2D) jointOffsets[jt.jointId] = jt.localOffset2D;
+      }
+    } else {
+      const deltaF = kf1.frame - kf0.frame;
+      const u = (clock - kf0.frame) / deltaF;
 
-    const prevMap = new Map(prevKf.jointTransforms.map((jt) => [jt.jointId, jt]));
-    const nextMap = new Map(nextKf.jointTransforms.map((jt) => [jt.jointId, jt]));
+      const map0 = new Map(kf0.jointTransforms.map((jt) => [jt.jointId, jt]));
+      const map1 = new Map(kf1.jointTransforms.map((jt) => [jt.jointId, jt]));
 
-    for (const jointId of allJointIds) {
-      const restAngle = jointAngles[jointId] ?? 0;
-      const p0 = map0.get(jointId)?.rotationZDegrees ?? restAngle;
-      const p1 = map1.get(jointId)?.rotationZDegrees ?? restAngle;
-      const pPrev = prevMap.get(jointId)?.rotationZDegrees ?? p0;
-      const pNext = nextMap.get(jointId)?.rotationZDegrees ?? p1;
+      // Collect all affected joints
+      const allJointIds = new Set([...map0.keys(), ...map1.keys()]);
 
-      // Non-uniform finite differences with unwrapped periodic intervals
-      const m0 = (p1 - pPrev) / dt0;
-      const m1 = (pNext - p0) / dt1;
+      if (interpolationMode === 'linear') {
+        const easedU = interpolatePoseEasing(kf0.easing, u);
 
-      jointAngles[jointId] = hermiteInterpolate(p0, m0, p1, m1, deltaF, u);
+        for (const jointId of allJointIds) {
+          const restAngle = jointAngles[jointId] ?? 0;
+          const a0 = map0.get(jointId)?.rotationZDegrees ?? restAngle;
+          const a1 = map1.get(jointId)?.rotationZDegrees ?? restAngle;
+          jointAngles[jointId] = lerp(a0, a1, easedU);
 
-      // Offsets
-      const restOffset = jointOffsets[jointId] ?? [0, 0];
-      const o0 = map0.get(jointId)?.localOffset2D ?? restOffset;
-      const o1 = map1.get(jointId)?.localOffset2D ?? restOffset;
-      const oPrev = prevMap.get(jointId)?.localOffset2D ?? o0;
-      const oNext = nextMap.get(jointId)?.localOffset2D ?? o1;
+          const restOffset = jointOffsets[jointId] ?? [0, 0];
+          const o0 = map0.get(jointId)?.localOffset2D ?? restOffset;
+          const o1 = map1.get(jointId)?.localOffset2D ?? restOffset;
+          jointOffsets[jointId] = lerpVec2(o0, o1, easedU);
+        }
+      } else if (interpolationMode === 'cubic_spline') {
+        // Hermite cubic spline interpolation with periodic loop unwrapping
+        const N = keyframes.length;
+        const isLooping = loopFrames !== undefined && loopFrames > 0;
+        const hasClosureKeyframe =
+          isLooping &&
+          N >= 2 &&
+          keyframes[0].frame === 0 &&
+          keyframes[N - 1].frame === loopFrames;
+        const periodCount = hasClosureKeyframe ? N - 1 : N;
 
-      const mx0 = (o1[0] - oPrev[0]) / dt0;
-      const mx1 = (oNext[0] - o0[0]) / dt1;
-      const my0 = (o1[1] - oPrev[1]) / dt0;
-      const my1 = (oNext[1] - o0[1]) / dt1;
+        const prevIdx = isLooping ? (idx - 1 + periodCount) % periodCount : Math.max(0, idx - 1);
+        const nextIdx = isLooping ? (idx + 2) % periodCount : Math.min(N - 1, idx + 2);
 
-      jointOffsets[jointId] = [
-        hermiteInterpolate(o0[0], mx0, o1[0], mx1, deltaF, u),
-        hermiteInterpolate(o0[1], my0, o1[1], my1, deltaF, u)
-      ];
+        const prevKf = keyframes[prevIdx];
+        const nextKf = keyframes[nextIdx];
+
+        let prevFrame = prevKf.frame;
+        if (isLooping && idx === 0) {
+          prevFrame -= loopFrames;
+        }
+
+        let nextFrame = nextKf.frame;
+        if (isLooping && idx + 2 >= periodCount) {
+          nextFrame += loopFrames;
+        }
+
+        const dt0 = Math.max(1, kf1.frame - prevFrame);
+        const dt1 = Math.max(1, nextFrame - kf0.frame);
+
+        const prevMap = new Map(prevKf.jointTransforms.map((jt) => [jt.jointId, jt]));
+        const nextMap = new Map(nextKf.jointTransforms.map((jt) => [jt.jointId, jt]));
+
+        for (const jointId of allJointIds) {
+          const restAngle = jointAngles[jointId] ?? 0;
+          const p0 = map0.get(jointId)?.rotationZDegrees ?? restAngle;
+          const p1 = map1.get(jointId)?.rotationZDegrees ?? restAngle;
+          const pPrev = prevMap.get(jointId)?.rotationZDegrees ?? p0;
+          const pNext = nextMap.get(jointId)?.rotationZDegrees ?? p1;
+
+          // Non-uniform finite differences with unwrapped periodic intervals
+          const m0 = (p1 - pPrev) / dt0;
+          const m1 = (pNext - p0) / dt1;
+
+          jointAngles[jointId] = hermiteInterpolate(p0, m0, p1, m1, deltaF, u);
+
+          // Offsets
+          const restOffset = jointOffsets[jointId] ?? [0, 0];
+          const o0 = map0.get(jointId)?.localOffset2D ?? restOffset;
+          const o1 = map1.get(jointId)?.localOffset2D ?? restOffset;
+          const oPrev = prevMap.get(jointId)?.localOffset2D ?? o0;
+          const oNext = nextMap.get(jointId)?.localOffset2D ?? o1;
+
+          const mx0 = (o1[0] - oPrev[0]) / dt0;
+          const mx1 = (oNext[0] - o0[0]) / dt1;
+          const my0 = (o1[1] - oPrev[1]) / dt0;
+          const my1 = (oNext[1] - o0[1]) / dt1;
+
+          jointOffsets[jointId] = [
+            hermiteInterpolate(o0[0], mx0, o1[0], mx1, deltaF, u),
+            hermiteInterpolate(o0[1], my0, o1[1], my1, deltaF, u)
+          ];
+        }
+      }
     }
   }
 
@@ -196,15 +209,8 @@ export function samplePoseTrack(
       leg_r_upper: -4,
       leg_r_lower: -6
     };
-    if (rootSpeed < 0.03) {
-      for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {
-        jointAngles[jId] = angle;
-      }
-      if (!isReachClip) {
-        jointOffsets['pelvis'] = [0, 1.8];
-      }
-    } else if (rootSpeed < 0.18) {
-      const blendFactor = (rootSpeed - 0.03) / 0.15;
+    const blendFactor = locomotionBlendFactor ?? (rootSpeed < 0.03 ? 0 : rootSpeed < 0.18 ? (rootSpeed - 0.03) / 0.15 : 1.0);
+    if (blendFactor < 1.0) {
       for (const [jId, angle] of Object.entries(STANDING_REST_LEG_ANGLES)) {
         jointAngles[jId] = lerp(angle, jointAngles[jId] ?? angle, blendFactor);
       }

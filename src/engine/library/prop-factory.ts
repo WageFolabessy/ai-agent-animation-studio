@@ -1,6 +1,23 @@
 import type { AssetRigContract, RigPart } from '../../schemas/rig.contract.js';
-import type { NarrativePropId, RigSocket } from '../../schemas/prop.contract.js';
+import type { NarrativePropId, RigSocket, LandmarkFootprint } from '../../schemas/prop.contract.js';
 import { NarrativePropIdSchema } from '../../schemas/prop.contract.js';
+
+export const CANONICAL_LANDMARK_FOOTPRINTS: Record<string, LandmarkFootprint> = {
+  desk: { width: 24.0, depth: 24.0, height: 63.0, classification: 'blocked' },
+  chair: { width: 14.0, depth: 14.0, height: 45.0, classification: 'blocked' },
+  table: { width: 24.0, depth: 24.0, height: 63.0, classification: 'blocked' },
+  side_table: { width: 20.0, depth: 20.0, height: 63.0, classification: 'blocked' },
+  lamppost: { width: 8.0, depth: 8.0, height: 120.0, classification: 'blocked' },
+  curb: { width: 20.0, depth: 10.0, height: 6.0, classification: 'walkable' },
+  coffee_cup: { width: 7.0, depth: 7.0, height: 7.0, classification: 'walkable' },
+  umbrella: { width: 60.0, depth: 60.0, height: 48.0, classification: 'walkable' },
+  microphone: { width: 6.0, depth: 6.0, height: 30.0, classification: 'walkable' },
+  rose: { width: 6.0, depth: 6.0, height: 14.0, classification: 'walkable' },
+  acoustic_guitar: { width: 20.0, depth: 10.0, height: 30.0, classification: 'walkable' },
+  electric_guitar: { width: 20.0, depth: 10.0, height: 30.0, classification: 'walkable' },
+  crown: { width: 17.0, depth: 17.0, height: 9.0, classification: 'walkable' },
+  fedora_hat: { width: 27.0, depth: 27.0, height: 10.0, classification: 'walkable' }
+};
 
 export const CANONICAL_BIPED_SOCKETS: readonly RigSocket[] = [
   {
@@ -34,6 +51,17 @@ export const CANONICAL_BIPED_SOCKETS: readonly RigSocket[] = [
  * (Pillar 4 of Theatrical Narrative Architecture), attached directly to character skeletal joint sockets.
  */
 export class PropFactory {
+  public static getLandmarkFootprint(name: string): LandmarkFootprint {
+    return (
+      CANONICAL_LANDMARK_FOOTPRINTS[name] ?? {
+        width: 12.0,
+        depth: 12.0,
+        height: 12.0,
+        classification: 'walkable'
+      }
+    );
+  }
+
   public static isNarrativePropId(value: string): value is NarrativePropId {
     return NarrativePropIdSchema.safeParse(value).success;
   }
@@ -370,8 +398,8 @@ export class PropFactory {
             {
               id: `${instanceId}_shaft`,
               jointId: null,
-              localOffset2D: [0, 24],
-              shape: { kind: 'rect', size: [2.2, 48] },
+              localOffset2D: [0, 34],
+              shape: { kind: 'rect', size: [2.2, 68] },
               style: {
                 fill: { kind: 'solid', color: '#cbd5e1' },
                 opacity: 1,
@@ -381,21 +409,21 @@ export class PropFactory {
             {
               id: `${instanceId}_canopy`,
               jointId: null,
-              localOffset2D: [-10, 48],
+              localOffset2D: [0, 68],
               shape: {
                 kind: 'polygon',
                 points: [
-                  [-30, -6],
-                  [-28, -2],
-                  [-22, 5],
-                  [-14, 10],
-                  [-5, 12],
-                  [0, 12.5],
-                  [5, 12.5],
-                  [14, 10],
-                  [22, 5],
-                  [28, -2],
-                  [30, -6],
+                  [-34, -6],
+                  [-32, -2],
+                  [-25, 6],
+                  [-16, 12],
+                  [-6, 15],
+                  [0, 16],
+                  [6, 15],
+                  [16, 12],
+                  [25, 6],
+                  [32, -2],
+                  [34, -6],
                   [0, -2]
                 ]
               },

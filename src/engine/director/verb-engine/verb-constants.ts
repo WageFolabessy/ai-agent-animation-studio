@@ -78,7 +78,7 @@ export const VERB_CONSTANTS = {
   /** Half-distance between two characters during close embrace. */
   EMBRACE_CONTACT_HALF_SEPARATION: 10,
   /** Depth Z offset for partner rig during close embrace to prevent z-fighting. */
-  EMBRACE_PARTNER_DEPTH_Z: -3,
+  EMBRACE_PARTNER_DEPTH_Z: 0,
   /** Inward torso lean in degrees during embrace. */
   EMBRACE_TORSO_LEAN_DEG: 7,
   /** Hand reach past partner center X during embrace wrap. */
@@ -230,9 +230,9 @@ export const VERB_CONSTANTS = {
   GAZE_DEFAULT_LOOK_DISTANCE: 100,
 
   /** Overhead prop hold socket local X displacement in front of chest. */
-  OVERHEAD_PROP_OFFSET_X: 26,
+  OVERHEAD_PROP_OFFSET_X: 12,
   /** Overhead prop hold socket local Y displacement relative to shoulder. */
-  OVERHEAD_PROP_OFFSET_Y: -12,
+  OVERHEAD_PROP_OFFSET_Y: 10,
 
   /** Prop grasp socket horizontal and vertical alignment offset. */
   PROP_GRASP_OFFSET_X: 4.5,
@@ -247,7 +247,14 @@ export const VERB_CONSTANTS = {
   EMBRACE_COMPANION_WRAP_L_OFFSET_Y: -4,
   EMBRACE_HERO_WRAP_L_OFFSET_Y: -14,
   EMBRACE_PUSH_THRUST_OFFSET_X: -5,
-  EMBRACE_HERO_PUSH_THRUST_OFFSET_X: 5
+  EMBRACE_HERO_PUSH_THRUST_OFFSET_X: 5,
+
+  /** Obstacle clearance and trunk bounding constants. */
+  CHAR_BASE_HALF_WIDTH: 6.0,
+  CHAR_TRUNK_HALF_WIDTH: 7.5,
+  OBSTACLE_COLLISION_Z_TOLERANCE: 4.0,
+  OBSTACLE_CLEARANCE_X_MARGIN: 1.5,
+  OBSTACLE_CLEARANCE_Z_MARGIN: 6.0
 } as const;
 
 export type ValidFps = typeof VERB_CONSTANTS.FPS_30 | typeof VERB_CONSTANTS.FPS_60;

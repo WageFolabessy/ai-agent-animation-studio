@@ -280,9 +280,18 @@ export class SvgBuilder {
     return this;
   }
 
-  public addRect(x: number, y: number, w: number, h: number, fill: string, opacity = 1): this {
+  public addRect(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    fill: string,
+    opacity = 1,
+    shapeRendering?: 'optimizeSpeed' | 'geometricPrecision' | 'crispEdges'
+  ): this {
+    const renderingAttr = shapeRendering ? ` shape-rendering="${shapeRendering}"` : '';
     this.elements.push(
-      `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="${escapeXmlAttr(fill)}" opacity="${fmt(opacity)}"/>`
+      `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" fill="${escapeXmlAttr(fill)}" opacity="${fmt(opacity)}"${renderingAttr}/>`
     );
     return this;
   }
@@ -344,7 +353,7 @@ export class SvgBuilder {
     }
 
     const defsBlock = this.defs.length > 0 ? `<defs>${this.defs.join('')}</defs>` : '';
-    const background = `<rect width="100%" height="100%" fill="${escapeXmlAttr(this.backgroundColor)}"/>`;
+    const background = `<rect width="100%" height="100%" fill="${escapeXmlAttr(this.backgroundColor)}" shape-rendering="optimizeSpeed"/>`;
 
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${this.width} ${this.height}" width="${this.width}" height="${this.height}">` +

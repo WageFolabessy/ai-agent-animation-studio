@@ -166,7 +166,8 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         landmarkPlacements: {
           umbrella: [-30, 24, 0]
         },
-        atmosphericDensity: 0.7
+        atmosphericDensity: 0.7,
+        precipitation: { kind: 'rain', density: 0.8, slant: -5, speed: 11 }
       },
       actions: [
         {
@@ -208,7 +209,8 @@ export const STAGE2_STORY_BEAT_CONTRACT: StoryBeatContract = {
         landmarkPlacements: {
           umbrella: [-30, 24, 0]
         },
-        atmosphericDensity: 0.4
+        atmosphericDensity: 0.4,
+        precipitation: { kind: 'rain', density: 0.8, slant: -5, speed: 11 }
       },
       actions: [
         {
@@ -301,8 +303,8 @@ export const STAGE2_RENDER_OPTIONS = {
   width: 1920,
   height: 1080,
   crf: 18,
-  preset: 'superfast' as const,
-  threads: 2,
+  preset: 'ultrafast' as const,
+  threads: 3,
   chunkFrames: 210,
   resume: false,
   stagingMode: 'theatrical' as const,

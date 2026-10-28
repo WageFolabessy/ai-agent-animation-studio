@@ -235,6 +235,7 @@ export class FrameStateBuilder {
 
   private findActiveLyric(frameIndex: number): ActiveLyricState | null {
     const lyrics = this.audioManifest.lyrics;
+    if (!lyrics || lyrics.length === 0) return null;
     let low = 0;
     let high = lyrics.length - 1;
 
@@ -345,15 +346,45 @@ export class FrameStateBuilder {
         const trackState = evaluateEntityTrack(track, frameIndex, fps, this.getAudioFeature);
         evaluatedTrackMap.set(rigId, trackState);
 
-        const poseResult = samplePoseTrack(
+        let poseResult = samplePoseTrack(
           rig,
           frameIndex,
           trackState.shotStartFrame ?? shot.frameRange.startFrameInclusive,
           trackState.timeScale,
           trackState.startPoseFrame,
           trackState.clipId,
-          trackState.vRoot
+          trackState.vRoot,
+          trackState.locomotionBlendFactor,
+          trackState.activeMoveFrames
         );
+
+        if (trackState.previousSegment && trackState.transitionProgress !== undefined && trackState.transitionProgress < 1.0) {
+          const prevFrame = Math.max(trackState.previousSegment.startFrame, trackState.previousSegment.endFrame - 1);
+          const prevTs = evaluateEntityTrack(track, prevFrame, fps, this.getAudioFeature);
+          const prevPose = samplePoseTrack(
+            rig,
+            prevFrame,
+            prevTs.shotStartFrame ?? shot.frameRange.startFrameInclusive,
+            prevTs.timeScale,
+            prevTs.startPoseFrame,
+            prevTs.clipId,
+            prevTs.vRoot,
+            prevTs.locomotionBlendFactor
+          );
+          const u = trackState.transitionProgress;
+          const blendedAngles: Record<string, number> = {};
+          const blendedOffsets: Record<string, import('../../schemas/primitives.schema.js').Vec2> = {};
+          const allJoints = new Set([...Object.keys(poseResult.jointAngles), ...Object.keys(prevPose.jointAngles)]);
+          for (const jId of allJoints) {
+            const a0 = prevPose.jointAngles[jId] ?? 0;
+            const a1 = poseResult.jointAngles[jId] ?? 0;
+            blendedAngles[jId] = a0 + (a1 - a0) * u;
+            const o0 = prevPose.jointOffsets[jId] ?? [0, 0];
+            const o1 = poseResult.jointOffsets[jId] ?? [0, 0];
+            blendedOffsets[jId] = [o0[0] + (o1[0] - o0[0]) * u, o0[1] + (o1[1] - o0[1]) * u];
+          }
+          poseResult = { jointAngles: blendedAngles, jointOffsets: blendedOffsets };
+        }
 
         const jointAngles = evaluateSecondaryMotion(
           rig,
@@ -538,11 +569,17 @@ export class FrameStateBuilder {
     for (const entity of entities) {
       const trackState = evaluatedTrackMap.get(entity.rigId);
       const span = trackState?.activeAttachmentSpan;
-      if (!span) continue;
+      if (!span) {
+        entity.isAttached = false;
+        continue;
+      }
 
       const ownerEntity = entityMap.get(span.ownerRigId);
       const ownerRig = this.rigs.get(span.ownerRigId);
-      if (!ownerEntity || !ownerRig?.skeleton) continue;
+      if (!ownerEntity || !ownerRig?.skeleton) {
+        entity.isAttached = false;
+        continue;
+      }
 
       const fkMap = entityFkMap.get(span.ownerRigId) ??
         computeSkeletonFK(ownerRig.skeleton, ownerEntity.jointAngles, ownerEntity.jointOffsets);
@@ -582,6 +619,11 @@ export class FrameStateBuilder {
         ];
         // Enforce upright prop orientation against gravity unless inheritSocketRotation is set
         entity.worldRotationZDegrees = 0;
+        entity.isAttached = true;
+        entity.socketAttachment = {
+          ownerRigId: span.ownerRigId,
+          socketId: span.socketId
+        };
       }
     }
 
@@ -594,7 +636,8 @@ export class FrameStateBuilder {
       audio,
       lyric,
       entities,
-      ...(transitionOverlayOpacity !== undefined ? { transitionOverlayOpacity } : {})
+      ...(transitionOverlayOpacity !== undefined ? { transitionOverlayOpacity } : {}),
+      ...(shot.precipitation ? { precipitation: shot.precipitation } : {})
     };
   }
 }

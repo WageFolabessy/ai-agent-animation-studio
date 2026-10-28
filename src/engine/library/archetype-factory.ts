@@ -70,10 +70,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
           { jointId: 'arm_r_upper', rotationZDegrees: 4 },
           { jointId: 'arm_r_lower', rotationZDegrees: 24 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 25 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -25 },
-          { jointId: 'leg_r_upper', rotationZDegrees: 25 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
           { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
@@ -199,10 +199,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
           { jointId: 'arm_r_upper', rotationZDegrees: 4 },
           { jointId: 'arm_r_lower', rotationZDegrees: 24 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 25 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -25 },
-          { jointId: 'leg_r_upper', rotationZDegrees: 25 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
           { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
@@ -216,10 +216,10 @@ export const BipedPoseClips: Record<string, PoseInterpolationContract> = {
           { jointId: 'arm_l_lower', rotationZDegrees: 22 },
           { jointId: 'arm_r_upper', rotationZDegrees: 4 },
           { jointId: 'arm_r_lower', rotationZDegrees: 24 },
-          { jointId: 'leg_l_upper', rotationZDegrees: 25 },
-          { jointId: 'leg_l_lower', rotationZDegrees: -25 },
-          { jointId: 'leg_r_upper', rotationZDegrees: 25 },
-          { jointId: 'leg_r_lower', rotationZDegrees: -25 },
+          { jointId: 'leg_l_upper', rotationZDegrees: 4 },
+          { jointId: 'leg_l_lower', rotationZDegrees: -6 },
+          { jointId: 'leg_r_upper', rotationZDegrees: -4 },
+          { jointId: 'leg_r_lower', rotationZDegrees: -6 },
           { jointId: 'coat_tail', rotationZDegrees: -6 }
         ]
       },
@@ -1632,10 +1632,10 @@ export class ArchetypeFactory {
             kind: 'polygon',
             points: [
               [0, 0],
-              [-10, -14],
-              [-14, -34],
-              [-5, -32],
-              [2, -10]
+              [-14, -14],
+              [-24, -36],
+              [-8, -34],
+              [4, -10]
             ]
           },
           style: {
@@ -2257,31 +2257,31 @@ export class ArchetypeFactory {
 
     const heroColorMap: Record<string, { fill: string; stroke: string; strokeWidth?: number }> = {
       coat_wing: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.4 },
-      coat_tatter: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      coat_tatter: { fill: '#222d42', stroke: '#38e8ff', strokeWidth: 1.0 },
       hair_ribbon: { fill: '#38e8ff', stroke: '#38e8ff', strokeWidth: 1.0 },
-      leg_l_thigh: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
-      leg_l_shin: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
-      leg_l_foot: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
+      leg_l_thigh: { fill: '#222d42', stroke: '#38e8ff', strokeWidth: 1.0 },
+      leg_l_shin: { fill: '#222d42', stroke: '#38e8ff', strokeWidth: 1.0 },
+      leg_l_foot: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
       leg_l_greave: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
-      arm_l_bicep: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
-      arm_l_forearm: { fill: '#131926', stroke: '#243048', strokeWidth: 1.0 },
-      arm_l_hand_morph: { fill: '#38e8ff', stroke: '#243048', strokeWidth: 1.0 },
-      abdomen_connector: { fill: '#1a2234', stroke: '#1a2234', strokeWidth: 0.8 },
-      neck_collar: { fill: '#1a2234', stroke: '#243048', strokeWidth: 0.8 },
-      torso_body: { fill: '#1a2234', stroke: '#38e8ff', strokeWidth: 1.2 },
+      arm_l_bicep: { fill: '#222d42', stroke: '#38e8ff', strokeWidth: 1.0 },
+      arm_l_forearm: { fill: '#222d42', stroke: '#38e8ff', strokeWidth: 1.0 },
+      arm_l_hand_morph: { fill: '#38e8ff', stroke: '#38e8ff', strokeWidth: 1.0 },
+      abdomen_connector: { fill: '#2a3854', stroke: '#38e8ff', strokeWidth: 0.8 },
+      neck_collar: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 0.8 },
+      torso_body: { fill: '#2a3854', stroke: '#38e8ff', strokeWidth: 1.2 },
       pauldron_l: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.4 },
       pauldron_r: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.4 },
       head_cranium: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.2 },
       head_visor: { fill: '#38e8ff', stroke: '#7dd3fc', strokeWidth: 1.4 },
       eye_optic_core: { fill: '#38e8ff', stroke: '#e0f2fe', strokeWidth: 1.0 },
       facial_expression_morph: { fill: '#38e8ff', stroke: '#7dd3fc', strokeWidth: 1.4 },
-      leg_r_thigh: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
-      leg_r_shin: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
+      leg_r_thigh: { fill: '#2a3854', stroke: '#38e8ff', strokeWidth: 1.0 },
+      leg_r_shin: { fill: '#2a3854', stroke: '#38e8ff', strokeWidth: 1.0 },
       leg_r_foot: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
       leg_r_greave: { fill: '#243048', stroke: '#38e8ff', strokeWidth: 1.0 },
-      arm_r_bicep: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
-      arm_r_forearm: { fill: '#1a2234', stroke: '#243048', strokeWidth: 1.0 },
-      arm_r_hand_morph: { fill: '#38e8ff', stroke: '#243048', strokeWidth: 1.0 }
+      arm_r_bicep: { fill: '#2a3854', stroke: '#38e8ff', strokeWidth: 1.0 },
+      arm_r_forearm: { fill: '#2a3854', stroke: '#38e8ff', strokeWidth: 1.0 },
+      arm_r_hand_morph: { fill: '#38e8ff', stroke: '#38e8ff', strokeWidth: 1.0 }
     };
 
     const heroParts: RigPart[] = base.parts.map((p) => {
@@ -2347,15 +2347,15 @@ export class ArchetypeFactory {
             kind: 'polygon' as const,
             points: [
               [0, 0],
-              [-11, -14],
-              [-15, -36],
-              [-4, -38],
-              [4, -14]
+              [-16, -14],
+              [-24, -36],
+              [-6, -38],
+              [6, -14]
             ]
           },
           style: {
-            fill: { kind: 'solid' as const, color: '#211610' },
-            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.5 },
+            fill: { kind: 'solid' as const, color: '#342218' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.5 },
             opacity: 0.96,
             lit: true
           }
@@ -2550,7 +2550,7 @@ export class ArchetypeFactory {
           shape: { kind: 'morph' as const },
           style: {
             fill: { kind: 'solid' as const, color: '#f59e0b' },
-            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.4 },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.4 },
             opacity: 1,
             lit: true
           }
@@ -2563,7 +2563,41 @@ export class ArchetypeFactory {
           shape: { kind: 'morph' as const },
           style: {
             fill: { kind: 'solid' as const, color: '#f59e0b' },
-            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.4 },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.4 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      // 7b. Companion bicep and leg limb contrast rims
+      if (p.id === 'arm_l_bicep' || p.id === 'arm_r_bicep') {
+        return {
+          ...p,
+          style: {
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'leg_l_thigh' || p.id === 'leg_r_thigh') {
+        return {
+          ...p,
+          style: {
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
+            opacity: 1,
+            lit: true
+          }
+        };
+      }
+      if (p.id === 'leg_l_shin' || p.id === 'leg_r_shin') {
+        return {
+          ...p,
+          style: {
+            fill: { kind: 'solid' as const, color: '#3d291e' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
@@ -2587,8 +2621,8 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'solid' as const, color: '#211610' },
-            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.2 },
+            fill: { kind: 'solid' as const, color: '#342218' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
           }
@@ -2611,7 +2645,7 @@ export class ArchetypeFactory {
             ]
           },
           style: {
-            fill: { kind: 'solid' as const, color: '#211610' },
+            fill: { kind: 'solid' as const, color: '#342218' },
             stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 },
             opacity: 1,
             lit: true
@@ -2623,8 +2657,8 @@ export class ArchetypeFactory {
           ...p,
           style: {
             ...p.style,
-            fill: { kind: 'solid' as const, color: '#2d1f18' },
-            stroke: { paint: { kind: 'solid' as const, color: '#2d1f18' }, width: 0.8 }
+            fill: { kind: 'solid' as const, color: '#422b1f' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 0.8 }
           }
         };
       }
@@ -2633,28 +2667,18 @@ export class ArchetypeFactory {
           ...p,
           style: {
             ...p.style,
-            fill: { kind: 'solid' as const, color: '#2d1f18' },
+            fill: { kind: 'solid' as const, color: '#422b1f' },
             stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.2 }
           }
         };
       }
-      if (p.id === 'neck_collar' || p.id === 'leg_r_thigh' || p.id === 'leg_r_shin' || p.id === 'arm_r_bicep') {
+      if (p.id === 'neck_collar') {
         return {
           ...p,
           style: {
             ...p.style,
-            fill: { kind: 'solid' as const, color: '#2d1f18' },
-            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.0 }
-          }
-        };
-      }
-      if (p.id === 'leg_l_thigh' || p.id === 'leg_l_shin' || p.id === 'arm_l_bicep') {
-        return {
-          ...p,
-          style: {
-            ...p.style,
-            fill: { kind: 'solid' as const, color: '#211610' },
-            stroke: { paint: { kind: 'solid' as const, color: '#3d291e' }, width: 1.0 }
+            fill: { kind: 'solid' as const, color: '#342218' },
+            stroke: { paint: { kind: 'solid' as const, color: '#f59e0b' }, width: 1.0 }
           }
         };
       }

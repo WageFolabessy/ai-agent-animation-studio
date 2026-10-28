@@ -740,12 +740,11 @@ export class StageEnvironmentGenerator {
             };
 
             if (sideTableCenterX !== undefined) {
-              // Single compact side pedestal table (e.g., X = -70, Y = 72, Z = 0) leaving center hall open
+              // Single compact side pedestal table (e.g., X = -56, Y = 63, Z = 0) leaving center hall open
               addPedestalTable(sideTableCenterX);
             } else {
-              // Solo study configuration: Desk 1 at X = 0 ([0, 72, 0]) and Desk 2 at X = -89 ([-89, 72, 0])
+              // Desk at center X = 0 ([0, 63, 0])
               addPedestalTable(0);
-              addPedestalTable(-89);
             }
           } else {
             // Study desks in adjacent bays

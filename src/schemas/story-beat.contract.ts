@@ -44,12 +44,21 @@ export const CameraIntentSchema = z.object({
 }).strict();
 export type CameraIntent = z.infer<typeof CameraIntentSchema>;
 
+export const PrecipitationSpecSchema = z.object({
+  kind: z.enum(['none', 'rain']).default('none'),
+  density: z.number().finite().min(0).max(1).default(0.5),
+  slant: z.number().finite().min(-30).max(30).default(-5),
+  speed: z.number().finite().min(0).max(100).default(11)
+}).strict();
+export type PrecipitationSpec = z.infer<typeof PrecipitationSpecSchema>;
+
 export const ParametricSetSelectionSchema = z.object({
   kitId: z.enum(['ARCHITECTURAL_INTERIOR', 'EXTERIOR_URBAN_VISTA']),
   variantId: z.enum(['moody_night', 'dramatic_twilight', 'storm_overcast', 'clean_minimal']),
   landmarkProps: z.array(z.string()).max(4).default([]),
   landmarkPlacements: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).optional(),
-  atmosphericDensity: z.number().finite().min(0).max(1).default(0.5)
+  atmosphericDensity: z.number().finite().min(0).max(1).default(0.5),
+  precipitation: PrecipitationSpecSchema.optional()
 }).strict();
 export type ParametricSetSelection = z.infer<typeof ParametricSetSelectionSchema>;
 
@@ -138,7 +147,8 @@ export const RawParametricSetSelectionSchema = z.object({
   variantId: z.string().optional(),
   landmarkProps: z.array(z.string()).optional(),
   landmarkPlacements: z.record(z.string(), z.tuple([z.number(), z.number(), z.number()])).optional(),
-  atmosphericDensity: z.number().optional()
+  atmosphericDensity: z.number().optional(),
+  precipitation: z.any().optional()
 });
 
 export const RawStoryBeatSchema = z.object({
@@ -419,7 +429,15 @@ export function normalizeStoryBeatVocabulary(raw: unknown): StoryBeatContract {
         variantId,
         landmarkProps: rb.set?.landmarkProps ?? (kitId === 'ARCHITECTURAL_INTERIOR' ? ['desk', 'chair', 'coffee_cup'] : ['lamppost', 'curb']),
         ...(rb.set?.landmarkPlacements ? { landmarkPlacements: rb.set.landmarkPlacements } : {}),
-        atmosphericDensity: typeof rb.set?.atmosphericDensity === 'number' ? Math.max(0, Math.min(1, rb.set.atmosphericDensity)) : 0.5
+        atmosphericDensity: typeof rb.set?.atmosphericDensity === 'number' ? Math.max(0, Math.min(1, rb.set.atmosphericDensity)) : 0.5,
+        precipitation: rb.set?.precipitation
+          ? {
+              kind: rb.set.precipitation.kind === 'rain' ? ('rain' as const) : ('none' as const),
+              density: typeof rb.set.precipitation.density === 'number' ? Math.max(0, Math.min(1, rb.set.precipitation.density)) : 0.5,
+              slant: typeof rb.set.precipitation.slant === 'number' ? Math.max(-30, Math.min(30, rb.set.precipitation.slant)) : -5,
+              speed: typeof rb.set.precipitation.speed === 'number' ? Math.max(0, Math.min(100, rb.set.precipitation.speed)) : 11
+            }
+          : { kind: 'none' as const, density: 0.5, slant: -5, speed: 11 }
       },
       actions,
       camera: {
